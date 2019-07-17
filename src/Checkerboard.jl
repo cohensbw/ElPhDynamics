@@ -29,60 +29,14 @@ Construct the checkerboard decomposition approximation for the matrix exp(-Δτ�
 """
 function checkerboard_matrix(neighbors::Matrix{Int},vals::Vector,groups::Vector{Int},Δτ::Float64,ngroups::Int,nsites::Int)::SparseMatrixCSC
 
-    # intializing matrix so that it is equal to the checkerboard matrix for the first checkerboard group
-    expK = checkerboard_group_matrix(neighbors,vals,groups,Δτ,1,nsites)
+    # intializing matrix to identity matrix
+    expK = sparse(typeof(vals[1])(1.0)I,nsites,nsites)
     # iterating over remaining checkerboard groups
-    for group in 2:ngroups
-        # updating matrix by multiplying with checkerboard matrix for current checkerboard gorup
-        expK *= checkerboard_group_matrix(neighbors,vals,groups,Δτ,group,nsites)
+    for group in 1:ngroups
+        # updating matrix by multiplying with checkerboard matrix for current group
+        expK = _checkerboard_group_matrix(neighbors,vals,groups,Δτ,group,nsites) * expK
     end
     return expK
-end
-
-
-"""
-Construct a sparse matrix representation of exp(-Δτ⋅Kᵢ) for a single checkerboard group of bonds.
-"""
-function checkerboard_group_matrix(neighbors::Matrix{Int},vals::Vector,groups::Vector{Int},Δτ::Float64,group::Int,nsites::Int)::SparseMatrixCSC
-
-    # determining data type in val array
-    dtype = typeof(vals[1])
-    # getting number of neighbors
-    nneighbors = length(vals)
-    # vectors for constructing sparse matrix
-    rows = collect(1:nsites)
-    cols = collect(1:nsites)
-    elements = ones(dtype,nsites)
-    # stores the pair of neighbors sites
-    n1 = 0
-    n2 = 0
-    # stores cosh(-Δτ⋅tᵢⱼ) and cosh(-Δτ⋅tᵢⱼ)
-    vcosh = 0.0
-    vsinh = 0.0
-    # iterating over neighbors
-    for i in 1:nneighbors
-        # determining if neighbors are the current color
-        if groups[i]==group
-            # calculating cosh and sinh values
-            vcosh = cosh(-Δτ*vals[i])
-            vsinh = sinh(-Δτ*vals[i])
-            # getting neighboring sites
-            n1 = neighbors[1,i]
-            n2 = neighbors[2,i]
-            # setting diagonal elements
-            elements[n1] = vcosh
-            elements[n2] = vcosh
-            # setting first off diagonal element
-            append!(rows,n1)
-            append!(cols,n2)
-            append!(elements,vsinh)
-            # setting second off diagonal element
-            append!(rows,n2)
-            append!(cols,n1)
-            append!(elements,conj(vsinh))
-        end
-    end
-    return sparse(rows,cols,elements,nsites,nsites)
 end
 
 
@@ -134,6 +88,58 @@ function checkerboard_groups!(groups::Vector{Int},neighbors::Matrix{Int})::Int
         end
     end
     return group
+end
+
+
+############################################################
+## PRIVATE FUNCTIONS NOT TO BE CALLED OUTSIDE THIS SCRIPT ##
+############################################################
+
+
+"""
+Construct a sparse matrix representation of exp(-Δτ⋅Kᵢ) for a single checkerboard group of bonds.
+"""
+function _checkerboard_group_matrix(neighbors::Matrix{Int},vals::Vector,groups::Vector{Int},Δτ::Float64,group::Int,nsites::Int)::SparseMatrixCSC
+
+    # getting data type of data
+    dtype = typeof(vals[1])
+    # getting number of neighbors
+    nneighbors = length(vals)
+    # vectors for constructing sparse matrix.
+    # intially matrix need to be an identity matrix.
+    rows = collect(1:nsites)
+    cols = collect(1:nsites)
+    elements = ones(dtype,nsites)
+    # stores the pair of neighbors sites
+    n1 = 0
+    n2 = 0
+    # stores cosh(-Δτ⋅tᵢⱼ) and cosh(-Δτ⋅tᵢⱼ)
+    vcosh = 0.0
+    vsinh = 0.0
+    # iterating over neighbors
+    for i in 1:nneighbors
+        # determining if neighbors are the current color
+        if groups[i]==group
+            # calculating cosh and sinh values
+            vcosh = cosh(-Δτ*vals[i])
+            vsinh = sinh(-Δτ*vals[i])
+            # getting neighboring sites
+            n1 = neighbors[1,i]
+            n2 = neighbors[2,i]
+            # setting diagonal elements
+            elements[n1] = vcosh
+            elements[n2] = vcosh
+            # setting first off diagonal element
+            push!(rows,n1)
+            push!(cols,n2)
+            push!(elements,vsinh)
+            # setting second off diagonal element
+            push!(rows,n2)
+            push!(cols,n1)
+            push!(elements,conj(vsinh))
+        end
+    end
+    return sparse(rows,cols,elements,nsites,nsites)
 end
 
 end

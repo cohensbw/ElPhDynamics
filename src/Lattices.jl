@@ -3,7 +3,7 @@ module Lattices
 using LinearAlgebra
 using Langevin.Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
 
-export Lattice, loc_to_cell, loc_to_site, site_to_site
+export Lattice, loc_to_cell, loc_to_site, site_to_site, translational_equivalent_sets
 export calc_neighbors, sort_neighbors!
 export site_to_site_vec!, site_to_site_vec, site_to_site_dist
 
@@ -223,9 +223,74 @@ function site_to_site(lattice::Lattice,isite::Int,displacement::AbstractVector{I
     # getting location of the unit cell that the initial site lives in
     loc = lattice.cell_loc[ : , lattice.site_to_cell[isite] ]
     # displacing the location of the unit cell
-    loc .+= displacement
+    loc += displacement
     # calculating the final site location after the displacement
     return loc_to_site(lattice, loc, orbit)
+end
+
+"""
+Constructs translationally equivalent sets of sites in lattice.
+The translationally equivalent sets are stored in 7-dimensional array
+of size ( 2 x numorbits x norbits x norbits x L1 x L2 x L3 ) where
+numorbits is the number of sites of a given orbital type in lattice
+i.e. numorbits=nsites/norbits.
+"""
+function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
+    
+    # getting info about lattice
+    L1      = lattice.L1
+    L2      = lattice.L2
+    L3      = lattice.L3
+    nsites  = lattice.nsites
+    norbits = lattice.norbits
+    
+    # number of orbitals of a given type in lattice.
+    # this is also equal to the number of translationally equivalent pairs of sites
+    # in a given translationally equivlent set.
+    numorbits = div(nsites,norbits)
+    
+    # declaring 7 dimensional array to contain translationally equivalent pairs of sites
+    sets = zeros(Int, 2, numorbits, norbits, norbits, L1, L2, L3)
+    
+    # counter for tracking numbers of paired sites in translationally equivalent set
+    setcount = 0
+    
+    # stores second sites in a pairs of sites
+    site2 = 0
+    
+    # to store displacement in unit cells
+    displacement = zeros(Int,3)
+    
+    # iterating over all possible unit cell displacements
+    for l3 in 1:L3
+        for l2 in 1:L2
+            for l1 in 1:L1
+                # iterating over all possible combinations of orbitals
+                for orbit1 in 1:norbits
+                    for orbit2 in 1:norbits
+                        # reseting counter for tracking numbers of paired sites in set
+                        setcount = 0
+                        # iterating over sites in lattice of orbital type orbit1
+                        for site1 in orbit1:norbits:nsites
+                            # incrementing size of set count
+                            setcount += 1
+                            # setting displacement in unit cells
+                            displacement[1] = l1
+                            displacement[2] = l2
+                            displacement[3] = l3
+                            # getting second site
+                            site2 = site_to_site(lattice,site1,displacement,orbit2)
+                            # recording pairs of sites
+                            sets[1,setcount,orbit2,orbit1,l1,l2,l3] = site1
+                            sets[2,setcount,orbit2,orbit1,l1,l2,l3] = site2
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return sets
 end
 
 

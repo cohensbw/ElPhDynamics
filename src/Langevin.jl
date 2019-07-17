@@ -9,4 +9,7 @@ using Langevin.Lattices
 include("Checkerboard.jl")
 using Langevin.Checkerboard
 
+include("HolsteinModels.jl")
+using Langevin.HolsteinModels
+
 end # module

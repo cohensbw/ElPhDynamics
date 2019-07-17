@@ -76,7 +76,7 @@ function calc_cell_pos!(pos::AbstractVector{Float64},geom::Geometry,l1::Int,l2::
     lv1 = @view geom.lvecs[:,1] # first lattice vector
     lv2 = @view geom.lvecs[:,2] # second lattice vector
     lv3 = @view geom.lvecs[:,3] # third lattice vector
-    @. pos[:] = l1*lv1 + l2*lv2 + l3*lv3 # calculating position
+    pos = @. l1*lv1 + l2*lv2 + l3*lv3 # calculating position
     return nothing
 end
 
@@ -97,7 +97,7 @@ function calc_site_pos!(pos::AbstractVector{Float64},geom::Geometry,orbit::Int,l
     # calculating position of unit cell that site lives in
     calc_cell_pos!(pos,geom,l1,l2,l3)
     # adding basis vector for given orbital to position
-    pos .+= @view geom.bvecs[:,orbit]
+    pos += @view geom.bvecs[:,orbit]
     return nothing
 end
 
@@ -124,7 +124,7 @@ function monkhorst_pack_mesh(geom::Geometry, L1::Int, L2::Int=1, L3::Int=1)::Mat
     for l3=0:L3-1
         for l2=0:L2-1
             for l1=0:L1-1
-                @. kpoints[:,i] = (l1/L1)*v1 + (l2/L2)*v2 + (l3/L3)*v3
+                kpoints[:,i] = @. (l1/L1)*v1 + (l2/L2)*v2 + (l3/L3)*v3
                 i += 1
             end
         end
