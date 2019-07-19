@@ -1,15 +1,17 @@
 module HolsteinModels
 
+using Statistics
+
 using Langevin.Geometries: Geometry
-using Langevin.Lattices: Lattice, translationally_equivalent_sets, sort_neighbors!
+using Langevin.Lattices: Lattice, translationally_equivalent_sets
+using Langevin.QuantumLattices: QuantumLattice
 
 export HolsteinModel
 export assign_μ!, assign_ω!, assign_λ!
 export assign_tij!, assign_ωij!, assign_λij!
-export sort_neighbor_tables!
 
 # allow for both Float64 and Complex{Float64} hopping parameters
-mutable struct HolsteinModel{T}
+mutable struct HolsteinModel{T<:Number}
 
     ################################
     ## COMPLETE MODEL HAMILTONIAN ##
@@ -21,19 +23,6 @@ mutable struct HolsteinModel{T}
     #   +  ∑ λᵢⱼ ϕᵢ nⱼ             [Extended El-Ph Coupling]
     #   -  ∑ μᵢ nᵢ                 [Chemical Potential]
 
-    ###########################
-    ## SPECIFIES TEMPERATURE ##
-    ###########################
-
-    "inverse temperature"
-    β::Float64
-
-    "imaginary time step"
-    Δτ::Float64
-
-    "length of imaginary time axis"
-    Lτ::Int
-
     #######################################
     ## FOR REPRESENTING LATTICE GEOMETRY ##
     #######################################
@@ -44,25 +33,15 @@ mutable struct HolsteinModel{T}
     "represents lattice"
     lattice::Lattice
 
-    "maps index_to_τ[index]=τ"
-    index_to_τ::Vector{Int}
-
-    "maps index_to_site[index]=site"
-    index_to_site::Vector{Int}
-
-    "map to_index[site,τ]=index"
-    to_index::Matrix{Int}
-
-    # this array will be very useful when making measurements that average over translational symmentry.
-    "stores sets of translationally equivalent pairs of sites in lattice."
-    trans_equiv_sets::Array{UInt16,7} # use datatype UInt16 to save memory.
+    "represents D+1 dimensional lattice resulting from Suzuki-Trotter approximation"
+    qlattice::QuantumLattice
 
     ############################
     ## HOLSTEIN PHONON FIELDS ##
     ############################
 
     "phonon fields ϕᵢ[site,τ]"
-    ϕ::Matrix{Float64}
+    ϕ::Matrix{T}
 
     ################################
     ## SPECIFIES ON-SITE ENERGIES ##
@@ -114,84 +93,130 @@ mutable struct HolsteinModel{T}
     "sepcifies which two sites neighbor_table_λij[i,j] in term λij(ϕᵢ⋅nⱼ)"
     neighbor_table_λij::Matrix{Int}
 
-end
+    #######################
+    ## INNER CONSTRUCTOR ##
+    #######################
 
-function HolsteinModel(geom::Geometry,lattice::Lattice,β::Float64,Δτ::Float64,T::DataType=Float64)::HolsteinModel
+    """
+    Constructor for Holstein type.
+    """
+    function HolsteinModel(geom::Geometry{T},lattice::Lattice{T},β::Float64,Δτ::Float64,is_complex::Bool) where {T<:AbstractFloat}
 
-    # calculate length of imaginary time axis
-    Lτ=Int(β/Δτ)
+        # cosntruct quantum lattice object
+        qlattice = QuantumLattice(lattice,β,Δτ)
 
-    # number of sites in physical lattice
-    nsites = lattice.nsites
-
-    # number of indices in D+1 dimensional lattice
-    nindices = Lτ*nsites
-
-    # constructing arrays for mapping between [site,τ]⇆[index]
-    index_to_τ    = zeros(Int,nindices)
-    index_to_site = zeros(Int,nindices)
-    to_index      = zeros(Int,nsites,Lτ)
-    τ = 0
-    site = 0
-    index = 1
-    for τ in 1:Lτ
-        for site in 1:nsites
-            index_to_τ[index]    = τ
-            index_to_site[index] = site
-            to_index[site,τ]     = index
-            index += 1
+        # data type of parameter
+        Tp = T
+        if is_complex
+            Tp = Complex{T}
         end
+
+        # number of sites in lattice
+        nsites = lattice.nsites
+
+        # intializing phonon fields to zero
+        ϕ = zeros(T,nsites,qlattice.Lτ)
+
+        # initializing all on-site energies to zero
+        μ = zeros(Tp,nsites)
+
+        # initialize hopping parameters to empty vector
+        tij = Vector{Tp}(undef,0)
+
+        # initializing empty matrix to contain tight binding model neighbor_table
+        neighbor_table_tij = Matrix{Int}(undef,2,0)
+
+        # intializing phonon frequencies to zero
+        ω = zeros(Tp,nsites)
+
+        # initialize electron-phonon coupling to zero
+        λ = zeros(Tp,nsites)
+
+        # initizlize empty vector for inter-site phonon frequencies
+        ωij = Vector{Tp}(undef,0)
+
+        # intialize empty matrix for storing inter-site phonon frequency neighbor_table
+        neighbor_table_ωij = Matrix{Int}(undef,2,0)
+
+        # intialize empty vector for sign_ωij
+        sign_ωij = Vector{Int}(undef,0)
+
+        # initialize empty vector for λij
+        λij = Vector{Tp}(undef,0)
+
+        # initialize empty matrix vector for neighbor_table_λij
+        neighbor_table_λij = Matrix{Int}(undef,2,0)
+
+        # constructing holstein model
+        new{Tp}(geom, lattice, qlattice,
+                ϕ, μ, 
+                tij, neighbor_table_tij,
+                ω, λ,
+                ωij, neighbor_table_ωij, sign_ωij,
+                λij, neighbor_table_λij)
+
     end
 
-    # constructing translationally equivalent sets of sites
-    trans_equiv_sets = Array{UInt16,7}(translationally_equivalent_sets(lattice))
-
-    # intializing phonon fields to zero
-    ϕ = zeros(Float64,nsites,Lτ)
-
-    # initializing all on-site energies to zero
-    μ = zeros(T,nsites)
-
-    # initialize hopping parameters to empty vector
-    tij = Vector{T}(undef,0)
-
-    # initializing empty matrix to contain tight binding model neighbor_table
-    neighbor_table_tij = Matrix{Int}(undef,2,0)
-
-    # intializing phonon frequencies to zero
-    ω = zeros(T,nsites)
-
-    # initialize electron-phonon coupling to zero
-    λ = zeros(T,nsites)
-
-    # initizlize empty vector for inter-site phonon frequencies
-    ωij = Vector{T}(undef,0)
-
-    # intialize empty matrix for storing inter-site phonon frequency neighbor_table
-    neighbor_table_ωij = Matrix{Int}(undef,2,0)
-
-    # intialize empty vector for sign_ωij
-    sign_ωij = Vector{Int}(undef,0)
-
-    # initialize empty vector for λij
-    λij = Vector{Float64}(undef,0)
-
-    # initialize empty matrix vector for neighbor_table_λij
-    neighbor_table_λij = Matrix{Int}(undef,2,0)
-
-    # constructing holstein model
-    holstein = HolsteinModel{T}(β, Δτ, Lτ,
-                                geom, lattice, index_to_τ, index_to_site, to_index, trans_equiv_sets,
-                                ϕ, 
-                                μ, 
-                                tij, neighbor_table_tij,
-                                ω, λ,
-                                ωij, neighbor_table_ωij, sign_ωij,
-                                λij, neighbor_table_λij)
-
-    return holstein
 end
 
+#####################
+## PRETTY PRINTING ##
+#####################
+
+function Base.show(io::IO, holstein::HolsteinModel)
+
+    printstyled("HolsteinModel{",typeof(holstein.ω[1]),"}\n";bold=true,color=:cyan)
+    print('\n')
+    print(holstein.geom)
+    print('\n')
+    print('\n')
+    print(holstein.lattice)
+    print('\n')
+    print('\n')
+    print(holstein.qlattice)
+    print('\n')
+    printstyled("Parameters\n";bold=true)
+    print('\n')
+    _print_local_param(holstein.lattice.site_to_orbit,holstein.μ,"μ")
+    _print_local_param(holstein.lattice.site_to_orbit,holstein.ω,"ω")
+    _print_local_param(holstein.lattice.site_to_orbit,holstein.λ,"λ")
+    if length(holstein.tij)>0
+        print('\n')
+        _print_nonlocal_param(holstein.tij,holstein.neighbor_table_tij,"tij")
+    end
+    if length(holstein.ωij)>0
+        print('\n')
+        _print_nonlocal_param(holstein.ωij,holstein.neighbor_table_ωij,"ωij")
+    end
+    if length(holstein.λij)>0
+        print('\n')
+        _print_nonlocal_param(holstein.λij,holstein.neighbor_table_λij,"λij")
+    end
+end
+
+function _print_local_param(orbits::Vector,vals::Vector,param::String)
+
+    for orbit in 1:maximum(orbits)
+        avg = mean(vals[orbits.==orbit])
+        sd = std(vals[orbits.==orbit])
+        println("•", param, ", orbit = ", orbit, ", mean = ",avg,", std = ",sd)
+    end
+    return nothing
+end
+
+function _print_nonlocal_param(vals::Vector,neighbor_table::Matrix{Int},param::String)
+
+    println("•",param,": ", typeof(vals),size(vals), ", mean = ", mean(vals), ", std = ", std(vals))
+    print('\n')
+    println("•neighbor_table_", param, " =")
+    show(IOContext(stdout, :limit => true), "text/plain", neighbor_table)
+    print('\n')
+    return nothing
+end
+
+##################################################################
+## DEFINING METHODS TO INCREMENTALLY SPECIFY THE HOLSTEIN MODEL ##
+##################################################################
 
 # GENERATE THE FOLLOWING FUNCTIONS: assign_μ!, assign_ω!, assign_λ!
 for param in [:μ,:ω,:λ]
@@ -201,7 +226,7 @@ for param in [:μ,:ω,:λ]
 
     # defining functions assuming parameter value μ0 is a real number
     @eval begin
-        function $op(holstein::HolsteinModel,μ0::Float64,σ0::Float64,orbit::Int=0)
+        function $op(holstein::HolsteinModel,μ0::AbstractFloat,σ0::AbstractFloat,orbit::Int=0)
             
             if orbit==0 # assigning parameter values for all sites
                 holstein.$param .= μ0 .+ σ0 .* randn(length(holstein.$param))
@@ -218,7 +243,7 @@ for param in [:μ,:ω,:λ]
 
     # defining function assuming parameter values μ0 is a complex number
     @eval begin
-        function $op(holstein::HolsteinModel,μ0::Complex{Float64},σ0::Float64,orbit::Int=0)
+        function $op(holstein::HolsteinModel,μ0::Complex,σ0::AbstractFloat,orbit::Int=0)
             
             # getting phase of complex number
             phase = angle(μ0)
@@ -249,8 +274,9 @@ for param in [ :tij , :ωij , :λij ]
     neighbor_table = Symbol(:neighbor_table_,param)
     
     # defining functions assuming μ0 is a real number
+    # disorder is only applied to |μ0|, not the phase angle(μ0).
     @eval begin
-        function $op(holstein::HolsteinModel, μ0::Float64, σ0::Float64,
+        function $op(holstein::HolsteinModel, μ0::AbstractFloat, σ0::AbstractFloat,
                      orbit1::Int, orbit2::Int, displacement::Vector{Int})
             
             # checking dimensions
@@ -265,7 +291,7 @@ for param in [ :tij , :ωij , :λij ]
             end 
             
             # getting new neighbors
-            neighbors = holstein.trans_equiv_sets[:,:,orbit2,orbit1,displacement[1],displacement[2],displacement[3]]
+            neighbors = holstein.qlattice.trans_equiv_sets[:,:,orbit2,orbit1,displacement[1],displacement[2],displacement[3]]
             
             # getting number of new neighbors
             nneighbors = size(neighbors,2)
@@ -282,9 +308,10 @@ for param in [ :tij , :ωij , :λij ]
         end
     end
     
-    # defining functions assuming μ0 is a complex number
+    # defining functions assuming μ0 is a complex number.
+    # disorder is only applied to |μ0|, not the phase angle(μ0). 
     @eval begin
-        function $op(holstein::HolsteinModel, μ0::Complex{Float64}, σ0::Float64,
+        function $op(holstein::HolsteinModel, μ0::Complex, σ0::AbstractFloat,
                      orbit1::Int, orbit2::Int, displacement::Vector{Int})
             
             # phase of μ0
@@ -313,7 +340,7 @@ end
 
 # adding functionality to assign_ωij! function so that the
 # array holsteinmodel.sign_ωij is also modified
-function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Float64, sgn::Int,
+function assign_ωij!(holstein::HolsteinModel, μ0::AbstractFloat, σ0::AbstractFloat, sgn::Int,
                      orbit1::Int, orbit2::Int, displacement::Vector{Int})
     
     @assert abs(sgn)==1
@@ -327,36 +354,6 @@ function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Float64, sgn::I
     # modifying holsteinmodel.sign_ωij array
     append!( holsteinmodel.sign_ωij , zeros(sgn,nnewneighbors) )
     
-    return nothing
-end
-
-
-"""
-    sort_neighbors!(holstein::HolsteinModel)
-
-Function for sorting all the neighbor tables in HolsteinModel object
-"""
-function sort_neighbor_tables!(holstein::HolsteinModel)
-
-    # sort tight binding hopping neighbors
-    if size(holstein.neighbor_table_tij,2)>2
-        perm = sort_neighbors!(holstein.neighbor_table_tij)
-        holstein.tij .= holstein.tij[perm]
-    end
-
-    # sort phonon dispersion neighors
-    if size(holstein.neighbor_table_ωij,2)>2
-        perm = sort_neighbors!(holstein.neighbor_table_ωij)
-        holstein.ωij .= holstein.ωij[perm]
-        holstein.sign_ωij .= holstein.sign_ωij[perm]
-    end
-
-    # sort extended El-Ph coupling neighbors
-    if size(holstein.neighbor_table_λij,2)>2
-        perm = sort_neighbors!(holstein.neighbor_table_λij)
-        holstein.λij .= holstein.λij[perm]
-    end
-
     return nothing
 end
 

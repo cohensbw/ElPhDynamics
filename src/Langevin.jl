@@ -6,10 +6,13 @@ using Langevin.Geometries
 include("Lattices.jl")
 using Langevin.Lattices
 
-include("Checkerboard.jl")
-using Langevin.Checkerboard
+include("QuantumLattices.jl")
+using Langevin.QuantumLattices
 
 include("HolsteinModels.jl")
 using Langevin.HolsteinModels
+
+include("Checkerboard.jl")
+using Langevin.Checkerboard
 
 end # module

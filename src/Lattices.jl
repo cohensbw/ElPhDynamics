@@ -3,14 +3,16 @@ module Lattices
 using LinearAlgebra
 using Langevin.Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
 
-export Lattice, loc_to_cell, loc_to_site, site_to_site, translational_equivalent_sets
+export Lattice
+export loc_to_cell, loc_to_site, site_to_site
+export translationally_equivalent_sets
 export calc_neighbors, sort_neighbors!
-export site_to_site_vec!, site_to_site_vec, site_to_site_dist
+export site_to_site_vec!, site_to_site_vec
 
 """
 Represents a finite lattice.
 """
-struct Lattice
+struct Lattice{T<:AbstractFloat}
 
     "Number of unit cells in direction of first lattice vector."
     L1::Int
@@ -40,88 +42,95 @@ struct Lattice
     cell_loc::Matrix{Int}
 
     "Position vectors of each site in lattice."
-    positions::Matrix{Float64}
+    positions::Matrix{T}
 
     "k-points associated with finite lattice."
-    kpoints::Matrix{Float64}
+    kpoints::Matrix{T}
 
     "Records orbital type of each site in lattice."
     site_to_orbit::Vector{Int}
 
     "Records which unit cell each site live in."
     site_to_cell::Vector{Int}
-end
 
+    #######################
+    ## INNER CONSTRUCTOR ##
+    #######################
+    """
+        Lattice(geom::Geometry,L1::Int,L2::Int,L3::Int)::Lattice
 
-"""
-    Lattice(geom::Geometry,L1::Int,L2::Int,L3::Int)::Lattice
+    Constructor for Lattice type.
+    """
+    function Lattice(geom::Geometry{T},L1::Int,L2::Int,L3::Int)::Lattice where {T<:AbstractFloat}
 
-Constructor for Lattice type.
-"""
-function Lattice(geom::Geometry,L1::Int,L2::Int,L3::Int)::Lattice
+        # making sure dimensions of lattice are valid
+        @assert (L1>=1 && L2>=1 && L3>=1)
 
-    # making sure dimensions of lattice are valid
-    @assert (L1>=1 && L2>=1 && L3>=1)
+        # dimensions of lattice
+        dims = [L1,L2,L3]
 
-    # dimensions of lattice
-    dims = [L1,L2,L3]
+        # getting number of dimensions lattice lives in
+        ndim = geom.ndim
 
-    # getting number of dimensions lattice lives in
-    ndim = geom.ndim
+        # getting number of orbits per unit cell
+        norbits = geom.norbits
 
-    # getting number of orbits per unit cell
-    norbits = geom.norbits
+        # number of unit cell in lattice
+        ncells = L1*L2*L3
 
-    # number of unit cell in lattice
-    ncells = L1*L2*L3
+        # calculating number of sites in lattice
+        nsites = ncells*norbits
 
-    # calculating number of sites in lattice
-    nsites = ncells*norbits
+        # calculating k-points associated with finite lattice
+        kpoints = monkhorst_pack_mesh(geom,L1,L2,L3)
 
-    # calculating k-points associated with finite lattice
-    kpoints = monkhorst_pack_mesh(geom,L1,L2,L3)
+        # allocating array to contain unit cell locations
+        cell_loc = Matrix{Int}(undef,3,ncells)
 
-    # allocating array to contain unit cell locations
-    cell_loc = Matrix{Int}(undef,3,ncells)
+        # allocating array to contain real space position vector of every site in lattice
+        positions = Matrix{T}(undef,3,nsites)
 
-    # allocating array to contain real space position vector of every site in lattice
-    positions = Matrix{Float64}(undef,3,nsites)
+        # allcoating array that maps site to orbit in lattice
+        site_to_orbit = Vector{Int}(undef,nsites)
 
-    # allcoating array that maps site to orbit in lattice
-    site_to_orbit = Vector{Int}(undef,nsites)
+        # allocating array that maps site to unit cell in lattice
+        site_to_cell = Vector{Int}(undef,nsites)
 
-    # allocating array that maps site to unit cell in lattice
-    site_to_cell = Vector{Int}(undef,nsites)
+        # filling in allocated arrays
+        site = 1 # keeps track to site number
+        cell = 1 # keeps track of unit cell number
 
-    # filling in allocated arrays
-    site = 1 # keeps track to site number
-    cell = 1 # keeps track of unit cell number
-
-    # iterating over unit cells in lattice
-    for l3=0:L3-1
-        for l2=0:L2-1
-            for l1=0:L1-1
-                # recording location of unit cell in lattice
-                cell_loc[1,cell] = l1
-                cell_loc[2,cell] = l2
-                cell_loc[3,cell] = l3
-                # iterating over orbitals in unit cell
-                for orbit=1:norbits
-                    # recording the orbit and unit cell associated with site in lattice
-                    site_to_orbit[site] = orbit
-                    site_to_cell[site] = cell
-                    # recording position vector of site in lattice 
-                    pos = @view positions[:,site]
-                    calc_site_pos!(pos,geom,orbit,l1,l2,l3)
-                    site += 1
+        # iterating over unit cells in lattice
+        for l3=0:L3-1
+            for l2=0:L2-1
+                for l1=0:L1-1
+                    # recording location of unit cell in lattice
+                    cell_loc[1,cell] = l1
+                    cell_loc[2,cell] = l2
+                    cell_loc[3,cell] = l3
+                    # iterating over orbitals in unit cell
+                    for orbit=1:norbits
+                        # recording the orbit and unit cell associated with site in lattice
+                        site_to_orbit[site] = orbit
+                        site_to_cell[site] = cell
+                        # recording position vector of site in lattice 
+                        pos = @view positions[:,site]
+                        calc_site_pos!(pos,geom,orbit,l1,l2,l3)
+                        site += 1
+                    end
+                    cell += 1
                 end
-                cell += 1
             end
         end
+
+        return new{T}(L1,L2,L3,dims,ncells,ndim,norbits,nsites,cell_loc,positions,kpoints,site_to_orbit,site_to_cell)
     end
 
-    return Lattice(L1,L2,L3,dims,ncells,ndim,norbits,nsites,cell_loc,positions,kpoints,site_to_orbit,site_to_cell)
 end
+
+########################
+## OUTER CONSTRUCTORS ##
+########################
 
 function Lattice(geom::Geometry,L1::Int,L2::Int)::Lattice
 
@@ -147,45 +156,31 @@ end
 ## DEFINING METHODS THAT USE LATTICE TYPE ##
 ############################################
 
-"""
-    pbc!(loc::AbstractVector{Int},lattice::Lattice)
+# Defining pretty-print functionality
+function Base.show(io::IO, lattice::Lattice)
 
-Applies periodic boundary conditions.
-"""
-function pbc!(loc::AbstractVector{Int},lattice::Lattice)
+    printstyled("Lattice{",typeof(lattice.positions[1,1]),"}\n";bold=true)
+    print('\n')
+    println("•ndim = ", lattice.ndim)
+    println("•norbits = ", lattice.norbits)
+    println("•ncells = ", lattice.ncells)
+    println("•nsites = ", lattice.nsites)
+    println("•dims = [L1, L2, L3] = ",lattice.dims)
+    print('\n')
+    println("•site_to_orbit: ", typeof(lattice.site_to_orbit),size(lattice.site_to_orbit))
+    println("•site_to_cell: ", typeof(lattice.site_to_cell),size(lattice.site_to_cell))
+    print('\n')
+    println("•cell_loc =")
+    show(IOContext(stdout, :limit => true), "text/plain", lattice.cell_loc)
+    print('\n')
+    print('\n')
+    println("•positions =")
+    show(IOContext(stdout, :limit => true), "text/plain", lattice.positions)
+    print('\n')
+    print('\n')
+    println("•kpoints =")
+    show(IOContext(stdout, :limit => true), "text/plain", lattice.kpoints)
 
-    @. loc = (loc+lattice.dims)%lattice.dims
-    return nothing
-end
-
-
-"""
-    cell_displacement(lattice::Lattice,site1::Int,site2::Int,direction::Int)::Int
-
-Calculates a displacement in unit cells between two sites in the lattice
-in the 'direction' of a specified lattice vector, accounting for peridic 
-boundary conditions.
-"""
-function cell_displacement(lattice::Lattice,site1::Int,site2::Int,direction::Int)::Int
-
-    @assert 1<=direction<=3
-    # width of lattice in unit cells in direction of specified lattice vector
-    L = lattice.dims[direction]
-    # half-width of lattice in unit cells in direction of specified lattice vector
-    Lhalf = div(L,2)
-    # unit cell that each site lives in
-    cell1 = lattice.site_to_cell[site1]
-    cell2 = lattice.site_to_cell[site2]
-    # displacement in unit cells
-    delta = lattice.cell_loc[direction,cell2] - lattice.cell_loc[direction,cell1]
-    # accounting for periodic boundary conditions
-    if delta > Lhalf
-        delta -= L
-    elseif delta < -Lhalf
-        delta += L
-    end
-    
-    return delta
 end
 
 
@@ -196,8 +191,8 @@ Given a location of a cell in a lattice, return the corresponding cell.
 """
 function loc_to_cell(lattice::Lattice,loc::AbstractVector{Int})::Int
 
-    pbc!(loc,lattice)
-    return loc[1] + loc[2]*lattice.L1 + loc[3]*lattice.L1*lattice.L2
+    _pbc!(loc,lattice)
+    return loc[1] + loc[2]*lattice.L1 + loc[3]*lattice.L1*lattice.L2 + 1
 end
 
 
@@ -208,7 +203,7 @@ Given the location of a site in the lattice, return the correpsonding site.
 """
 function loc_to_site(lattice::Lattice,loc::AbstractVector{Int},orbit::Int)::Int
 
-    return lattice.norbits * loc_to_cell(lattice,loc) + orbit
+    return lattice.norbits * (loc_to_cell(lattice,loc)-1) + orbit
 end
 
 
@@ -299,7 +294,7 @@ end
 
 Construct the neighbor table for a certain type of displacement in the lattice.
 """
-function calc_neighbors(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Array{Int,2}
+function calc_neighbors(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Matrix{Int}
 
     # ensuring valid rule is specified for defining neighbor relations
     @assert length(displacement)==3
@@ -373,13 +368,13 @@ end
 
 Calculates the displacement vector between two sites in the lattice accounting for periodic boundary conditions.
 """
-function site_to_site_vec!(vector::AbstractVector{Float64},lattice::Lattice,geom::Geometry,site1::Int,site2::Int)
+function site_to_site_vec!(vector::AbstractVector{T},lattice::Lattice{T},geom::Geometry{T},site1::Int,site2::Int) where {T<:AbstractFloat}
 
     # iterating over each lattice vector direction
     delta = 0 # shift in unit cells
     for direction in 1:3
         # displacement in unit cells
-        delta = cell_displacement(lattice,site1,site2,direction)
+        delta = _cell_displacement(lattice,site1,site2,direction)
         # updating displacement vector
         @. vector += delta * geom.lvecs[:,direction]
     end
@@ -388,33 +383,57 @@ function site_to_site_vec!(vector::AbstractVector{Float64},lattice::Lattice,geom
     return nothing
 end
 
-function site_to_site_vec(lattice::Lattice,geom::Geometry,site1::Int,site2::Int)::Vector{Float64}
+function site_to_site_vec(lattice::Lattice{T},geom::Geometry{T},site1::Int,site2::Int)::Vector{T} where {T<:AbstractFloat}
 
-    vector = zeros(Float64,3)
+    vector = zeros(T,3)
     site_to_site_vec!(vector,lattice,geom,site1,site2)
     return vector
 end
 
 
-"""
-    site_to_site_dist(vector::AbstractVector{Float64},lattice::Lattice,geom::Geometry,site1::Int,site2::Int)
+############################################################
+## PRIVATE FUNCTIONS NOT TO BE CALLED OUTSIDE THIS MODULE ##
+############################################################
 
-Calculates the distance between two sites in the lattice accounting for periodic boundary conditions.
 """
-function site_to_site_dist(lattice::Lattice,geom::Geometry,site1::Int,site2::Int)::Float64
+    _pbc!(loc::AbstractVector{Int},lattice::Lattice)
 
-    dist = 0.0 # distance betwen sites
-    delta = 0 # shift in unit cells
-    # iterating over each lattice vector direction
-    for direction in 1:3
-        # displacement in unit cells
-        delta = cell_displacement(lattice,site1,site2,direction)
-        # updating displacement vector
-        dist += norm( delta .* geom.lvecs[:,direction] )
+Applies periodic boundary conditions.
+"""
+function _pbc!(loc::AbstractVector{Int},lattice::Lattice)
+
+    @. loc = (loc+lattice.dims)%lattice.dims
+    return nothing
+end
+
+
+"""
+    _cell_displacement(lattice::Lattice,site1::Int,site2::Int,direction::Int)::Int
+
+Calculates a displacement in unit cells between two sites in the lattice
+in the 'direction' of a specified lattice vector, accounting for peridic 
+boundary conditions.
+"""
+function _cell_displacement(lattice::Lattice,site1::Int,site2::Int,direction::Int)::Int
+
+    @assert 1<=direction<=3
+    # width of lattice in unit cells in direction of specified lattice vector
+    L = lattice.dims[direction]
+    # half-width of lattice in unit cells in direction of specified lattice vector
+    Lhalf = div(L,2)
+    # unit cell that each site lives in
+    cell1 = lattice.site_to_cell[site1]
+    cell2 = lattice.site_to_cell[site2]
+    # displacement in unit cells
+    delta = lattice.cell_loc[direction,cell2] - lattice.cell_loc[direction,cell1]
+    # accounting for periodic boundary conditions
+    if delta > Lhalf
+        delta -= L
+    elseif delta < -Lhalf
+        delta += L
     end
-    # accounting for basis vector positions of intial and final orbitals
-    dist += norm(geom.bvecs[:,lattice.site_to_orbit[site1]] .- geom.bvecs[:,lattice.site_to_orbit[site2]])
-    return dist
+    
+    return delta
 end
 
 end
