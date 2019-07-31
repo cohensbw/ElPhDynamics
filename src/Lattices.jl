@@ -6,7 +6,7 @@ using Langevin.Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
 export Lattice
 export loc_to_cell, loc_to_site, site_to_site
 export translationally_equivalent_sets
-export calc_neighbors, sort_neighbors!
+export calc_neighbor_table, sort_neighbor_table!
 export site_to_site_vec!, site_to_site_vec
 
 """
@@ -290,21 +290,21 @@ end
 
 
 """
-    calc_neighbors(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Array{Int,2}
+    calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Array{Int,2}
 
 Construct the neighbor table for a certain type of displacement in the lattice.
 """
-function calc_neighbors(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Matrix{Int}
+function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Matrix{Int}
 
     # ensuring valid rule is specified for defining neighbor relations
     @assert length(displacement)==3
     @assert (1<=orbit1<=lattice.norbits && 1<=orbit2<=lattice.norbits)
 
-    # total number of neighbors
+    # total number of neighbor_table
     N = div(lattice.nsites,lattice.norbits)
 
     # allocating neighbor table array
-    neighbors = Matrix{Int}(undef,2,N)
+    neighbor_table = Matrix{Int}(undef,2,N)
 
     # keeps track of the number of neighbor relations that have been calcualted.
     neighbor_count = 1
@@ -313,54 +313,54 @@ function calc_neighbors(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::A
     for isite in orbit1:lattice.norbits:lattice.nsites
         # get final site
         fsite = site_to_site(lattice,isite,displacement,orbit2)
-        # record neighbors
-        neighbors[1,neighbor_count] = isite
-        neighbors[2,neighbor_count] = fsite
+        # record neighbor_table
+        neighbor_table[1,neighbor_count] = isite
+        neighbor_table[2,neighbor_count] = fsite
         neighbor_count += 1
     end
 
-    return neighbors
+    return neighbor_table
 end
 
 
 """
-    sort_neighbors!(neighbors::AbstractMatrix{Int})::Vector{Int}
+    sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
 
 Sorts a neighbor table so that the first row is in strictly ascending order,
 and for fixed values in the first row, the second row is also in ascending order.
-Also returns the sorted permutation order of the neighbors based on the original ordering
-of the neighbors before sorting occured.
+Also returns the sorted permutation order of the neighbor_table based on the original ordering
+of the neighbor_table before sorting occured.
 """
-function sort_neighbors!(neighbors::AbstractMatrix{Int})::Vector{Int}
+function sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
 
     # making sure dimensions of neighbor table are valid
-    @assert size(neighbors,1)==2
+    @assert size(neighbor_table,1)==2
 
-    # getting the number of neighbors
-    nneighbors = size(neighbors,2)
+    # getting the number of neighbor_table
+    nneighbor_table = size(neighbor_table,2)
 
     # filling in array that will contain sorted neighbor relations.
     # note that the third row will contain the sorted permutation order
     # or the original neighbor table.
-    sorted_neighbors = Matrix{Int}(undef,3,nneighbors)
-    for i in 1:nneighbors
-        sorted_neighbors[1,i] = neighbors[1,i]
-        sorted_neighbors[2,i] = neighbors[2,i]
-        sorted_neighbors[3,i] = i
+    sorted_neighbor_table = Matrix{Int}(undef,3,nneighbor_table)
+    for i in 1:nneighbor_table
+        sorted_neighbor_table[1,i] = neighbor_table[1,i]
+        sorted_neighbor_table[2,i] = neighbor_table[2,i]
+        sorted_neighbor_table[3,i] = i
         # making sure smaller site in neighbor pair is always in first column
-        if sorted_neighbors[1,i]>sorted_neighbors[2,i]
-            sorted_neighbors[1,i], sorted_neighbors[2,i] = sorted_neighbors[2,i], sorted_neighbors[1,i]
+        if sorted_neighbor_table[1,i]>sorted_neighbor_table[2,i]
+            sorted_neighbor_table[1,i], sorted_neighbor_table[2,i] = sorted_neighbor_table[2,i], sorted_neighbor_table[1,i]
         end
     end
 
-    # sorting the neighbors
-    sorted_neighbors .= sortslices(sorted_neighbors,dims=2)
+    # sorting the neighbor_table
+    sorted_neighbor_table .= sortslices(sorted_neighbor_table,dims=2)
 
     # recording sorted neighbor relations
-    neighbors .= @view sorted_neighbors[1:2,:]
+    neighbor_table .= @view sorted_neighbor_table[1:2,:]
 
     # returning the sorted permuation order based on original ordering of neighbor table
-    return sorted_neighbors[3,:]
+    return sorted_neighbor_table[3,:]
 end
 
 """

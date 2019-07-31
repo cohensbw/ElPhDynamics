@@ -128,7 +128,7 @@ function calc_site_pos!(pos::AbstractVector{T},geom::Geometry,orbit::Int,l1::Int
     return nothing
 end
 
-function calc_site_pos(geom::Geometry,orbit::Int,l1::Int,l2::Int=0,l3::Int=0)::Vector{T}  where {T<:AbstractFloat}
+function calc_site_pos(geom::Geometry{T},orbit::Int,l1::Int,l2::Int=0,l3::Int=0)::Vector{T}  where {T<:AbstractFloat}
 
     pos = zeros(3)
     calc_site_pos!(pos,geom,orbit,l1,l2,l3)

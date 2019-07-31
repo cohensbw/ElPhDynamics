@@ -9,10 +9,16 @@ using Langevin.Lattices
 include("QuantumLattices.jl")
 using Langevin.QuantumLattices
 
+include("Checkerboard.jl")
+using Langevin.Checkerboard
+
 include("HolsteinModels.jl")
 using Langevin.HolsteinModels
 
-include("Checkerboard.jl")
-using Langevin.Checkerboard
+include("InitializePhonons.jl")
+using Langevin.InitializePhonons
+
+include("PhononAction.jl")
+using Langevin.PhononAction
 
 end # module
