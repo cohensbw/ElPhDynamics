@@ -54,7 +54,6 @@ function mulM!(y::AbstractVector{Complex{T}},holstein::HolsteinModel{T},v::Abstr
     Lτ = holstein.qlattice.Lτ::Int
     nsites = holstein.lattice.nsites::Int
     τp1 = 1
-    sgn = 1
 
     ####################################
     ## PERFORM MULTIPLICATION y = M⋅v ##
@@ -62,6 +61,12 @@ function mulM!(y::AbstractVector{Complex{T}},holstein::HolsteinModel{T},v::Abstr
 
     # iterate over imaginary time axis
     for τ in 1:Lτ
+
+        # Notes:
+        # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
+        # • y(τ) = [M⋅v](τ) = v(τ) + B(1)⋅v(1)     for τ = Lτ
+        # • B(τ) = exp{-Δτ⋅K} exp{-Δτ⋅V[ϕ(τ)]}
+        # • exp{-Δτ⋅K} is given by the checkerboard approximation.
 
         # get the τ+1 time slice account for periodic boundary conditions
         τp1 = τ%Lτ+1
@@ -75,31 +80,18 @@ function mulM!(y::AbstractVector{Complex{T}},holstein::HolsteinModel{T},v::Abstr
         # geting view into exp{-Δτ⋅V[ϕ(τ+1)]} matrix
         expnΔτV_τp1 = view_by_τ(expnΔτV,τp1,nsites)
 
-        # Notes:
-        # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
-        # • y(τ) = [M⋅v](τ) = v(τ) + B(1)⋅v(1)     for τ = Lτ
-        # • B(τ) = exp{-Δτ⋅K} exp{-Δτ⋅V[ϕ(τ)]}
-        # • exp{-Δτ⋅K} is given by the checkerboard approximation.
-
-        # first we need to multiply by exp{-Δτ⋅V[ϕ(τ+1)]} matrix.
-        for i in 1:nsites
-            yτ[i] = expnΔτV_τp1[i] * vτp1[i]
-        end
+        # first we need to do the multiplication exp{-Δτ⋅V[ϕ(τ+1)]}⋅v(τ+1).
+        @. yτ = expnΔτV_τp1 * vτp1
 
         # next we need to multiply by exp{-Δτ⋅K}
         checkerboard_mul!(yτ,neighbor_table_tij,coshtij,sinhtij)
         # at this point y(τ) = B(τ+1)⋅v(τ+1)
 
-        # setting the sign for the final step
-        if τ != Lτ
-            sgn = -1
-        else
-            sgn = 1
-        end
-
         # finish up the multiplication to get final y(τ) vector
-        for i in 1:nsites
-            yτ[i] = vτ[i] + sgn * yτ[i]
+        if τ<Lτ
+            @. yτ = vτ - yτ
+        else
+            yτ .+= vτ
         end
 
     end
@@ -129,6 +121,12 @@ function mulMt!(y::AbstractVector{Complex{T}},holstein::HolsteinModel{T},v::Abst
     # iterate over imaginary time axis
     for τ in 1:Lτ
 
+        # Notes:
+        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
+        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(Lτ)   for τ = 1
+        # • Bᵀ(τ) = exp{-Δτ⋅V[ϕ(τ)]} [exp{-Δτ⋅K}]ᵀ
+        # • exp{-Δτ⋅K} is given by the checkerboard approximation.
+
         # get the τ-1 time slice account for periodic boundary conditions
         τm1 = (τ+Lτ-2)%Lτ+1
 
@@ -141,31 +139,21 @@ function mulMt!(y::AbstractVector{Complex{T}},holstein::HolsteinModel{T},v::Abst
         # geting view into exp{-Δτ⋅V[ϕ(τ)]} matrix
         expnΔτV_τ = view_by_τ(expnΔτV,τ,nsites)
 
-        # Notes:
-        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
-        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(Lτ)   for τ = 1
-        # • Bᵀ(τ) = exp{-Δτ⋅V[ϕ(τ)]} [exp{-Δτ⋅K}]ᵀ
-        # • exp{-Δτ⋅K} is given by the checkerboard approximation.
+        # set y(τ) = v(τ-1)
+        yτ .= vτm1
 
         # first we need to multiply by the transpose of exp{-Δτ⋅K}
         checkerboard_transpose_mul!(yτ,neighbor_table_tij,coshtij,sinhtij)
 
         # next multiply by exp{-Δτ⋅V[ϕ(τ)]} matrix.
-        for i in 1:nsites
-            yτ[i] = expnΔτV_τ[i] * vτm1[i]
-        end
-        # at this point y(τ) = B(τ)⋅v(τ-1)
-
-        # setting the sign for the final step
-        if τ != 1
-            sgn = -1
-        else
-            sgn = 1
-        end
+        yτ .*= expnΔτV_τ
+        # at this point y(τ) = Bᵀ(τ)⋅v(τ-1)
 
         # finish up the multiplication to get final y(τ) vector
-        for i in 1:nsites
-            yτ[i] = vτ[i] + sgn * yτ[i]
+        if τ>1
+            @. yτ = vτ - yτ
+        else
+            yτ .+= vτ
         end
 
     end

@@ -41,24 +41,18 @@ for the checkerboard decomposition.
 """
 function checkerboard_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},coshs::Vector{Complex{T}},sinhs::Vector{Complex{T}}) where {T<:AbstractFloat}
 
-    i = 0
-    j = 0
-    newvi = Complex{T}(0.0)
-    newvj = Complex{T}(0.0)
-    valsinh = Complex{T}(0.0)
-    valcosh = Complex{T}(0.0)
+    i::Int = 0
+    j::Int = 0
+    newvi::Complex{T} = 0.0
+    newvj::Complex{T} = 0.0
     # iterating over neighbors
     for n in 1:size(neighbor_table,2)
         # getting pair of neighbor sites
         i = neighbor_table[1,n]
         j = neighbor_table[2,n]
-        # getting the cosh and sinh value of value associated
-        # with current pair of neighbor sites
-        valcosh = coshs[n]
-        valsinh = sinhs[n]
         # calculating new matrix elements
-        newvi = valcosh * v[i] + valsinh       * v[j]
-        newvj = valcosh * v[j] + conj(valsinh) * v[i]
+        newvi = coshs[n] * v[i] + sinhs[n]       * v[j]
+        newvj = coshs[n] * v[j] + conj(sinhs[n]) * v[i]
         # update values
         v[i] = newvi
         v[j] = newvj
@@ -86,10 +80,10 @@ for the checkerboard decomposition.
 """
 function checkerboard_transpose_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},coshs::Vector{Complex{T}},sinhs::Vector{Complex{T}}) where {T<:AbstractFloat}
 
-    i = 0
-    j = 0
-    newvi = Complex{T}(0.0)
-    newvj = Complex{T}(0.0)
+    i::Int = 0
+    j::Int = 0
+    newvi::Complex{T} = 0.0
+    newvj::Complex{T} = 0.0
     # iterating over neighbors
     for n in size(neighbor_table,2):-1:1
         # getting pair of neighbor sites
