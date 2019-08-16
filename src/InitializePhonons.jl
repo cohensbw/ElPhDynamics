@@ -1,7 +1,7 @@
 module InitializePhonons
 
-using Langevin.HolsteinModels: HolsteinModel
-using Langevin.QuantumLattices: view_by_site
+using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!
+using Langevin.HolsteinModels: view_by_site
 
 export init_phonons_single_site!
 
@@ -12,24 +12,24 @@ single-site limit where the hopping between sites is zero.
 Uses the Levy Construction to sample phonon fields in the imaginary
 time direction.
 """
-function init_phonons_single_site!(holstein::HolsteinModel{T}) where {T<:AbstractFloat}
+function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
     
     # info about temperature of system
-    β = holstein.qlattice.β::T
-    Δτ = holstein.qlattice.Δτ::T
-    Lτ = holstein.qlattice.Lτ::Int
+    β  = holstein.β::T1
+    Δτ = holstein.Δτ::T1
+    Lτ = holstein.Lτ::Int
     
     # number of site in physical lattice
-    nsites = holstein.lattice.nsites::Int
+    nsites = holstein.nsites::Int
     
     # phonon frequency of site
-    ω = 0.0
+    ω::T1 = 0.0
     # el-ph coupling on site
-    λ = 0.0
+    λ::T1 = 0.0
     # chemical potential of site
-    μ = 0.0
+    μ::T1 = 0.0
     
-    # statical weight associated with 0, 1 or 2 electrons on site
+    # statistical weight associated with 0, 1 or 2 electrons on site
     Z1 = 0.0
     Z2 = 0.0
     # normalization
@@ -79,6 +79,8 @@ function init_phonons_single_site!(holstein::HolsteinModel{T}) where {T<:Abstrac
             end
         end
     end
+    # construct the exponentiated interaction matrix based on intialized phonon fields
+    construct_expnΔτV!(holstein)
 
     return nothing
 end

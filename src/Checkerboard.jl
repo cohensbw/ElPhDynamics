@@ -3,19 +3,35 @@ module Checkerboard
 using LinearAlgebra
 
 export checkerboard_groups!, checkerboard_groups, checkerboard_order!, checkerboard_order
-export checkerboard_mul!, checkerboard_transpose_mul!, checkerboard_matrix
+export checkerboard_mul!, checkerboard_transpose_mul!
+export checkerboard_matrix, checkerboard_transpose_matrix
 
 """
 Construct full checkerboard matrix. For code 
 testing rather than use in the final Langevin simulation.
 """
-function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{Complex{T}},Δτ::T)::Matrix{Complex{T}} where {T<:AbstractFloat}
+function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1)::Matrix{Complex{T2}} where {T1<:AbstractFloat,T2<:Number}
 
     nsites = maximum(neighbor_table)
-    expK = Matrix{Complex{T}}(I,nsites,nsites)
+    expK = Matrix{T2}(I,nsites,nsites)
     for col in 1:nsites
         v = @view expK[:,col]
         checkerboard_mul!(v,neighbor_table,vals,Δτ)
+    end
+    return expK
+end
+
+"""
+Construct transpose of full checkerboard matrix. For code 
+testing rather than use in the final Langevin simulation.
+"""
+function checkerboard_transpose_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1)::Matrix{T2} where {T1<:AbstractFloat,T2<:Number}
+
+    nsites = maximum(neighbor_table)
+    expK = Matrix{T2}(I,nsites,nsites)
+    for col in 1:nsites
+        v = @view expK[:,col]
+        checkerboard_transpose_mul!(v,neighbor_table,vals,Δτ)
     end
     return expK
 end
@@ -26,7 +42,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `vals` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},vals::Vector{Complex{T}},Δτ::T) where {T<:AbstractFloat}
+function checkerboard_mul!(v::AbstractVector{T2},neighbor_table::Matrix{Int},vals::Vector{T2},Δτ::T1) where {T1<:AbstractFloat,T2<:Number}
 
     coshs = cosh.(Δτ*vals)
     sinhs = sinh.(Δτ*vals)
@@ -39,14 +55,14 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},coshs::Vector{Complex{T}},sinhs::Vector{Complex{T}}) where {T<:AbstractFloat}
+function checkerboard_mul!(v::AbstractVector{T},neighbor_table::Matrix{Int},coshs::Vector{T},sinhs::Vector{T}) where {T<:Number}
 
     i::Int = 0
     j::Int = 0
-    newvi::Complex{T} = 0.0
-    newvj::Complex{T} = 0.0
+    newvi::T = 0.0
+    newvj::T = 0.0
     # iterating over neighbors
-    for n in 1:size(neighbor_table,2)
+    for n in 1:length(coshs)
         # getting pair of neighbor sites
         i = neighbor_table[1,n]
         j = neighbor_table[2,n]
@@ -65,7 +81,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `vals` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_transpose_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},vals::Vector{Complex{T}},Δτ::T) where {T<:AbstractFloat}
+function checkerboard_transpose_mul!(v::AbstractVector{T},neighbor_table::Matrix{Int},vals::Vector{T},Δτ::T) where {T<:Number}
 
     coshs = cosh.(Δτ*vals)
     sinhs = sinh.(Δτ*vals)
@@ -78,14 +94,14 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_transpose_mul!(v::AbstractVector{Complex{T}},neighbor_table::Matrix{Int},coshs::Vector{Complex{T}},sinhs::Vector{Complex{T}}) where {T<:AbstractFloat}
+function checkerboard_transpose_mul!(v::AbstractVector{T},neighbor_table::Matrix{Int},coshs::Vector{T},sinhs::Vector{T}) where {T<:Number}
 
     i::Int = 0
     j::Int = 0
-    newvi::Complex{T} = 0.0
-    newvj::Complex{T} = 0.0
+    newvi::T = 0.0
+    newvj::T = 0.0
     # iterating over neighbors
-    for n in size(neighbor_table,2):-1:1
+    for n in length(coshs):-1:1
         # getting pair of neighbor sites
         i = neighbor_table[1,n]
         j = neighbor_table[2,n]

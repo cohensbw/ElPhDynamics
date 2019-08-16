@@ -21,4 +21,10 @@ using Langevin.InitializePhonons
 include("PhononAction.jl")
 using Langevin.PhononAction
 
+include("FourierAcceleration.jl")
+using Langevin.FourierAcceleration
+
+include("LangevinDynamics.jl")
+using Langevin.LangevinDynamics
+
 end # module

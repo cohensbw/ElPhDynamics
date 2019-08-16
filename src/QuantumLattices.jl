@@ -48,7 +48,7 @@ struct QuantumLattice{T<:AbstractFloat}
     function QuantumLattice(lattice::Lattice,β::T,Δτ::T) where {T<:AbstractFloat}
 
         # calculate length of imaginary time axis
-        Lτ=Int(β/Δτ)
+        Lτ=round(Int,β/Δτ)
 
         # number of sites in physical lattice
         nsites = lattice.nsites

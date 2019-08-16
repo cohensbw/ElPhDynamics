@@ -1,21 +1,21 @@
 module PhononAction
 
 using Langevin.HolsteinModels: HolsteinModel
-using Langevin.QuantumLattices: view_by_site, view_by_τ
+using Langevin.HolsteinModels: view_by_site, view_by_τ
 
-export calc_Sbose, calc_dSbose!
+export calc_Sbose, calc_dSbosedϕ!
 
 """
 Calculates the phonon action.
 """
-function calc_Sbose(holstein::HolsteinModel{T})::T where {T<:AbstractFloat}
+function calc_Sbose(holstein::HolsteinModel{T1,T2})::T2  where {T1<:AbstractFloat,T2<:Number}
 
-    ϕ  = holstein.ϕ
-    nsites = holstein.lattice.nsites
-    Δτ = holstein.qlattice.Δτ
-    ω  = holstein.ω
-    Δϕ::Complex{T} = 0.0
-    Δτω²over2::Complex{T} = 0.0
+    ϕ             = holstein.ϕ::Vector{T1}
+    nsites        = holstein.nsites::Int
+    Δτ            = holstein.Δτ::T
+    ω             = holstein.ω::Vector{T}
+    Δϕ::T1        = 0.0
+    Δτω²over2::T1 = 0.0
 
     ################################################
     ## Calculating Phonon Action Associated With  ##
@@ -45,22 +45,25 @@ function calc_Sbose(holstein::HolsteinModel{T})::T where {T<:AbstractFloat}
 
     # checking if any dispersive phonon modes are defined
     if length(holstein.ωij)>0
-        ωij                = holstein.ωij
-        neighbor_table_ωij = holstein.neighbor_table_ωij
-        site1 = 0
-        site2 = 0
-        Δτωij²over2::Complex{T} = 0.0
+        ωij                = holstein.ωij::Vector{T2}
+        sign_ωij           = holstein.sign_ωij::Vector{Int}
+        neighbor_table_ωij = holstein.neighbor_table_ωij::Matrix{Int}
+        site1              = 0
+        site2              = 0
+        sgn                = 1
+        Δτωij²over2::T2    = 0.0
         # iterating over dispersive phonon modes
         for m in 1:length(holstein.ωij)
             Δτωij²over2 = Δτ*holstein.ωij[m]*holstein.ωij[m]/2.0
             site1 = neighbor_table_ωij[1,m]
             site2 = neighbor_table_ωij[2,m]
+            sgn   = sign_ωij[m]
             # getting phonon fields associated with each site
             ϕ1 = view_by_site(ϕ,site1,nsites)
             ϕ2 = view_by_site(ϕ,site2,nsites)
             # iterating over time slices
             for τ in 1:Lτ
-                Δϕ = ϕ2[tau] - ϕ1[tau]
+                Δϕ = ϕ2[tau] + sgn*ϕ1[tau]
                 Sbose += Δτωij²over2 * Δϕ * Δϕ
             end
         end
@@ -71,23 +74,21 @@ end
 
 
 """
-Calculates the dervative phonon action with respect to each phonon field.
+Calculates the dervative phonon action with respect to each phonon field and adds that value in place
+to the vector dSbose.
 """
-function calc_dSbose!(dSbose::Vector{Complex{T}},holstein::HolsteinModel{T}) where {T<:AbstractFloat}
+function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
 
-    @assert length(dSbose)==holstein.qlattice.nindices
+    @assert length(dSbose)==holstein.nindices
 
-    nsites   = holstein.lattice.nsites::Int
-    Lτ   = holstein.qlattice.Lτ::Int
-    Δτ   = holstein.qlattice.Δτ::T
-    ω    = holstein.ω::Vector{Complex{T}}
-    ϕ    = holstein.ϕ::Vector{Complex{T}}
-    τp1  = 0
-    Δτω²::Complex{T} = 0.0
-    Δ::Complex{T}    = 0.0
-
-    # Intialize derivatves of phonon action to zero
-    dSbose .= 0.0
+    ϕ        = holstein.ϕ::Vector{T1}
+    nsites   = holstein.nsites::Int
+    Lτ       = holstein.Lτ::Int
+    Δτ       = holstein.Δτ::T1
+    ω        = holstein.ω::Vector{T1}
+    τp1      = 0
+    τm1      = 0
+    Δτω²::T1 = 0.0
 
     #####################################################
     ## Calculating Derivative Phonon Action Associated ##
@@ -99,18 +100,16 @@ function calc_dSbose!(dSbose::Vector{Complex{T}},holstein::HolsteinModel{T}) whe
         Δτω² = Δτ * ω[i] * ω[i]
         # getting the phonon fields associated with current site
         ϕi = view_by_site(ϕ,i,nsites)
-        # getting view into derviative for current sites
+        # getting view into array containing partial derivatives of phonon action for current sites
         dSbi = view_by_site(dSbose,i,nsites)
         # iterating over imaginary time axis
         for τ in 1:Lτ
-            # updating action based on phonon potential energy
-            dSbi[τ] += Δτω² * ϕi[τ]
-            # updating action based on phonon momentum by taking the derivative
-            # of [ϕᵢ(τ+1)-ϕᵢ(τ)]²/(2⋅Δτ) with respect to both ϕᵢ(τ+1) and ϕᵢ(τ)
-            τp1 = τ%Lτ+1 #  get τ+1 accounting for periodic boundary conditions
-            Δ = ( ϕi[τp1] - ϕi[τ] ) / Δτ # Δ = [ϕᵢ(τ+1)-ϕᵢ(τ)]/Δτ with pbc
-            dSbi[τp1] +=  Δ # ∂Smomentum/∂ϕᵢ(τ+1) +=  [ϕᵢ(τ+1)-ϕᵢ(τ)]/Δτ with pbc
-            dSbi[τ]   += -Δ # ∂Smomentum/∂ϕᵢ(τ)   += -[ϕᵢ(τ+1)-ϕᵢ(τ)]/Δτ
+            # get τ+1 accounting for periodic boundary conditions
+            τp1 = τ%Lτ+1
+            # get τ-1 accounting for periodic boundary conditions
+            τm1 = (τ+Lτ-2)%Lτ+1
+            # update the action
+            dSbi[τ] += (2.0*ϕi[τ] - ϕi[τp1] - ϕi[τm1])/Δτ + Δτω²*ϕi[τ]
         end
     end
 
@@ -120,13 +119,13 @@ function calc_dSbose!(dSbose::Vector{Complex{T}},holstein::HolsteinModel{T}) whe
 
     # checking if there are any dispersive phonon modes
     if length(holstein.ωij)>0
-        ωij = holstein.ωij
-        sign_ωij = holstein.sign_ωij
-        neighbor_table_ωij = holstein.neighbor_table_ωij
-        Δτωij²::Complex{T} = 0.0
-        i = 0
-        j = 0
-        sgn = 1
+        ωij                = holstein.ωij::Vector{T2}
+        sign_ωij           = holstein.sign_ωij::Vector{Int}
+        neighbor_table_ωij = holstein.neighbor_table_ωij::Matrix{Int}
+        Δτωij²::T2         = 0.0
+        i                  = 0
+        j                  = 0
+        sgn                = 1
         # iterate over dispersive phonon modes
         for m in 1:length(ωij)
             Δτωij² = Δτ * ωij[m] * ωij[m]
