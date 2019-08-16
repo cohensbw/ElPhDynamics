@@ -296,7 +296,7 @@ for param in [ :tij , :ωij ]
 
     # defining functions when parameter value is complex
     @eval begin
-        function $op(holstein::HolsteinModel{T}, μ0::Complex{T}, σ0::T, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T<:AbstractFloat}
+        function $op(holstein::HolsteinModel{T1,T2}, μ0::T2, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Complex}
 
             # phase of μ0
             phase = angle(μ0)
@@ -319,7 +319,7 @@ for param in [ :tij , :ωij ]
 
     # defining functions when parameter value is real
     @eval begin
-        function $op(holstein::HolsteinModel{T}, μ0::T, σ0::T, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T<:AbstractFloat}
+        function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:AbstractFloat}
 
             # recasting 0 displacement in unit cell to displacement by L (width of lattice)
             # so that indexing in next step works
