@@ -142,8 +142,8 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstra
     #####################################
 
     # Notes:
-    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ-1)⋅v(τ-1)  for τ > 1
-    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ-1)⋅v(τ-1)  for τ = 1
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(τ-1)  for τ = 1
     # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ exp{-Δτ⋅V[ϕ(τ)]}ᵀ 
     # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
     #   and as such is stored as a vector
@@ -172,22 +172,22 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstra
         # indexing offset into vectors associated with τ+1 time slice
         offset_τm1 = (τm1-1)*nsites
 
-        # y(τ) = exp{-Δτ⋅V[ϕ(τ-1)]}ᵀ⋅v(τ-1)
+        # y(τ) = exp{-Δτ⋅V[ϕ(τ)]}ᵀ⋅v(τ-1)
         for i in 1:nsites
-            yτ′[i] = conj(expnΔτV[i+offset_τm1]) * v[i+offset_τm1]
+            yτ′[i] = conj(expnΔτV[i+offset_τ]) * v[i+offset_τm1]
         end
 
-        # y(τ) = Bᵀ(τ-1)⋅v(τ-1) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[ϕ(τ-1)]}ᵀ⋅v(τ-1)
+        # y(τ) = Bᵀ(τ)⋅v(τ-1) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[ϕ(τ)]}ᵀ⋅v(τ-1)
         checkerboard_transpose_mul!(yτ′,neighbor_table_tij,coshtij,sinhtij)
 
         # finish up the multiplication to get final y(τ) vector
         if τ>1
-            # y(τ) = v(τ) - Bᵀ(τ-1)⋅v(τ-1)
+            # y(τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)
             for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] - yτ′[i]
             end
         else
-            # y(τ) = v(τ) + Bᵀ(τ-1)⋅v(τ-1)
+            # y(τ) = v(τ) + Bᵀ(τ)⋅v(τ-1)
             for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] + yτ′[i]
             end

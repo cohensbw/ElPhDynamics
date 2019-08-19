@@ -192,9 +192,9 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         sign_ωij = Vector{Int}(undef,0)
 
         # temporary vectors
-        y′ = zeros(T,nindices)
+        y′  = zeros(T,nindices)
         yτ′ = zeros(T,nsites)
-        yi′ = zeros(T,nsites)
+        yi′ = zeros(T,Lτ)
 
         # constructing holstein model
         if is_complex

@@ -192,8 +192,8 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::Abst
     muldMdϕ!( dSdϕ , holstein , M⁻¹g )
 
     # ∂S/∂ϕᵢ(τ) = -2gᵀ⋅∂M/∂ϕᵢ(τ)⋅M⁻¹g
-    @. holstein.y′ = -2.0 * g * dSdϕ
-    circshift!( dSdϕ , holstein.y′ , holstein.nsites )
+    @. g *= -2.0 * dSdϕ
+    circshift!( dSdϕ , g , holstein.nsites )
     # In the line above there is a subtle detail that is addressed.
     # After doing the element-wise multiplication, the expectation value for the partial
     # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.

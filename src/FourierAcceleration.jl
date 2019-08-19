@@ -1,7 +1,6 @@
 module FourierAcceleration
 
 using FFTW
-using UnsafeArrays
 
 using Langevin.HolsteinModels: HolsteinModel
 using Langevin.HolsteinModels: view_by_site, view_by_τ
@@ -11,6 +10,12 @@ export update_Q!
 export forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
 
 struct FourierAccelerator{T<:AbstractFloat}
+
+    "Vector to store data associated with single time slice"
+    vi::Vector{T}
+
+    "Vector to store data associated with FFT of single time slice"
+    νi::Vector{Complex{T}}
 
     "Vector representing diagonal acceleration matrix."
     Q::Vector{T}
@@ -26,6 +31,9 @@ struct FourierAccelerator{T<:AbstractFloat}
 
     "Number of sites in lattice getting acclerated."
     nsites::Int
+
+    "Length of imagniary time axis"
+    Lτ::Int
 
     #######################
     ## INNER CONSTRUCTOR ##
@@ -50,20 +58,16 @@ struct FourierAccelerator{T<:AbstractFloat}
         sqrtQ = sqrt.(Q)
 
         # declaring two full-length vectors for constructing FFT plans
-        v  = ones(T2,length(holstein))
-        ν = ones(Complex{T1},length(holstein))
-
-        # getting a view into each vector corresponding to site 1 in the lattice
-        v1 = view_by_site(v,1,nsites)
-        ν1 = view_by_site(ν,1,nsites)
+        vi = zeros(T1,Lτ)
+        νi = zeros(Complex{T1},Lτ)
 
         # planning forward FFT
-        pfft  = plan_fft( v1 )
+        pfft  = plan_fft( vi )
 
         # planning inverse FFT
-        pifft = plan_ifft( ν1 )
+        pifft = plan_ifft( νi )
 
-        new{T1}(Q,sqrtQ,pfft,pifft,nsites)
+        new{T1}(vi,νi,Q,sqrtQ,pfft,pifft,nsites,Lτ)
     end
 
 end
@@ -75,13 +79,19 @@ end
 """
 FFT a vector.
 """
-function forward_fft!(ν::AbstractVector{Complex{T1}},v::AbstractVector{T2},fa::FourierAccelerator{T1}) where {T1<:AbstractFloat,T2<:Number}
+function forward_fft!(ν::AbstractVector{Complex{T}},v::AbstractVector{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
-    @uviews v ν begin
-        for site in 1:fa.nsites
-            νi = view_by_site(ν,site,fa.nsites)
-            vi = view_by_site(v,site,fa.nsites)
-            νi .= fa.pfft * vi
+    # iterating over sites in lattice
+    for i in 1:fa.nsites
+        # copying data associated with current site
+        for τ in 1:fa.Lτ
+            fa.vi[τ] = v[(τ-1)*fa.nsites+i]
+        end
+        # performing FFT
+        fa.νi .= fa.pfft * fa.vi
+        # copying result for current site into destination vector
+        for τ in 1:fa.Lτ
+            ν[(τ-1)*fa.nsites+i] = fa.νi[τ]
         end
     end
     return nothing
@@ -90,13 +100,19 @@ end
 """
 Inverse FFT a vector.
 """
-function inverse_fft!(v::AbstractVector{T1},ν::AbstractVector{Complex{T2}},fa::FourierAccelerator{T2}) where {T1<:Number,T2<:AbstractFloat}
+function inverse_fft!(v::AbstractVector{T},ν::AbstractVector{Complex{T}},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
-    @uviews v ν begin
-        for site in 1:fa.nsites
-            νi = view_by_site(ν,site,fa.nsites)
-            vi = view_by_site(v,site,fa.nsites)
-            vi .= real.(fa.pifft * νi)
+    # iterating over sites in lattice
+    for i in 1:fa.nsites
+        # copying data associated with current site
+        for τ in 1:fa.Lτ
+            fa.νi[τ] = ν[(τ-1)*fa.nsites+i]
+        end
+        # performing iFFT
+        fa.vi .= real.(fa.pifft * fa.νi)
+        # copying result for current site into destination vector
+        for τ in 1:fa.Lτ
+            v[(τ-1)*fa.nsites+i] = fa.vi[τ]
         end
     end
     return nothing
