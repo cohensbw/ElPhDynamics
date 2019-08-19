@@ -96,7 +96,7 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
     offset_τp1 = 1
 
     # iterate over imaginary time axis
-    for τ in 1:Lτ
+    @simd for τ in 1:Lτ
 
         # get the τ+1 time slice account for periodic boundary conditions
         τp1 = τ%Lτ+1
@@ -117,12 +117,12 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
 
         if τ<Lτ
             # y(τ) = v(τ) - B(τ+1)⋅v(τ+1)
-            for i in 1:nsites
+            @simd for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] - expnΔτV[i+offset_τp1] * yτ′[i]
             end
         else
             # y(τ) = v(τ) + B(τ+1)⋅v(τ+1)
-            for i in 1:nsites
+            @simd for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] + expnΔτV[i+offset_τp1] * yτ′[i]
             end
         end

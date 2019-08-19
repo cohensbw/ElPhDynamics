@@ -87,7 +87,6 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
     Δτ         = holstein.Δτ::T1
     ω          = holstein.ω::Vector{T1}
     τp1        = 0
-    τm1        = 0
     offset_τ   = 0
     offset_τp1 = 0
     Δτω²::T1   = 0.0
@@ -99,12 +98,14 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
     #####################################################
 
     # iterating over sites
-    for i in nsites
+    for i in 1:nsites
         Δτω² = Δτ * ω[i] * ω[i]
         # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
             τp1 = τ%Lτ+1
+            # get τ+1 accounting for periodic boundary conditions
+            τp1 = (τ+Lτ-2)%Lτ+1
             # indexing offset into vectors associated with τ time slice
             offset_τ   = (τ-1)*nsites
             # indexing offset into vectors associated with τ+1 time slice
