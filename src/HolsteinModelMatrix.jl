@@ -1,7 +1,9 @@
 import Base: eltype, size, length, *
 import LinearAlgebra: mul!
 
+using LinearAlgebra
 using SparseArrays
+using UnsafeArrays
 using Langevin.Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
@@ -36,7 +38,7 @@ end
 # overloading `*` operator from Base
 function *(holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})::Vector{T2} where {T1<:AbstractFloat,T2<:Number}
 
-    y = Vector{T2}(undef,length(holstein))
+    y = Vector{T2}(undef,holstein.nindices)
     mul!(y,holstein,v)
     return y
 end
@@ -58,10 +60,10 @@ Perform the multiplication y = MᵀM⋅v
 function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
     # y' = M⋅v
-    mulM!(holstein.temporary_vector, holstein, v)
+    mulM!(holstein.y′, holstein, v)
 
     # y = Mᵀ⋅y' = MᵀM⋅v
-    mulMᵀ!(y, holstein, holstein.temporary_vector)
+    mulMᵀ!(y, holstein, holstein.y′)
 end
 
 
@@ -70,60 +72,60 @@ Perform the multiplication y = M⋅v
 """
 function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
-    neighbor_table_tij = holstein.neighbor_table_tij::Matrix{Int}
-    coshtij = holstein.coshtij::Vector{T2}
-    sinhtij = holstein.sinhtij::Vector{T2}
-    expnΔτV = holstein.expnΔτV::Vector{T2}
-    Lτ      = holstein.Lτ::Int
-    nsites  = holstein.lattice.nsites::Int
-    τp1     = 1
-
     ####################################
     ## PERFORM MULTIPLICATION y = M⋅v ##
     ####################################
 
+    # Notes:
+    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
+    # • y(τ) = [M⋅v](τ) = v(τ) + B(τ+1)⋅v(τ+1) for τ = Lτ
+    # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
+    # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
+    #   and as such is stored as a vector
+    # • exp{-Δτ⋅K} is given by the checkerboard approximation matrix.
+
+    neighbor_table_tij = holstein.neighbor_table_tij::Matrix{Int}
+    coshtij    = holstein.coshtij::Vector{T2}
+    sinhtij    = holstein.sinhtij::Vector{T2}
+    expnΔτV    = holstein.expnΔτV::Vector{T2}
+    yτ′        = holstein.yτ′::Vector{T2}
+    Lτ         = holstein.Lτ::Int
+    nsites     = holstein.lattice.nsites::Int
+    τp1        = 1
+    offset_τ   = 1
+    offset_τp1 = 1
+
     # iterate over imaginary time axis
     for τ in 1:Lτ
-
-        # Notes:
-        # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
-        # • y(τ) = [M⋅v](τ) = v(τ) + B(τ+1)⋅v(τ+1) for τ = Lτ
-        # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
-        # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
-        #   and as such is stored as a vector
-        # • exp{-Δτ⋅K} is given by the checkerboard approximation matrix.
 
         # get the τ+1 time slice account for periodic boundary conditions
         τp1 = τ%Lτ+1
 
-        # get a view into y for current time slice τ
-        yτ = view_by_τ(y,τ,nsites)
-        # get a view into v for current time slice τ
-        vτ = view_by_τ(v,τ,nsites)
-        # getting view into v for time slice τ+1
-        vτp1 = view_by_τ(v,τp1,nsites)
-        # geting view into exp{-Δτ⋅V[ϕ(τ+1)]} matrix
-        expnΔτV_τp1 = view_by_τ(expnΔτV,τp1,nsites)
+        # indexing offset into vectors associated with τ time slice
+        offset_τ = (τ-1)*nsites
 
-        # first we need y(τ) = v(τ+1)
-        yτ .= vτp1
+        # indexing offset into vectors associated with τ+1 time slice
+        offset_τp1 = (τp1-1)*nsites
 
-        # next we need to multiply by exp{-Δτ⋅K}
-        checkerboard_mul!(yτ,neighbor_table_tij,coshtij,sinhtij)
-
-        # now we need to multiply by exp{-Δτ⋅V[ϕ(τ+1)]}
-        yτ .*= expnΔτV_τp1
-        # at this point y(τ) = B(τ+1)⋅v(τ+1)
-
-        # finish up the multiplication to get final y(τ) vector
-        if τ<Lτ
-            # y(τ) = v(τ) - B(τ+1)⋅v(τ+1)
-            @. yτ = vτ - yτ
-        else
-            # y(τ) = v(τ) + B(τ+1)⋅v(τ+1)
-            yτ .+= vτ
+        # y(τ) = v(τ+1)
+        for i in 1:nsites
+            yτ′[i] = v[i+offset_τp1]
         end
 
+        # y(τ) = exp{-Δτ⋅K}⋅v(τ+1)
+        checkerboard_mul!(yτ′,neighbor_table_tij,coshtij,sinhtij)
+
+        if τ<Lτ
+            # y(τ) = v(τ) - B(τ+1)⋅v(τ+1)
+            for i in 1:nsites
+                y[i+offset_τ] = v[i+offset_τ] - expnΔτV[i+offset_τp1] * yτ′[i]
+            end
+        else
+            # y(τ) = v(τ) + B(τ+1)⋅v(τ+1)
+            for i in 1:nsites
+                y[i+offset_τ] = v[i+offset_τ] + expnΔτV[i+offset_τp1] * yτ′[i]
+            end
+        end
     end
 
     return nothing
@@ -135,56 +137,61 @@ Perform the multiplication y = Mᵀ⋅v
 """
 function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
-    neighbor_table_tij = holstein.neighbor_table_tij::Matrix{Int}
-    coshtij = holstein.coshtij::Vector{T2}
-    sinhtij = holstein.sinhtij::Vector{T2}
-    expnΔτV = holstein.expnΔτV::Vector{T2}
-    Lτ      = holstein.Lτ::Int
-    nsites  = holstein.lattice.nsites::Int
-    τm1     = 1
-    sgn     = 1
-
     #####################################
     ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
     #####################################
 
+    # Notes:
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ-1)⋅v(τ-1)  for τ > 1
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ-1)⋅v(τ-1)  for τ = 1
+    # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ exp{-Δτ⋅V[ϕ(τ)]}ᵀ 
+    # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
+    #   and as such is stored as a vector
+    # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
+
+    neighbor_table_tij = holstein.neighbor_table_tij::Matrix{Int}
+    coshtij    = holstein.coshtij::Vector{T2}
+    sinhtij    = holstein.sinhtij::Vector{T2}
+    expnΔτV    = holstein.expnΔτV::Vector{T2}
+    yτ′        = holstein.yτ′::Vector{T2}
+    Lτ         = holstein.Lτ::Int
+    nsites     = holstein.lattice.nsites::Int
+    τm1        = 1
+    offset_τ   = 1
+    offset_τm1 = 1
+
     # iterate over imaginary time axis
     for τ in 1:Lτ
-
-        # Notes:
-        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
-        # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(τ-1)  for τ = 1
-        # • Bᵀ(τ) = [exp{-Δτ⋅K}]ᵀ [exp{-Δτ⋅V[ϕ(τ)]}]ᵀ 
-        # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
-        #   and as such is stored as a vector
-        # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
 
         # get the τ-1 time slice account for periodic boundary conditions
         τm1 = (τ+Lτ-2)%Lτ+1
 
-        # get a view into y for current time slice τ
-        yτ = view_by_τ(y,τ,nsites)
-        # get a view into v for current time slice τ
-        vτ = view_by_τ(v,τ,nsites)
-        # getting view into v for time slice τ-1
-        vτm1 = view_by_τ(v,τm1,nsites)
-        # geting view into exp{-Δτ⋅V[ϕ(τ)]} matrix
-        expnΔτV_τ = view_by_τ(expnΔτV,τ,nsites)
+        # indexing offset into vectors associated with τ time slice
+        offset_τ = (τ-1)*nsites
 
-        # first set y(τ) = [exp{-Δτ⋅V[ϕ(τ)]}]ᵀ⋅v(τ-1)
-        @. yτ = conj(expnΔτV_τ) * vτm1
+        # indexing offset into vectors associated with τ+1 time slice
+        offset_τm1 = (τm1-1)*nsites
 
-        # next we need to multiply by [exp{-Δτ⋅K}]ᵀ
-        checkerboard_transpose_mul!(yτ,neighbor_table_tij,coshtij,sinhtij)
-        # at this point y(τ) = Bᵀ(τ)⋅v(τ-1)
+        # y(τ) = exp{-Δτ⋅V[ϕ(τ-1)]}ᵀ⋅v(τ-1)
+        for i in 1:nsites
+            yτ′[i] = conj(expnΔτV[i+offset_τm1]) * v[i+offset_τm1]
+        end
+
+        # y(τ) = Bᵀ(τ-1)⋅v(τ-1) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[ϕ(τ-1)]}ᵀ⋅v(τ-1)
+        checkerboard_transpose_mul!(yτ′,neighbor_table_tij,coshtij,sinhtij)
 
         # finish up the multiplication to get final y(τ) vector
         if τ>1
-            @. yτ = vτ - yτ
+            # y(τ) = v(τ) - Bᵀ(τ-1)⋅v(τ-1)
+            for i in 1:nsites
+                y[i+offset_τ] = v[i+offset_τ] - yτ′[i]
+            end
         else
-            yτ .+= vτ
+            # y(τ) = v(τ) + Bᵀ(τ-1)⋅v(τ-1)
+            for i in 1:nsites
+                y[i+offset_τ] = v[i+offset_τ] + yτ′[i]
+            end
         end
-
     end
 
     return nothing
@@ -196,59 +203,67 @@ Performs the multiplication y = (dM/dϕ)⋅v
 """ 
 function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
+    ########################################
+    ## PERFORM MULTIPLICATION y = ∂M/∂ϕ⋅v ##
+    ########################################
+
+    # Notes:
+    # • Consider y = ∂M/∂ϕᵢ(τ)⋅v ==>
+    #
+    # • yᵢ(τ-1) = -∂B/∂ϕᵢ(τ)⋅vᵢ(τ) for τ < Lτ
+    # • yᵢ(τ-1) = +∂B/∂ϕᵢ(τ)⋅vᵢ(τ) for τ = Lτ
+    #
+    # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
+    # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅ dV/dϕᵢ(τ) ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
+    # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅    λᵢ     ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
+    #
+    # • Therefore the final expression is:
+    # • yᵢ(τ-1) =  Δτ⋅λᵢ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ < Lτ
+    # • yᵢ(τ-1) = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ = Lτ
+
     neighbor_table_tij = holstein.neighbor_table_tij::Matrix{Int}
-    coshtij = holstein.coshtij::Vector{T2}
-    sinhtij = holstein.sinhtij::Vector{T2}
-    expnΔτV = holstein.expnΔτV::Vector{T2}
-    λ       = holstein.λ::Vector{T1}
-    Δτ      = holstein.Δτ::T1
-    Lτ      = holstein.Lτ::Int
-    nsites  = holstein.lattice.nsites::Int
-    τm1     = 0
+    coshtij    = holstein.coshtij::Vector{T2}
+    sinhtij    = holstein.sinhtij::Vector{T2}
+    expnΔτV    = holstein.expnΔτV::Vector{T2}
+    yτ′        = holstein.yτ′::Vector{T2}
+    λ          = holstein.λ::Vector{T1}
+    Δτ         = holstein.Δτ::T1
+    Lτ         = holstein.Lτ::Int
+    nsites     = holstein.lattice.nsites::Int
+    τm1        = 0
+    offset_τ   = 1
+    offset_τm1 = 1
 
     # iterate over imaginary time slice
     for τ in 1:Lτ
 
-        # Notes:
-        # • Consider y = ∂M/∂ϕᵢ(τ)⋅v ==>
-        #
-        # • yᵢ(τ-1) = -∂B/∂ϕᵢ(τ)⋅vᵢ(τ) for τ < Lτ
-        # • yᵢ(τ-1) = +∂B/∂ϕᵢ(τ)⋅vᵢ(τ) for τ = Lτ
-        #
-        # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
-        # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅ dV/dϕᵢ(τ) ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
-        # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅    λᵢ     ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
-        #
-        # • Therefore the final expression is:
-        # • yᵢ(τ-1) =  Δτ⋅λᵢ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ < Lτ
-        # • yᵢ(τ-1) = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ = Lτ
-
         # get the τ-1 time slice account for periodic boundary conditions for τ < Lτ
         τm1 = (τ+Lτ-2)%Lτ+1
 
-        # get a view into y for time slice τ-1
-        yτm1 = view_by_τ(y,τm1,nsites)
-        # get a view into v for current time slice τ
-        vτ = view_by_τ(v,τ,nsites)
-        # geting exp{-Δτ⋅V[ϕ(τ)]} matrix
-        expnΔτV_τ = view_by_τ(expnΔτV,τ,nsites)
+        # indexing offset into vectors associated with τ time slice
+        offset_τ = (τ-1)*nsites
 
-        # start by setting y(τ-1) = v(τ)
-        yτm1 .= vτ
+        # indexing offset into vectors associated with τ+1 time slice
+        offset_τm1 = (τm1-1)*nsites
 
-        # multiply by the checkerboard matrix exp{-Δτ⋅K}
-        checkerboard_mul!(yτm1,neighbor_table_tij,coshtij,sinhtij)
-
-        # multiply by the diagonal matrix exp{-Δτ⋅V[ϕ(τ+1)]}
-        yτm1 .*= expnΔτV_τ
-
-        # multiply by (Δτ⋅dV/dϕ = Δτ⋅λ) next.
-        if τ>1
-            @. yτm1 *=  Δτ * λ
-        else
-            @. yτm1 *= -Δτ * λ
+        # start by setting y(τ) = v(τ)
+        for i in 1:nsites
+            yτ′[i] = v[i+offset_τ]
         end
 
+        # multiply by the checkerboard matrix exp{-Δτ⋅K}
+        checkerboard_mul!(yτ′,neighbor_table_tij,coshtij,sinhtij)
+
+        # finish up by multiplying by Δτ⋅λ⋅exp{-Δτ⋅V[ϕ(τ+1)]}
+        if τ<Lτ
+            for i in 1:nsites
+                y[i+offset_τm1] =  Δτ * λ[i] * expnΔτV[i+offset_τ] * yτ′[i]
+            end
+        else
+            for i in 1:nsites
+                y[i+offset_τm1] = -Δτ * λ[i] * expnΔτV[i+offset_τ] * yτ′[i]
+            end
+        end
     end
 
     return nothing

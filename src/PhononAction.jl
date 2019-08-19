@@ -81,43 +81,48 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
 
     @assert length(dSbose)==holstein.nindices
 
-    ϕ        = holstein.ϕ::Vector{T1}
-    nsites   = holstein.nsites::Int
-    Lτ       = holstein.Lτ::Int
-    Δτ       = holstein.Δτ::T1
-    ω        = holstein.ω::Vector{T1}
-    τp1      = 0
-    τm1      = 0
-    Δτω²::T1 = 0.0
+    ϕ          = holstein.ϕ::Vector{T1}
+    nsites     = holstein.nsites::Int
+    Lτ         = holstein.Lτ::Int
+    Δτ         = holstein.Δτ::T1
+    ω          = holstein.ω::Vector{T1}
+    τp1        = 0
+    τm1        = 0
+    offset_τ   = 0
+    offset_τp1 = 0
+    Δτω²::T1   = 0.0
+    Δ::T2      = 0.0
 
     #####################################################
     ## Calculating Derivative Phonon Action Associated ##
     ## With Local Phonon Frequency And Phonon Momentum ##
     #####################################################
 
-    # iterating over sites in lattice
-    for i in 1:holstein.lattice.nsites
+    # iterating over sites
+    for i in nsites
         Δτω² = Δτ * ω[i] * ω[i]
-        # getting the phonon fields associated with current site
-        ϕi = view_by_site(ϕ,i,nsites)
-        # getting view into array containing partial derivatives of phonon action for current sites
-        dSbi = view_by_site(dSbose,i,nsites)
-        # iterating over imaginary time axis
+        # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
             τp1 = τ%Lτ+1
-            # get τ-1 accounting for periodic boundary conditions
-            τm1 = (τ+Lτ-2)%Lτ+1
-            # update the action
-            dSbi[τ] += (2.0*ϕi[τ] - ϕi[τp1] - ϕi[τm1])/Δτ + Δτω²*ϕi[τ]
+            # indexing offset into vectors associated with τ time slice
+            offset_τ   = (τ-1)*nsites
+            # indexing offset into vectors associated with τ+1 time slice
+            offset_τp1 = (τp1-1)*nsites
+            # Δ = ( ϕᵢ(τ+1) - ϕᵢ(τ) ) / Δτ
+            Δ = ( ϕ[offset_τp1+i] - ϕ[offset_τ+i] ) / Δτ
+            # updating partial derivative ∂Sb∂ϕᵢ(τ)
+            dSbose[offset_τ+i]   += -Δ + Δτω² * ϕ[offset_τ+i]
+            # updating partial derivative ∂Sb∂ϕᵢ(τ+1)
+            dSbose[offset_τp1+i] +=  Δ
         end
     end
 
-    ############################################################################
-    ## Calculating Derivative Phonon Action Associated With Phonon Dispersion ##
-    ############################################################################
+    #############################################################
+    ## Calculating Derivative Of Phonon Action Associated With ##
+    ##               Dispersive Phonon Modes                   ##
+    #############################################################
 
-    # checking if there are any dispersive phonon modes
     if length(holstein.ωij)>0
         ωij                = holstein.ωij::Vector{T2}
         sign_ωij           = holstein.sign_ωij::Vector{Int}
@@ -133,18 +138,14 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
             # getting pair of neighboring sites
             i = neighbor_table_ωij[1,m]
             j = neighbor_table_ωij[2,m]
-            # getting phonon fields associated with pair of neighboring sites
-            ϕi = view_by_site(ϕ,i,nsites)
-            ϕj = view_by_site(ϕ,j,nsites)
-            # get view into action associated with each site
-            dSbi = view_by_site(dSbose,i,nsites)
-            dSbj = view_by_site(dSbose,j,nsites)
-            # iterating over imaginary time axis
+            # iterating over time slices
             for τ in 1:Lτ
-                # udpating derviative of phonon action
-                Δ = Δτωij² * (ϕi[τ] + sgn*ϕj[τ])
-                dSbi[τ] += Δ
-                dSbj[τ] += sgn*Δ
+                # indexing offset into vectors associated with τ time slice
+                offset_τ = (τ-1)*nsites
+                # updating partial derivative
+                Δ = Δτωij² * ( ϕ[offset_τ+i] - ϕ[offset_τ+j] )
+                dSbose[offset_τ+i] += Δ
+                dSbose[offset_τ+j] += sgn*Δ
             end
         end
     end

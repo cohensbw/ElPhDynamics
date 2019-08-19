@@ -22,9 +22,6 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # intialize g as a vector of random numbers
-    randn!(g)
-
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
@@ -73,9 +70,6 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # intialize g as a vector of random numbers
-    randn!(g)
-
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ, g, Mᵀg, M⁻¹g, holstein, tol)
 
@@ -114,9 +108,6 @@ function update_rk!(holstein::HolsteinModel{T1,T2}, dSdϕ2::AbstractVector{T1}, 
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # intialize g as a vector of random numbers
-    randn!(g)
-
     # calculate dSdϕ1 = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
@@ -143,9 +134,6 @@ function update_euler!(holstein::HolsteinModel{T1,T2}, dSdϕ::AbstractVector{T1}
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # intialize g as a vector of random numbers
-    randn!(g)
-
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ, g, Mᵀg, M⁻¹g, holstein, tol)
 
@@ -166,7 +154,7 @@ Calculates all of the partial derivatives ∂S/∂ϕᵢ(τ) and stores each part
 The expression we are evaluating is `∂S/∂ϕᵢ(τ) = ∂Sbose/∂ϕᵢ(τ) - 2gᵀ[∂M/∂ϕᵢ(τ)]⋅M⁻¹g}`.
 # Arguments
 - `dSdϕ::AbstractVector{T1}`: vector the will be modified to contain all the partial derivatives ∂S/∂ϕᵢ(τ)
-- `g::AbstractVector{T1}`: An ALREADY INTIALIZED random vector.
+- `g::AbstractVector{T1}`: A random vector.
 - `Mᵀg::AbstractVector{T1}`: Vector containing the product Mᵀg
 - `M⁻¹g::AbstractVector{T1}`: A vector the will contain the solution of the linear equation M⋅v=g when computed.
 - `holstein::HolsteinModel{T1,T2}`: Type represent holstein model being simulated.
@@ -186,23 +174,30 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::Abst
     # phonon field configuration.
     construct_expnΔτV!(holstein)
 
-    # getting Mᵀg
+    # intialize random vector g.
+    randn!(g)
+    #rand!(g,-1:2:1)
+
+    # getting Mᵀg.
     mulMᵀ!( Mᵀg , holstein , g )
 
-    # solve MᵀM⋅v=Mᵀg ==> M⁻¹g
-    info = minres!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true )[2]
+    # intialize M⁻¹g to vector of zeros.
+    M⁻¹g .= 0.0
 
-    # ∂M/∂ϕᵢ(τ)⋅M⁻¹g
+    # solve MᵀM⋅v = Mᵀg ==> v = M⁻¹g.
+    info = cg!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true )[2]
+    # info = minres!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true , initially_zero=true )[2]
+
+    # ∂S/∂ϕᵢ(τ) = ∂M/∂ϕᵢ(τ)⋅M⁻¹g
     muldMdϕ!( dSdϕ , holstein , M⁻¹g )
 
     # ∂S/∂ϕᵢ(τ) = -2gᵀ⋅∂M/∂ϕᵢ(τ)⋅M⁻¹g
-    @. g *= -2.0 * dSdϕ
-    circshift!(dSdϕ,g,holstein.nsites)
-    # NOTE: There is a subtle point in the above code. After doing the element-wise multiplication,
-    # the expectation value for the partial derivatives corresponding to the τ time slice lives
-    # in the array indices corresponding to τ-1. Therefore, all the values need to be circularly
-    # shifted nsites in the array.
-    # Thank god Julia already had a built in function for doing exactly this!
+    @. holstein.y′ = -2.0 * g * dSdϕ
+    circshift!( dSdϕ , holstein.y′ , holstein.nsites )
+    # In the line above there is a subtle detail that is addressed.
+    # After doing the element-wise multiplication, the expectation value for the partial
+    # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.
+    # Therefore, all the values need to be circularly shifted nsites in the array.
 
     # ∂S/∂ϕᵢ(τ) = ∂Sbose/∂ϕᵢ(τ) - 2gᵀ⋅[∂M/∂ϕᵢ(τ)]⋅M⁻¹g ==> All Done!
     calc_dSbosedϕ!( dSdϕ , holstein )

@@ -1,6 +1,7 @@
 module HolsteinModels
 
 using Statistics
+using IterativeSolvers
 
 using Langevin.Geometries: Geometry
 using Langevin.Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
@@ -116,13 +117,22 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     "specifies the sign: ωij(ϕᵢ+ϕⱼ)² or ωij(ϕᵢ-ϕⱼ)²"
     sign_ωij::Vector{Int}
 
-    ##############################
-    ## TEMPORARY STORAGE VECTOR ##
-    ##############################
+    ##############################################################
+    ## TEMPORARY STORAGE VECTORS FOR MEMORY EFFICIENCY PURPOSES ##
+    ##############################################################
 
-    "When doing multiplication y = Mᵀ⋅y' = MᵀM⋅v, you need a temperorary
-    vector y' to store an intermediate result. This is that vector."
-    temporary_vector::Vector{T2}
+    "A vector of length `ninidces` to temporarily store data."
+    y′::Vector{T2}
+
+    "A vector of length `nsites` to temporarily store the data for a single time slice."
+    yτ′::Vector{T2}
+
+    "A vector of length `Lτ` to temporarily store the data for a single site."
+    yi′::Vector{T2}
+
+    "Stores state vectors for Conjugate Gradient algorithm so as to avoid
+    extra memory allocations."
+    cg_state_vars::CGStateVariables{T2,Vector{T2}}
 
     #######################
     ## INNER CONSTRUCTOR ##
@@ -181,18 +191,28 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         # intialize empty vector for sign_ωij
         sign_ωij = Vector{Int}(undef,0)
 
-        # temporary vector
-        temporary_vector = zeros(Complex{T},nindices)
+        # temporary vectors
+        y′ = zeros(T,nindices)
+        yτ′ = zeros(T,nsites)
+        yi′ = zeros(T,nsites)
 
         # constructing holstein model
         if is_complex
+
+            # conjugate gradient state variables
+            cg_state_vars = CGStateVariables(zeros(Complex{T},nindices),zeros(Complex{T},nindices),zeros(Complex{T},nindices))
+
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                              ω, λ, ωij, neighbor_table_ωij, sign_ωij, temporary_vector)
+                              ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, yτ′, yi′, cg_state_vars)
         else
+
+            # conjugate gradient state variables
+            cg_state_vars = CGStateVariables(zeros(T,nindices),zeros(T,nindices),zeros(T,nindices))
+
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                     ω, λ, ωij, neighbor_table_ωij, sign_ωij, temporary_vector)
+                     ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, yτ′, yi′, cg_state_vars)
         end
     end
 
@@ -417,21 +437,24 @@ exp(-Δτ⋅V[ϕ]) is stored as a vector as it is a diagonal matrix.
 """
 function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
-    expnΔτV = holstein.expnΔτV::Vector{T2}
-    λ       = holstein.λ::Vector{T1}
-    μ       = holstein.μ::Vector{T1}
-    ϕ       = holstein.ϕ::Vector{T1}
-    Δτ      = holstein.Δτ::T1
-    nsites  = holstein.nsites::Int
+    expnΔτV  = holstein.expnΔτV::Vector{T2}
+    λ        = holstein.λ::Vector{T1}
+    μ        = holstein.μ::Vector{T1}
+    ϕ        = holstein.ϕ::Vector{T1}
+    Δτ       = holstein.Δτ::T1
+    Lτ       = holstein.Lτ::Int
+    nsites   = holstein.nsites::Int
+    offset_τ = 0
 
-    # iterate over sites in lattice
-    for i in 1:nsites
-        # get a view into the phonon fields associated with current site
-        ϕi = view_by_site(ϕ,i,nsites)
-        # getting a view into matrix elements associated with current site
-        expnΔτVi = view_by_site(expnΔτV,i,nsites)
-        # updating matrix elements
-        @. expnΔτVi = exp( -Δτ * ( λ[i]*ϕi - μ[i] ) )
+    # iterating over time slices
+    for τ in 1:Lτ
+        # calculating the indexing offset associated with τ time slice
+        offset_τ = (τ-1)*nsites
+        # iterating over sites in lattice
+        for i in 1:nsites
+            # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅ϕᵢ(τ)-μᵢ)}
+            expnΔτV[offset_τ+i] = exp( -Δτ * ( λ[i] * ϕ[offset_τ+i] - μ[i] ) )
+        end
     end
 
     return nothing

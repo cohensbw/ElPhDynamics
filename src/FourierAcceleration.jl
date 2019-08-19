@@ -1,6 +1,7 @@
 module FourierAcceleration
 
 using FFTW
+using UnsafeArrays
 
 using Langevin.HolsteinModels: HolsteinModel
 using Langevin.HolsteinModels: view_by_site, view_by_τ
@@ -76,10 +77,12 @@ FFT a vector.
 """
 function forward_fft!(ν::AbstractVector{Complex{T1}},v::AbstractVector{T2},fa::FourierAccelerator{T1}) where {T1<:AbstractFloat,T2<:Number}
 
-    for site in 1:fa.nsites
-        νi = view_by_site(ν,site,fa.nsites)
-        vi = view_by_site(v,site,fa.nsites)
-        νi .= fa.pfft * vi
+    @uviews v ν begin
+        for site in 1:fa.nsites
+            νi = view_by_site(ν,site,fa.nsites)
+            vi = view_by_site(v,site,fa.nsites)
+            νi .= fa.pfft * vi
+        end
     end
     return nothing
 end
@@ -89,10 +92,12 @@ Inverse FFT a vector.
 """
 function inverse_fft!(v::AbstractVector{T1},ν::AbstractVector{Complex{T2}},fa::FourierAccelerator{T2}) where {T1<:Number,T2<:AbstractFloat}
 
-    for site in 1:fa.nsites
-        νi = view_by_site(ν,site,fa.nsites)
-        vi = view_by_site(v,site,fa.nsites)
-        vi .= real.(fa.pifft * νi)
+    @uviews v ν begin
+        for site in 1:fa.nsites
+            νi = view_by_site(ν,site,fa.nsites)
+            vi = view_by_site(v,site,fa.nsites)
+            vi .= real.(fa.pifft * νi)
+        end
     end
     return nothing
 end
