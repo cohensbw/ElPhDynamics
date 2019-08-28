@@ -1,39 +1,51 @@
 module Checkerboard
 
 using LinearAlgebra
+using SparseArrays
 
 export checkerboard_groups!, checkerboard_groups, checkerboard_order!, checkerboard_order
 export checkerboard_mul!, checkerboard_transpose_mul!
-export checkerboard_matrix, checkerboard_transpose_matrix
+export checkerboard_matrix
 
 """
 Construct full checkerboard matrix. For code 
 testing rather than use in the final Langevin simulation.
 """
-function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1)::Matrix{Complex{T2}} where {T1<:AbstractFloat,T2<:Number}
-
-    nsites = maximum(neighbor_table)
-    expK = Matrix{T2}(I,nsites,nsites)
-    for col in 1:nsites
-        v = @view expK[:,col]
-        checkerboard_mul!(v,neighbor_table,vals,Δτ)
+function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1;transposed::Bool=false,threshold::T1=0.0) where {T1<:AbstractFloat,T2<:Number}
+    
+    # to contain M[row,col]=val info for constructing sparse matrix
+    rows = Int[]
+    cols = Int[]
+    elms = T2[]
+    # size of matrix
+    N = maximum(neighbor_table)
+    # stores columns vector
+    colvector = zeros(T2,N)
+    # iterating over rows
+    for col in 1:N
+        # initialize column vector as unit vector
+        colvector     .= 0.0
+        colvector[col] = 1.0
+        # doing matrix vector multiply
+        if transposed==true
+            # multiply unit vector by Mᵀ matrix
+            checkerboard_transpose_mul!(colvector,neighbor_table,vals,Δτ)
+        else
+            # multiply unit vector by M matrix
+            checkerboard_mul!(colvector,neighbor_table,vals,Δτ)
+        end
+        # iterate of column vecto
+        for row in 1:N
+            # if nonzero
+            if abs(colvector[row])>threshold
+                # save matrix element
+                append!(rows,row)
+                append!(cols,col)
+                append!(elms,colvector[row])
+            end
+        end
     end
-    return expK
-end
-
-"""
-Construct transpose of full checkerboard matrix. For code 
-testing rather than use in the final Langevin simulation.
-"""
-function checkerboard_transpose_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1)::Matrix{T2} where {T1<:AbstractFloat,T2<:Number}
-
-    nsites = maximum(neighbor_table)
-    expK = Matrix{T2}(I,nsites,nsites)
-    for col in 1:nsites
-        v = @view expK[:,col]
-        checkerboard_transpose_mul!(v,neighbor_table,vals,Δτ)
-    end
-    return expK
+    return sparse(rows,cols,elms,N,N)
 end
 
 
@@ -67,7 +79,7 @@ function checkerboard_mul!(v::AbstractVector{T},neighbor_table::Matrix{Int},cosh
         i = neighbor_table[1,n]
         j = neighbor_table[2,n]
         # calculating new matrix elements
-        newvi = coshs[n] * v[i] + sinhs[n]       * v[j]
+        newvi = coshs[n] * v[i] +      sinhs[n]  * v[j]
         newvj = coshs[n] * v[j] + conj(sinhs[n]) * v[i]
         # update values
         v[i] = newvi
@@ -75,6 +87,7 @@ function checkerboard_mul!(v::AbstractVector{T},neighbor_table::Matrix{Int},cosh
     end
     return nothing
 end
+
 
 """
 In-place multiplication of vector with checkerboard matrix.
@@ -106,7 +119,7 @@ function checkerboard_transpose_mul!(v::AbstractVector{T},neighbor_table::Matrix
         i = neighbor_table[1,n]
         j = neighbor_table[2,n]
         # calculating new matrix elements
-        newvi = coshs[n] * v[i] + sinhs[n]       * v[j]
+        newvi = coshs[n] * v[i] +      sinhs[n]  * v[j]
         newvj = coshs[n] * v[j] + conj(sinhs[n]) * v[i]
         # update values
         v[i] = newvi
@@ -147,7 +160,6 @@ function checkerboard_order(groups::Vector{Int})::Vector{Int}
     return order
 end
 
-
 """
     function checkerboard_order!(order::Vector{Int},groups::Vector{Int})
 
@@ -176,7 +188,6 @@ function checkerboard_groups(neighbor_table::Matrix{Int})::Vector{Int}
     checkerboard_groups!(groups,neighbor_table)
     return groups
 end
-
 
 """
     checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::Int

@@ -53,6 +53,10 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # update phonon fields
     @. holstein.ϕ += dϕdt
 
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
+
     return iters
 end
 
@@ -94,6 +98,10 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     # update phonon fields
     @. holstein.ϕ += dϕdt
 
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
+
     return iters
 end
 
@@ -120,6 +128,10 @@ function update_rk!(holstein::HolsteinModel{T1,T2}, dSdϕ2::AbstractVector{T1}, 
     # final update of phonon field
     @. holstein.ϕ += 2*sqrt(2*Δt)*η + Δt/2*(dSdϕ1-dSdϕ2)
 
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
+
     return iters
 end
 
@@ -139,6 +151,10 @@ function update_euler!(holstein::HolsteinModel{T1,T2}, dSdϕ::AbstractVector{T1}
 
     # update phonon fields without fourier acceleration
     @. holstein.ϕ += sqrt(2.0*Δt)*η - Δt*dSdϕ
+
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
 
     return iters
 end
@@ -169,10 +185,6 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::Abst
     # because I am assuming a strictly local form of the electron-phonon interaction given by ∑(λᵢ⋅ϕᵢ⋅nᵢ).
     # If a longer-range electron-phonon interaction were added of the form ∑(λᵢⱼ⋅ϕᵢ⋅nⱼ), then this way of doing
     # things would no longer work, and a loop over each individual phonon field ϕᵢ(τ) would need to be added.
-
-    # first update the exponentiated interaction matrix so that it reflects the current
-    # phonon field configuration.
-    construct_expnΔτV!(holstein)
 
     # intialize random vector g.
     randn!(g)

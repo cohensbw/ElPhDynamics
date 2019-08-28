@@ -171,7 +171,7 @@ function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1
             # get a view into Q matrix for current lattice site
             Qi = view_by_site(Q,site,nsites)
             # define Q matrix just for current site
-            construct_Qi!(Qi,holstein.ω[site],Δτ,mass,Δt)
+            construct_Qi!(Qi,holstein.ω[site],holstein.λ[site],holstein.μ[site],Δτ,mass,Δt)
         end
     end
     return nothing
@@ -182,17 +182,17 @@ end
 Calculates acceleration matrix for specified phonon frequency `ω`, discretization `Δτ` and `mass`.
 Obeys the FFTW convention for the ordering of the momentum values.
 """
-function construct_Qi!(Qi::AbstractVector{T},ω::T,Δτ::T,mass::T,Δt::T) where {T<:AbstractFloat}
+function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,mass::T,Δt::T) where {T<:AbstractFloat}
 
     Lτ = length(Qi)
     k = 0 # momentum value
     for i in 1:div(Lτ,2)+1
         k = i-1 # converting index to momentum using FFTW convention
-        Qi[i] = element_Qi(k,ω,Δτ,mass,Lτ,Δt)/Lτ
+        Qi[i] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
     end
     for i in div(Lτ,2)+2:Lτ
         k = i-Lτ-1 # converting index to momentum using FFTW convention
-        Qi[i] = element_Qi(k,ω,Δτ,mass,Lτ,Δt)/Lτ
+        Qi[i] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
     end
     return nothing
 end
@@ -201,9 +201,10 @@ end
 """
 Calculates a specified matrix element of the acceleration matrix for a given momentum k.
 """
-function element_Qi(k::Int,ω::T,Δτ::T,mass::T,Lτ::Int,Δt::T)::T where {T<:AbstractFloat}
+function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,mass::T,Lτ::Int,Δt::T)::T where {T<:AbstractFloat}
 
-    return Δt*(mass*mass + Δτ*ω*ω + 4.0/Δτ)/(mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ )
+    val = Δt*(mass*mass + Δτ*ω*ω + 4.0/Δτ)/(mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ )
+    return val
 end
 
 end

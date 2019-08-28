@@ -90,13 +90,13 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
     expnΔτV    = holstein.expnΔτV::Vector{T2}
     yτ′        = holstein.yτ′::Vector{T2}
     Lτ         = holstein.Lτ::Int
-    nsites     = holstein.lattice.nsites::Int
+    nsites     = holstein.nsites::Int
     τp1        = 1
     offset_τ   = 1
     offset_τp1 = 1
 
     # iterate over imaginary time axis
-    @simd for τ in 1:Lτ
+    for τ in 1:Lτ
 
         # get the τ+1 time slice account for periodic boundary conditions
         τp1 = τ%Lτ+1
@@ -117,12 +117,12 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
 
         if τ<Lτ
             # y(τ) = v(τ) - B(τ+1)⋅v(τ+1)
-            @simd for i in 1:nsites
+            for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] - expnΔτV[i+offset_τp1] * yτ′[i]
             end
         else
             # y(τ) = v(τ) + B(τ+1)⋅v(τ+1)
-            @simd for i in 1:nsites
+            for i in 1:nsites
                 y[i+offset_τ] = v[i+offset_τ] + expnΔτV[i+offset_τp1] * yτ′[i]
             end
         end
@@ -155,7 +155,7 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstra
     expnΔτV    = holstein.expnΔτV::Vector{T2}
     yτ′        = holstein.yτ′::Vector{T2}
     Lτ         = holstein.Lτ::Int
-    nsites     = holstein.lattice.nsites::Int
+    nsites     = holstein.nsites::Int
     τm1        = 1
     offset_τ   = 1
     offset_τm1 = 1

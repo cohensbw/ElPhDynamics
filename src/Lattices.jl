@@ -26,9 +26,6 @@ struct Lattice{T<:AbstractFloat}
     "Dimensions of lattice in vector form: [L1,L2,L3]"
     dims::Vector{Int}
 
-    "Number of unit cells in lattice."
-    ncells::Int
-
     "Number of dimensions lattice lives in."
     ndim::Int
 
@@ -37,6 +34,9 @@ struct Lattice{T<:AbstractFloat}
 
     "Number of sites in lattice."
     nsites::Int
+
+    "Number of unit cells in lattice."
+    ncells::Int
 
     "Location of each unit cell in lattice."
     cell_loc::Matrix{Int}
@@ -123,7 +123,7 @@ struct Lattice{T<:AbstractFloat}
             end
         end
 
-        return new{T}(L1,L2,L3,dims,ncells,ndim,norbits,nsites,cell_loc,positions,kpoints,site_to_orbit,site_to_cell)
+        return new{T}(L1,L2,L3,dims,ndim,norbits,nsites,ncells,cell_loc,positions,kpoints,site_to_orbit,site_to_cell)
     end
 
 end
@@ -257,9 +257,9 @@ function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
     displacement = zeros(Int,3)
     
     # iterating over all possible unit cell displacements
-    for l3 in 1:L3
-        for l2 in 1:L2
-            for l1 in 1:L1
+    for l3 in 0:L3-1
+        for l2 in 0:L2-1
+            for l1 in 0:L1-1
                 # iterating over all possible combinations of orbitals
                 for orbit1 in 1:norbits
                     for orbit2 in 1:norbits
@@ -276,8 +276,8 @@ function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
                             # getting second site
                             site2 = site_to_site(lattice,site1,displacement,orbit2)
                             # recording pairs of sites
-                            sets[1,setcount,orbit2,orbit1,l1,l2,l3] = site1
-                            sets[2,setcount,orbit2,orbit1,l1,l2,l3] = site2
+                            sets[1,setcount,orbit2,orbit1,l1+1,l2+1,l3+1] = site1
+                            sets[2,setcount,orbit2,orbit1,l1+1,l2+1,l3+1] = site2
                         end
                     end
                 end
