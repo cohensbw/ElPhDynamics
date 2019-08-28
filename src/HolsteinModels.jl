@@ -224,7 +224,9 @@ end
 
 function Base.show(io::IO, holstein::HolsteinModel)
 
-    printstyled( "HolsteinModel{" , typeof(holstein.ω[1]) , "," , typeof(holstein.tij[1]) , "}\n" ; bold=true , color=:cyan )
+    type1 = typeof(holstein.ω).parameters[1]
+    type2 = typeof(holstein.tij).parameters[1]
+    printstyled( "HolsteinModel{" , type1 , "," , type2 , "}\n" ; bold=true , color=:cyan )
     print('\n')
     println("•β = ",holstein.β)
     println("•Δτ = ",holstein.Δτ)
