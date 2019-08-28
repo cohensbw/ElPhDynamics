@@ -7,7 +7,6 @@ using UnsafeArrays
 using Langevin.Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
-export view_by_site!, view_by_τ!
 
 
 # overload `eltype` from Base
@@ -24,7 +23,7 @@ end
 
 
 # overloading `size` from Base
-function size(holstein::HolsteinModel{T1,T2})::Typle{Int,Int} where {T1<:AbstractFloat,T2<:Number}
+function size(holstein::HolsteinModel{T1,T2})::Tuple{Int,Int} where {T1<:AbstractFloat,T2<:Number}
 
     return (holstein.nindices, holstein.nindices)
 end

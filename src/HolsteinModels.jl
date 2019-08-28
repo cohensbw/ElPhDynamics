@@ -386,7 +386,7 @@ function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Number, sgn::In
     nnewneighbors = div(holstein.lattice.nsites,holstein.lattice.norbits)
 
     # modifying holsteinmodel.sign_ωij array
-    append!( holsteinmodel.sign_ωij , fill(Int,sgn,nnewneighbors) )
+    append!( holstein.sign_ωij , fill(Int,sgn,nnewneighbors) )
 
     return nothing
 end
