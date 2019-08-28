@@ -7,7 +7,7 @@ using UnsafeArrays
 using Langevin.Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
-export view_by_site!, view_by_τ!
+export mulM_alt!, mulMᵀ_alt!
 
 
 # overload `eltype` from Base
@@ -24,7 +24,7 @@ end
 
 
 # overloading `size` from Base
-function size(holstein::HolsteinModel{T1,T2})::Typle{Int,Int} where {T1<:AbstractFloat,T2<:Number}
+function size(holstein::HolsteinModel{T1,T2})::Tuple{Int,Int} where {T1<:AbstractFloat,T2<:Number}
 
     return (holstein.nindices, holstein.nindices)
 end
@@ -128,6 +128,119 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
         end
     end
 
+    return nothing
+end
+
+
+@inline function v_idx(holstein, τ, i):: Int
+#    return (τ-1)*holstein.nsites + i
+    return (i-1)*holstein.Lτ + τ
+end
+
+function checkerboard_mul_alt!(y, holstein)
+    @fastmath @inbounds for n in 1:length(holstein.tij)
+        Lτ = holstein.Lτ
+        c = holstein.coshtij[n]
+        s = holstein.sinhtij[n]
+        i = holstein.neighbor_table_tij[1, n]
+        j = holstein.neighbor_table_tij[2, n]
+
+        @simd for τ in 1:Lτ
+            idx_i = v_idx(holstein, τ, i)
+            idx_j = v_idx(holstein, τ, j)
+
+            t1 = y[idx_i]
+            t2 = y[idx_j]
+
+            y[idx_i] = c*t1 + s*t2
+            y[idx_j] = c*t2 + conj(s)*t1
+        end
+    end
+end
+
+function checkerboard_transpose_mul_alt!(y, holstein)
+    @fastmath @inbounds for n in length(holstein.tij):-1:1
+        Lτ = holstein.Lτ
+        c = holstein.coshtij[n]
+        s = holstein.sinhtij[n]
+        i = holstein.neighbor_table_tij[1, n]
+        j = holstein.neighbor_table_tij[2, n]
+
+        @simd for τ in 1:Lτ
+            idx_i = v_idx(holstein, τ, i)
+            idx_j = v_idx(holstein, τ, j)
+
+            t1 = y[idx_i]
+            t2 = y[idx_j]
+
+            y[idx_i] = c*t1 + s*t2
+            y[idx_j] = c*t2 + conj(s)*t1
+        end
+    end
+end
+
+function mulM_alt!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  where {T1<:AbstractFloat,T2<:Number}
+
+    ####################################
+    ## PERFORM MULTIPLICATION y = M⋅v ##
+    ####################################
+
+    # Notes:
+    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
+    # • y(τ) = [M⋅v](τ) = v(τ) + B(τ+1)⋅v(τ+1) for τ = Lτ
+    # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
+    # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
+    #   and as such is stored as a vector
+    # • exp{-Δτ⋅K} is given by the checkerboard approximation matrix.
+
+    copyto!(y, v)
+
+    checkerboard_mul_alt!(y, holstein)
+
+    @fastmath @inbounds for i in 1:holstein.nsites
+        idx_L = v_idx(holstein, holstein.Lτ, i)
+        idx_1 = v_idx(holstein, 1, i)
+        yL_temp = v[idx_L] + holstein.expnΔτV[idx_1] * y[idx_1]
+
+        for τ in 1:(holstein.Lτ-1)
+            idx_τ = v_idx(holstein, τ, i)
+            idx_τp = v_idx(holstein, τ+1, i)
+            y[idx_τ] = v[idx_τ] - holstein.expnΔτV[idx_τp] * y[idx_τp]
+        end
+        y[idx_L] = yL_temp
+    end
+end
+
+
+function mulMᵀ_alt!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  where {T1<:AbstractFloat,T2<:Number}
+
+    #####################################
+    ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
+    #####################################
+
+    # Notes:
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
+    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(τ-1)  for τ = 1
+    # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ exp{-Δτ⋅V[ϕ(τ)]}ᵀ 
+    # • exp{-Δτ⋅V[ϕ(τ)]} is the exponentiated interaction matrix and is diagonal,
+    #   and as such is stored as a vector
+    # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
+
+    @fastmath @inbounds for i in 1:holstein.nsites
+        for τ in 2:holstein.Lτ
+            idx_τm = v_idx(holstein, τ-1, i)
+            idx_τ = v_idx(holstein, τ, i)
+            y[idx_τ] = - conj(holstein.expnΔτV[idx_τ]) * v[idx_τm]
+        end
+
+        idx_L = v_idx(holstein, holstein.Lτ, i)
+        idx_1 = v_idx(holstein, 1, i)
+        y[idx_1] = conj(holstein.expnΔτV[idx_1]) * v[idx_1]
+    end
+
+    checkerboard_transpose_mul_alt!(y, holstein)
+
+    y .+= v
     return nothing
 end
 

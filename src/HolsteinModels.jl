@@ -224,7 +224,9 @@ end
 
 function Base.show(io::IO, holstein::HolsteinModel)
 
-    printstyled( "HolsteinModel{" , typeof(holstein.ω[1]) , "," , typeof(holstein.tij[1]) , "}\n" ; bold=true , color=:cyan )
+    type1 = typeof(holstein.ω).parameters[1]
+    type2 = typeof(holstein.tij).parameters[1]
+    printstyled( "HolsteinModel{" , type1 , "," , type2 , "}\n" ; bold=true , color=:cyan )
     print('\n')
     println("•β = ",holstein.β)
     println("•Δτ = ",holstein.Δτ)
@@ -386,7 +388,7 @@ function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Number, sgn::In
     nnewneighbors = div(holstein.lattice.nsites,holstein.lattice.norbits)
 
     # modifying holsteinmodel.sign_ωij array
-    append!( holsteinmodel.sign_ωij , fill(Int,sgn,nnewneighbors) )
+    append!( holstein.sign_ωij , fill(Int,sgn,nnewneighbors) )
 
     return nothing
 end
