@@ -1,7 +1,7 @@
 module InitializePhonons
 
 using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!
-using Langevin.HolsteinModels: view_by_site
+using Langevin.HolsteinModels: get_index
 
 export init_phonons_single_site!
 
@@ -50,8 +50,8 @@ function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
         if abs(ω)>0.0
             
             # constructing levy harmonic path for site along τ-axis
-            path = view_by_site(holstein.ϕ,site,nsites)
-            levy_path!(path::AbstractVector,ω,β,Δτ,Lτ)
+            path = @view holstein.ϕ[(site-1)*Lτ+1:site*Lτ]
+            levy_path!(path,ω,β,Δτ,Lτ)
         
             # if non-zero el-phonon coupling
             if abs(λ)>0.0

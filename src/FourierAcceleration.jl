@@ -3,7 +3,7 @@ module FourierAcceleration
 using FFTW
 
 using Langevin.HolsteinModels: HolsteinModel
-using Langevin.HolsteinModels: view_by_site, view_by_τ
+using Langevin.HolsteinModels: get_index
 
 export FourierAccelerator
 export update_Q!
@@ -85,13 +85,13 @@ function forward_fft!(ν::AbstractVector{Complex{T}},v::AbstractVector{T},fa::Fo
     for i in 1:fa.nsites
         # copying data associated with current site
         for τ in 1:fa.Lτ
-            fa.vi[τ] = v[(τ-1)*fa.nsites+i]
+            fa.vi[τ] = v[get_index(τ,i,fa.Lτ)]
         end
         # performing FFT
         fa.νi .= fa.pfft * fa.vi
         # copying result for current site into destination vector
         for τ in 1:fa.Lτ
-            ν[(τ-1)*fa.nsites+i] = fa.νi[τ]
+            ν[get_index(τ,i,fa.Lτ)] = fa.νi[τ]
         end
     end
     return nothing
@@ -106,13 +106,13 @@ function inverse_fft!(v::AbstractVector{T},ν::AbstractVector{Complex{T}},fa::Fo
     for i in 1:fa.nsites
         # copying data associated with current site
         for τ in 1:fa.Lτ
-            fa.νi[τ] = ν[(τ-1)*fa.nsites+i]
+            fa.νi[τ] = ν[get_index(τ,i,fa.Lτ)]
         end
         # performing iFFT
         fa.vi .= real.(fa.pifft * fa.νi)
         # copying result for current site into destination vector
         for τ in 1:fa.Lτ
-            v[(τ-1)*fa.nsites+i] = fa.vi[τ]
+            v[get_index(τ,i,fa.Lτ)] = fa.vi[τ]
         end
     end
     return nothing
@@ -164,14 +164,18 @@ function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1
 
     nsites = holstein.nsites::Int
     Δτ     = holstein.Δτ::T1
+    Lτ     = holstein.Lτ
+    ω      = holstein.ω
+    λ      = holstein.λ
+    μ      = holstein.μ
     # iterating over site in lattice
     for site in 1:nsites
         # if phonon frequncy on site falls withing specified range
-        if ω_min < holstein.ω[site] < ω_max
+        if ω_min < ω[site] < ω_max
             # get a view into Q matrix for current lattice site
-            Qi = view_by_site(Q,site,nsites)
+            Qi = @view Q[get_index(1,site,Lτ):get_index(Lτ,site,Lτ)]
             # define Q matrix just for current site
-            construct_Qi!(Qi,holstein.ω[site],holstein.λ[site],holstein.μ[site],Δτ,mass,Δt)
+            construct_Qi!( Qi , ω[site] , λ[site] , μ[site] , Δτ , mass , Δt )
         end
     end
     return nothing

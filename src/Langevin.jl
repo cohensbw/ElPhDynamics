@@ -6,9 +6,6 @@ using Langevin.Geometries
 include("Lattices.jl")
 using Langevin.Lattices
 
-# include("QuantumLattices.jl")
-# using Langevin.QuantumLattices
-
 include("Checkerboard.jl")
 using Langevin.Checkerboard
 

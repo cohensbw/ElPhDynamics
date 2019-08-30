@@ -3,7 +3,7 @@ module LangevinDynamics
 using IterativeSolvers
 using Random
 using LinearAlgebra: mul!
-using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdϕ!
+using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdϕ!, get_index
 using Langevin.PhononAction: calc_dSbosedϕ!
 using Langevin.FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
 
@@ -205,11 +205,20 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::Abst
 
     # ∂S/∂ϕᵢ(τ) = -2gᵀ⋅∂M/∂ϕᵢ(τ)⋅M⁻¹g
     @. g *= -2.0 * dSdϕ
-    circshift!( dSdϕ , g , holstein.nsites )
-    # In the line above there is a subtle detail that is addressed.
+    # iterate over sites
+    for site in 1:holstein.nsites
+        # iterate over time slices
+        for τ in 1:holstein.Lτ
+            idx_τ   = get_index(τ,               site, holstein.Lτ)
+            idx_τp1 = get_index(τ%holstein.Lτ+1, site, holstein.Lτ)
+            # shifting values one time slice forward
+            dSdϕ[idx_τp1] = g[idx_τ]
+        end
+    end
+    # In the lines of code above there is a subtle detail that is addressed.
     # After doing the element-wise multiplication, the expectation value for the partial
-    # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.
-    # Therefore, all the values need to be circularly shifted nsites in the array.
+    # derivatives corresponding to a τ time slice live in the array indices corresponding to τ-1.
+    # Therefore, the values need to be shifted one time slice forward.
 
     # ∂S/∂ϕᵢ(τ) = ∂Sbose/∂ϕᵢ(τ) - 2gᵀ⋅[∂M/∂ϕᵢ(τ)]⋅M⁻¹g ==> All Done!
     calc_dSbosedϕ!( dSdϕ , holstein )

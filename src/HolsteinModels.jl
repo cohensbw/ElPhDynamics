@@ -10,6 +10,7 @@ using Langevin.Checkerboard: checkerboard_order, checkerboard_groups
 export HolsteinModel
 export assign_μ!, assign_ω!, assign_λ!
 export assign_tij!, assign_ωij!
+export get_index, get_site, get_τ
 export setup_checkerboard!, construct_expnΔτV!
 
 mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Complex{Float32},Complex{Float64}} }
@@ -124,12 +125,6 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     "A vector of length `ninidces` to temporarily store data."
     y′::Vector{T2}
 
-    "A vector of length `nsites` to temporarily store the data for a single time slice."
-    yτ′::Vector{T2}
-
-    "A vector of length `Lτ` to temporarily store the data for a single site."
-    yi′::Vector{T2}
-
     "Stores state vectors for Conjugate Gradient algorithm so as to avoid
     extra memory allocations."
     cg_state_vars::CGStateVariables{T2,Vector{T2}}
@@ -192,9 +187,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         sign_ωij = Vector{Int}(undef,0)
 
         # temporary vectors
-        y′   = zeros(T,nindices)
-        yτ′  = zeros(T,nsites)
-        yi′  = zeros(T,Lτ)
+        y′ = zeros(T,nindices)
 
         # constructing holstein model
         if is_complex
@@ -204,7 +197,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
 
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                              ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, yτ′, yi′, cg_state_vars)
+                              ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, cg_state_vars)
         else
 
             # conjugate gradient state variables
@@ -212,7 +205,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
 
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                     ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, yτ′, yi′, cg_state_vars)
+                     ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, cg_state_vars)
         end
     end
 
@@ -397,6 +390,24 @@ end
 ## MORE FUNCTIONS ASSOCIATED WITH HOLSTEINMODEL TYPE ##
 #######################################################
 
+# maps (τ,site) ==> index in vector
+@inline function get_index(τ::Int, site::Int, Lτ::Int)::Int
+
+    return (site-1)*Lτ + τ
+end
+
+# maps index in vector ==> site in lattice
+@inline function get_site(index::Int, Lτ::Int)::Int
+
+    return div(index-1,Lτ) + 1
+end
+
+# maps index in vector ==> τ imaginary time slice
+@inline function get_τ(index::Int, Lτ::Int)::Int
+
+    return (index-1)%Lτ + 1
+end
+
 """
     function setup_checkerboard!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
@@ -446,16 +457,16 @@ function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:Abstrac
     Δτ       = holstein.Δτ::T1
     Lτ       = holstein.Lτ::Int
     nsites   = holstein.nsites::Int
-    offset_τ = 0
+    idx      = 0
 
     # iterating over time slices
-    for τ in 1:Lτ
-        # calculating the indexing offset associated with τ time slice
-        offset_τ = (τ-1)*nsites
+    for site in 1:nsites
         # iterating over sites in lattice
-        for i in 1:nsites
+        for τ in 1:Lτ
+            # getting index in vector
+            idx = get_index(τ,site,Lτ)
             # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅ϕᵢ(τ)-μᵢ)}
-            expnΔτV[offset_τ+i] = exp( -Δτ * ( λ[i] * ϕ[offset_τ+i] - μ[i] ) )
+            expnΔτV[idx] = exp( -Δτ * ( λ[site] * ϕ[idx] - μ[site] ) )
         end
     end
 
