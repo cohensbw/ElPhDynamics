@@ -345,7 +345,7 @@ for param in [ :tij , :ωij ]
             end
 
             # getting new neighbors
-            newneighbors = holstein.trans_equiv_sets[:,:,orbit2,orbit1,displacement[1],displacement[2],displacement[3]]
+            newneighbors = holstein.trans_equiv_sets[:,:,displacement[1],displacement[2],displacement[3],orbit2,orbit1]
 
             # getting number of new neighbors
             nnewneighbors = size(newneighbors,2)

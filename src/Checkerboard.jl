@@ -91,6 +91,8 @@ function checkerboard_mul!(y::AbstractVector{T}, neighbor_table_tij::Matrix{Int}
             y[idx_j] = c*t2 + conj(s)*t1
         end
     end
+
+    return nothing
 end
 
 
@@ -137,6 +139,8 @@ function checkerboard_transpose_mul!(y::AbstractVector{T}, neighbor_table_tij::M
             y[idx_j] = c*t2 + conj(s)*t1
         end
     end
+
+    return nothing
 end
 
 

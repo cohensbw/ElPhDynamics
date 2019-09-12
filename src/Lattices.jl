@@ -226,7 +226,7 @@ end
 """
 Constructs translationally equivalent sets of sites in lattice.
 The translationally equivalent sets are stored in 7-dimensional array
-of size ( 2 x numorbits x norbits x norbits x L1 x L2 x L3 ) where
+of size ( 2 x numorbits x L1 x L2 x L3 x norbits x norbits ) where
 numorbits is the number of sites of a given orbital type in lattice
 i.e. numorbits=nsites/norbits.
 """
@@ -245,7 +245,7 @@ function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
     numorbits = div(nsites,norbits)
     
     # declaring 7 dimensional array to contain translationally equivalent pairs of sites
-    sets = zeros(Int, 2, numorbits, norbits, norbits, L1, L2, L3)
+    sets = zeros(Int, 2, numorbits, L1, L2, L3, norbits, norbits)
     
     # counter for tracking numbers of paired sites in translationally equivalent set
     setcount = 0
@@ -256,13 +256,13 @@ function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
     # to store displacement in unit cells
     displacement = zeros(Int,3)
     
-    # iterating over all possible unit cell displacements
-    for l3 in 0:L3-1
-        for l2 in 0:L2-1
-            for l1 in 0:L1-1
-                # iterating over all possible combinations of orbitals
-                for orbit1 in 1:norbits
-                    for orbit2 in 1:norbits
+    # iterating over all possible combinations of orbitals
+    for orbit1 in 1:norbits
+        for orbit2 in 1:norbits
+            # iterating over all possible unit cell displacements
+            for l3 in 0:L3-1
+                for l2 in 0:L2-1
+                    for l1 in 0:L1-1
                         # reseting counter for tracking numbers of paired sites in set
                         setcount = 0
                         # iterating over sites in lattice of orbital type orbit1
@@ -273,11 +273,11 @@ function translationally_equivalent_sets(lattice::Lattice)::Array{Int,7}
                             displacement[1] = l1
                             displacement[2] = l2
                             displacement[3] = l3
-                            # getting second site
+                            # getting site2 based on displacement vector away from site1
                             site2 = site_to_site(lattice,site1,displacement,orbit2)
-                            # recording pairs of sites
-                            sets[1,setcount,orbit2,orbit1,l1+1,l2+1,l3+1] = site1
-                            sets[2,setcount,orbit2,orbit1,l1+1,l2+1,l3+1] = site2
+                            # recording pair of sites
+                            sets[1,setcount,l1+1,l2+1,l3+1,orbit2,orbit1] = site1
+                            sets[2,setcount,l1+1,l2+1,l3+1,orbit2,orbit1] = site2
                         end
                     end
                 end

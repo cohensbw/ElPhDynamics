@@ -25,7 +25,7 @@ end
 # overloading `size` from Base
 function size(holstein::HolsteinModel{T1,T2})::Tuple{Int,Int} where {T1<:AbstractFloat,T2<:Number}
 
-    return (holstein.nindices, holstein.nindices)
+    return holstein.nindices, holstein.nindices
 end
 
 function size(holstein::HolsteinModel{T1,T2},dim::Int)::Int where {T1<:AbstractFloat,T2<:Number}
@@ -66,7 +66,7 @@ function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstr
 end
 
 
-function mulM!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
     ####################################
     ## PERFORM MULTIPLICATION y = M⋅v ##
@@ -106,10 +106,12 @@ function mulM!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  wher
         # y(Lτ) = v(Lτ) + B(1)⋅v(1)
         y[idx_L] = yL_temp
     end
+
+    return nothing
 end
 
 
-function mulMᵀ!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
     #####################################
     ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
@@ -156,7 +158,7 @@ end
 """
 Performs the multiplication y = (dM/dϕ)⋅v
 """ 
-function muldMdϕ!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
 
     ########################################
     ## PERFORM MULTIPLICATION y = ∂M/∂ϕ⋅v ##
@@ -185,7 +187,7 @@ function muldMdϕ!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  
 
     # y(τ) = exp{-Δτ⋅K}⋅v(τ)
     checkerboard_mul!(y, holstein.neighbor_table_tij, holstein.coshtij, holstein.sinhtij, holstein.Lτ)
-
+    
     # iterating over sites in lattice
     @fastmath @inbounds for i in 1:holstein.nsites
 
@@ -206,6 +208,8 @@ function muldMdϕ!(y::Vector{T2},holstein::HolsteinModel{T1,T2},v::Vector{T2})  
         # y(Lτ) = -Δτ⋅λ⋅B(1)⋅v(1) for τ=1
         y[idx_L] = yL_temp
     end
+
+    return nothing
 end
 
 
