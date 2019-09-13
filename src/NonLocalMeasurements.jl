@@ -14,11 +14,11 @@ export initialize_nonlocal_measurements_file
 export write_nonlocal_measurements
 
 """
-Makes non-local measurements. Each type of measurement is made for all possible imaginary time seperations
-and in terms of unit cells, but for a single fixed pairing of orbital types.
-Measurements will be stored in rank 4 tensors where the indices correspond to
+Makes non-local measurements in real-space.
+Each type of measurement is made for all possible imaginary time seperations and displacement vectors.
+Measurements will be stored in arrays with 6 indices where the indices correspond to
 `measurement[ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1]`, where ΔLi is a displacement
- in unit cells in the direction of the i'th lattice vector.
+in unit cells in the direction of the i'th lattice vector.
 """
 function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}) where {T1<:AbstractFloat,T2<:Number}
     
@@ -32,12 +32,12 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
     # array containing sets of translationally equivalent pairs of sites in lattice
     sets = holstein.trans_equiv_sets
 
+    # getting the number of paired sites assoicated with each displacement vector
+    npairs = div(lattice.nsites,lattice.norbits)
+
     # number of measurements associated with given displacement vector
     # and time seperation 
-    normalization = div(lattice.nsites,lattice.norbits) * holstein.Lτ
-
-    # initialize all quantities being measured to zero to zero
-    greens .= 0.0
+    normalization = npairs * holstein.Lτ
 
     # iterate over time seperations
     for τ in 0:holstein.Lτ-1
@@ -50,7 +50,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                     for ΔL2 in 0:lattice.L2-1
                         for ΔL1 in 0:lattice.L1-1
                             # iterating over pairs of sites corresponding to current displacement vector
-                            for pair in 1:numorbits
+                            for pair in 1:npairs
 
                                 # getting current pair of sites associated with specified
                                 # displacement vector 
@@ -64,10 +64,10 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                     # defined as r=i-j (j==>i) and imaginary time 0⩽τ<β.
 
                                     # getting τ₂=τ₁+τ accounting for boundary conditions
-                                    τ₂ = (τ₁+τ-1)%Gr.Lτ+1
+                                    τ₂ = (τ₁+τ-1)%Gr1.β+1
 
                                     # getting β-τ
-                                    βmτ = Gr.Lτ-τ
+                                    βmτ = Gr1.β-τ
 
                                     # PRIMARY GREENS FUNCTION!
                                     # Gᵢⱼ(τ) = ⟨cᵢ(τ)⋅c⁺ⱼ(0)⟩ = ⟨T⋅cᵢ(τ+τ₁)⋅c⁺ⱼ(τ₁)⟩ for 0⩽τ<β.
@@ -75,40 +75,43 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                     Grτᵢⱼ1 = estimate_time_ordered(Gr1,i,j,τ,τ₁) 
                                     Grτᵢⱼ2 = estimate_time_ordered(Gr2,i,j,τ,τ₁)
 
-                                    # Gⱼᵢ(τ) = ⟨cⱼ(τ)⋅c⁺ᵢ(0)⟩ = ⟨T⋅cⱼ(τ+τ₁)⋅c⁺ᵢ(τ₁)⟩ for 0⩽τ<β.
-                                    # Getting two stochastic estimates.
-                                    Grτⱼᵢ1 = estimate_time_ordered(Gr1,j,i,τ,τ₁) 
-                                    Grτⱼᵢ2 = estimate_time_ordered(Gr2,j,i,τ,τ₁)
+                                    # # Gⱼᵢ(τ) = ⟨cⱼ(τ)⋅c⁺ᵢ(0)⟩ = ⟨T⋅cⱼ(τ+τ₁)⋅c⁺ᵢ(τ₁)⟩ for 0⩽τ<β.
+                                    # # Getting two stochastic estimates.
+                                    # Grτⱼᵢ1 = estimate_time_ordered(Gr1,j,i,τ,τ₁) 
+                                    # Grτⱼᵢ2 = estimate_time_ordered(Gr2,j,i,τ,τ₁)
 
-                                    # Gᵢⱼ(β-τ) = ⟨cᵢ(β-τ)⋅c⁺ⱼ(0)⟩ = ⟨T⋅cᵢ(β-τ+τ₁)⋅c⁺ⱼ(τ₁)⟩ for 0⩽τ<β.
-                                    # Getting two stochastic estimates.
-                                    Grβmτᵢⱼ1 = estimate_time_ordered(Gr1,i,j,βmτ,τ₁) 
-                                    Grβmτᵢⱼ2 = estimate_time_ordered(Gr2,i,j,βmτ,τ₁)
+                                    # # Gᵢⱼ(β-τ) = ⟨cᵢ(β-τ)⋅c⁺ⱼ(0)⟩ = ⟨T⋅cᵢ(β-τ+τ₁)⋅c⁺ⱼ(τ₁)⟩ for 0⩽τ<β.
+                                    # # Getting two stochastic estimates.
+                                    # Grβmτᵢⱼ1 = estimate_time_ordered(Gr1,i,j,βmτ,τ₁) 
+                                    # Grβmτᵢⱼ2 = estimate_time_ordered(Gr2,i,j,βmτ,τ₁)
 
-                                    # Gⱼᵢ(β-τ) = ⟨cⱼ(β-τ)⋅c⁺ᵢ(0)⟩ = ⟨T⋅cⱼ(β-τ+τ₁)⋅c⁺ᵢ(τ₁)⟩ for 0⩽τ<β.
-                                    # Getting two stochastic estimates.
-                                    Grβmτⱼᵢ1 = estimate_time_ordered(Gr1,j,i,βmτ,τ₁) 
-                                    Grβmτⱼᵢ2 = estimate_time_ordered(Gr2,j,i,βmτ,τ₁)
+                                    # # Gⱼᵢ(β-τ) = ⟨cⱼ(β-τ)⋅c⁺ᵢ(0)⟩ = ⟨T⋅cⱼ(β-τ+τ₁)⋅c⁺ᵢ(τ₁)⟩ for 0⩽τ<β.
+                                    # # Getting two stochastic estimates.
+                                    # Grβmτⱼᵢ1 = estimate_time_ordered(Gr1,j,i,βmτ,τ₁) 
+                                    # Grβmτⱼᵢ2 = estimate_time_ordered(Gr2,j,i,βmτ,τ₁)
 
-                                    # Gᵢᵢ(0) = ⟨cᵢ(0)⋅c⁺ᵢ(0)⟩ = ⟨cᵢ(τ+τ₁)⋅c⁺ᵢ(τ+τ₁)⟩ = ⟨cᵢ(τ₂)⋅c⁺ᵢ(τ₂)⟩
-                                    # Getting two stochastic estimates.
-                                    Gr0ᵢᵢ1 = estimate(Gr1,i,i,τ₂,τ₂)
-                                    Gr0ᵢᵢ2 = estimate(Gr2,i,i,τ₂,τ₂)
+                                    # # Gᵢᵢ(0) = ⟨cᵢ(0)⋅c⁺ᵢ(0)⟩ = ⟨cᵢ(τ+τ₁)⋅c⁺ᵢ(τ+τ₁)⟩ = ⟨cᵢ(τ₂)⋅c⁺ᵢ(τ₂)⟩
+                                    # # Getting two stochastic estimates.
+                                    # Gr0ᵢᵢ1 = estimate(Gr1,i,i,τ₂,τ₂)
+                                    # Gr0ᵢᵢ2 = estimate(Gr2,i,i,τ₂,τ₂)
                                     
-                                    # Gⱼⱼ(0) = ⟨cⱼ(0)⋅c⁺ⱼ(0)⟩ = ⟨cⱼ(τ₁)⋅c⁺ⱼ(τ₁)⟩.
-                                    # Getting two stochastic estimates.
-                                    Gr0ⱼⱼ1 = estimate(Gr1,j,j,τ₁,τ₁)
-                                    Gr0ⱼⱼ2 = estimate(Gr2,j,j,τ₁,τ₁)
+                                    # # Gⱼⱼ(0) = ⟨cⱼ(0)⋅c⁺ⱼ(0)⟩ = ⟨cⱼ(τ₁)⋅c⁺ⱼ(τ₁)⟩.
+                                    # # Getting two stochastic estimates.
+                                    # Gr0ⱼⱼ1 = estimate(Gr1,j,j,τ₁,τ₁)
+                                    # Gr0ⱼⱼ2 = estimate(Gr2,j,j,τ₁,τ₁)
 
                                     # measuring electron green's function
-                                    container["greens"][ ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1 ] += measure_greens( Grτᵢⱼ1 , Grτᵢⱼ2 )/normalization
-                                end
+                                    container["greens"][ ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1 ] += measure_greens( Grτᵢⱼ1 , Grτᵢⱼ2 )
                             end
                         end
                     end
                 end
             end
         end
+    end
+    # normalize the measurements
+    for key in keys(container)
+        container[key] ./= normalization
     end
 end
 
@@ -120,8 +123,8 @@ function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2
     container_kspace = Dict()
     # ierate over all measurements to be made
     for meas in ("greens",)
-        container_rspace[meas*"_r"] = zeros(T1,(lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits,holstein.Lτ))
-        container_rspace[meas*"_k"] = zeros(T1,(lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits,holstein.Lτ))
+        container_rspace[meas] = zeros(T1,(lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits,holstein.Lτ))
+        container_kspace[meas] = zeros(T1,(lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits,holstein.Lτ))
     end
     return container_rspace, container_kspace
 end
@@ -135,16 +138,17 @@ function reset_nonlocal_measurements!(container::Dict{String,Array{T,6}}) where 
 end
 
 
-function process_nonlocal_measurements!(container_R::Dict{String,Array{T,6}}, container_K::Dict{String,Array{T,6}}, sim_params::SimulationParameters{T}, ft_coeff::Array{Complex{T},6}) where {T<:AbstractFloat}
-
-    # first, normalize the position-space measurements by the number of measurements per bin
-    for key in keys(container_R)
-        container_R[key] ./= sim_params.bin_size
-    end
+function process_nonlocal_measurements!(container_rspace::Dict{String,Array{T,6}}, container_kspace::Dict{String,Array{T,6}}, sim_params::SimulationParameters{T}, ft_coeff::Array{Complex{T},6}) where {T<:AbstractFloat}
 
     # compute the fourier transform of the position-space measurements
-    for key in keys(container_R)
-        fourier_transform!(container_K[key], container_R[key], ft_coef)
+    for key in keys(container_kspace)
+        fourier_transform!(container_kspace[key], container_rspace[key], ft_coeff)
+    end
+
+    # normalize the values by the number of measurements per bin
+    for key in keys(container_rspace)
+        container_rspace[key] ./= sim_params.bin_size
+        container_kspace[key] ./= sim_params.bin_size
     end
 end
 
@@ -165,24 +169,24 @@ function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Arr
     # iterating over real space measurements
     for key in keys(container_rspace)
         # Intializing data file
-        open(filepath * key * ".out", "w") do file
+        open(filepath * key * "_r.out", "w") do file
             # writing file header
-            write(file, "tau", "\t", "orbit1", "\t", "orbit2", "\t", "dL1",  "\t", "dL2",  "\t", "dL3",  "\t", key, "\n")
+            write(file, "tau", "  ", "orbit1", "  ", "orbit2", "  ", "dL1",  "  ", "dL2",  "  ", "dL3",  "  ", key*"_r", "\n")
         end
     end
 
     # iterating over momentum-space measurements
     for key in keys(container_kspace)
         # Intializing data file
-        open(filepath * key* ".out", "w") do file
+        open(filepath * key * "_k.out", "w") do file
             # writing file header
-            write(file, "tau", "\t", "orbit1", "\t", "orbit2", "\t", "dL1",  "\t", "dL2",  "\t", "dL3",  "\t", key, "\n")
+            write(file, "tau", "  ", "orbit1", "  ", "orbit2", "  ", "dL1",  "  ", "dL2",  "  ", "dL3",  "  ", key*"_k", "\n")
         end
     end
 end
 
 
-function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_params::SimulationParameters{T})  where {T<:AbstractFloat}
+function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_params::SimulationParameters{T}; real_space::Bool)  where {T<:AbstractFloat}
 
     # getting array of measurements
     measurements::Vector{String} = collect(keys(container))
@@ -193,10 +197,21 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
     # measurement value to be written to file
     meas::T = 0.0
 
+    # string to hold filename
+    filename = ""
+
     # iterate over measurements
     for measurement in measurements
+        # constructing filename that measurements should be written to.
+        # filename is adjusted according to whether the measurement is being
+        # given in real-space or momentum-space.
+        if real_space
+            filename = sim_params.filepath * sim_params.foldername * measurement * "_r.out"
+        else
+            filename = sim_params.filepath * sim_params.foldername * measurement * "_k.out"
+        end
         # opening file correspond to current measurement
-        open( sim_params.filepath * sim_params.foldername * measurement * ".out" , "a" ) do file
+        open( filename , "a" ) do file
             # iterating over time slice
             for τ in 0:Lτ-1
                 # iterating over unique orbital pairs
@@ -211,7 +226,7 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
                                     meas  = container[measurement][ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1,τ+1]
                                     meas += container[measurement][ΔL1+1,ΔL2+1,ΔL3+1,orbit1,orbit2,τ+1]
                                     meas /= 2.0
-                                    write(file, @sprintf( "%d\t%d\t%d\t%d\t%d\t%d\t%.6f\n" , τ, orbit1, orbit2, ΔL1, ΔL2, ΔL3, meas ) )
+                                    write(file, @sprintf( "%d  %d  %d  %d  %d  %d  %.6f\n" , τ, orbit1, orbit2, ΔL1, ΔL2, ΔL3, meas ) )
                                 end
                             end
                         end

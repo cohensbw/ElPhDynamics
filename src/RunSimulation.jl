@@ -62,6 +62,9 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # time take on making measurements and write them to file
     measurement_time = 0.0
 
+    # time taken writing data to file
+    write_time = 0.0
+
     ########################
     ## RUNNING SIMULATION ##
     ########################
@@ -85,7 +88,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
         # reset values in measurement containers
         reset_nonlocal_measurements!(container_rspace)
-        reset_nonlocal_measurements!(container_rspace)
+        reset_nonlocal_measurements!(container_kspace)
 
         # iterating over the size of each bin i.e. the number of measurements made per bin
         for n in 1:sim_params.bin_size
@@ -114,14 +117,19 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, ft_coeff)
 
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
-        write_nonlocal_measurements(container_rspace,sim_params)
-        write_nonlocal_measurements(container_kspace,sim_params)
+        write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,real_space=true)
+        write_time += @elapsed write_nonlocal_measurements(container_kspace,sim_params,real_space=false)
     end
 
     # calculating the average number of iterations needed to solve linear system
     iters /= (sim_params.nsteps+sim_params.burnin)
 
-    return simulation_time, measurement_time, iters
+    # report times in units of minutes
+    simulation_time  /= 60.0
+    measurement_time /= 60.0
+    write_time /= 60.0
+
+    return simulation_time, measurement_time, write_time, iters
 end
 
 end

@@ -30,9 +30,12 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
 
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ2, g, Mᵀg, M⁻¹g, holstein, tol)
+
+    # take the difference in the partial derivatives before and after
+    # the tentative euler update
     @. dSdϕ2 = ( dSdϕ1 - dSdϕ2 ) / 2.0
 
-    # fourier transform dSdϕ
+    # fourier transform dSdϕ2
     forward_fft!( fft_dSdϕ , dSdϕ2 , fa)
 
     # accelerate fft_dSdϕ ==> Q⋅fft_dSdϕ
@@ -41,7 +44,7 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # fourier transform η
     forward_fft!( fft_η , η , fa )
 
-    # accelerate fft_η ==> √(2Q)⋅fft_η
+    # accelerate noise vector fft_η ==> √(2Q)⋅fft_η
     accelerate_noise!( fft_η , fa )
 
     # calculate fft_dϕdt

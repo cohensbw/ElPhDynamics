@@ -13,10 +13,10 @@ function calc_fourier_transform_coefficients(lattice::Lattice{T})::Array{Complex
     N = lattice.ncells
 
     # size of finite lattice
-    L1 = lattice.L1::Int
-    L2 = lattice.L2::Int
-    L3 = lattice.L3::Int
-    sqrtV = sqrt(L1*L2*L3)
+    L1  = lattice.L1::Int
+    L2  = lattice.L2::Int
+    L3  = lattice.L3::Int
+    LLL = L1*L2*L3
 
     # array to hold fourier transform coefficients
     coeff = zeros(Complex{T},(L1,L2,L3,L1,L2,L3))
@@ -28,7 +28,7 @@ function calc_fourier_transform_coefficients(lattice::Lattice{T})::Array{Complex
                 for r3 in 0:L3-1
                     for r2 in 0:L2-1
                         for r1 in 0:L1-1
-                            coeff[k1+1,k2+1,k3+1,r1+1,r2+1,r3+1] = exp(im*2*π*(r1*k1/L1+r2*k2/L2+r3*k3/L3))/sqrtV
+                            coeff[r1+1,r2+1,r3+1,k1+1,k2+1,k3+1] = exp(im*2*π*(r1*k1/L1+r2*k2/L2+r3*k3/L3))
                         end
                     end
                 end
@@ -44,16 +44,16 @@ Calculates the fourier transform of a measurement.
 The assumed ordering of the indices and size of the arrays in both position space
 and momentum space is [L1,L2,L3,norbits,norbits,Lτ].
 """
-function fourier_transform!(measK::Array{T,6},measR::Array{T,6},coeff::Array{Complex{T}}) where {T<:AbstractFloat}
+function fourier_transform!(meas_kspace::Array{T,6},meas_rspace::Array{T,6},coeff::Array{Complex{T}}) where {T<:AbstractFloat}
 
-    L1 = size(measR,1)
-    L2 = size(measR,2)
-    L3 = size(measR,3)
-    norbits = size(measR,5)
-    Lτ = size(measR,6)
+    L1      = size(meas_rspace,1)
+    L2      = size(meas_rspace,2)
+    L3      = size(meas_rspace,3)
+    norbits = size(meas_rspace,5)
+    Lτ      = size(meas_rspace,6)
     temp::Complex{T} = 0.0
     # iterating oer imaginary time slices
-    for τ in 1:Lτ
+    for τ in 0:Lτ-1
         # iterating over orbital combiniations
         for orbit1 in 1:norbits
             for orbit2 in 1:norbits
@@ -62,24 +62,24 @@ function fourier_transform!(measK::Array{T,6},measR::Array{T,6},coeff::Array{Com
                     for k2 in 0:L2-1
                         for k1 in 0:L1-1
                             # reseting temporary value
-                            temp = 0.0
+                            temp = 0.0+0.0*im
                             # iterating over displacement vectors
                             for r3 in 0:L3-1
                                 for r2 in 0:L2-1
                                     for r1 in 0:L1-1
-                                        temp += coeff[k1+1,k2+1,k3+1,r1+1,r2+1,r3+1] * measR[r1+1,r2+1,r3+1,orbit2,orbit1,τ]
+                                        temp += coeff[r1+1,r2+1,r3+1,k1+1,k2+1,k3+1] * meas_rspace[r1+1,r2+1,r3+1,orbit2,orbit1,τ+1]
                                     end
                                 end
                             end
                             # recording fourier transform of measurement for current k-point
-                            measK[k1+1,k2+1,k3+1,orbit2,orbit1,τ] = real(temp)
+                            meas_kspace[k1+1,k2+1,k3+1,orbit2,orbit1,τ+1] = real(temp)
                         end
                     end
                 end
             end
         end
     end
-    return nothing
+    meas_kspace
 end
 
 end
