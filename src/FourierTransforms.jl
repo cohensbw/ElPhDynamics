@@ -1,6 +1,6 @@
 module FourierTransforms
 
-using Langevin.Lattices: Lattice
+using ..Lattices: Lattice
 
 export calc_fourier_transform_coefficients, fourier_transform!
 
@@ -44,42 +44,38 @@ Calculates the fourier transform of a measurement.
 The assumed ordering of the indices and size of the arrays in both position space
 and momentum space is [L1,L2,L3,norbits,norbits,Lτ].
 """
-function fourier_transform!(meas_kspace::Array{T,6},meas_rspace::Array{T,6},coeff::Array{Complex{T}}) where {T<:AbstractFloat}
+function fourier_transform!(meas_kspace::Array{Complex{T},6},meas_rspace::Array{T,6},coeff::Array{Complex{T}}) where {T<:AbstractFloat}
 
-    L1      = size(meas_rspace,1)
-    L2      = size(meas_rspace,2)
-    L3      = size(meas_rspace,3)
+    Lτ      = size(meas_rspace,1)
+    L1      = size(meas_rspace,2)
+    L2      = size(meas_rspace,3)
+    L3      = size(meas_rspace,4)
     norbits = size(meas_rspace,5)
-    Lτ      = size(meas_rspace,6)
-    temp::Complex{T} = 0.0
-    # iterating oer imaginary time slices
-    for τ in 0:Lτ-1
-        # iterating over orbital combiniations
-        for orbit1 in 1:norbits
-            for orbit2 in 1:norbits
-                # iterating over k-points
-                for k3 in 0:L3-1
-                    for k2 in 0:L2-1
-                        for k1 in 0:L1-1
-                            # reseting temporary value
-                            temp = 0.0+0.0*im
-                            # iterating over displacement vectors
-                            for r3 in 0:L3-1
-                                for r2 in 0:L2-1
-                                    for r1 in 0:L1-1
-                                        temp += coeff[r1+1,r2+1,r3+1,k1+1,k2+1,k3+1] * meas_rspace[r1+1,r2+1,r3+1,orbit2,orbit1,τ+1]
+    # iterating over orbital combiniations
+    for orbit1 in 1:norbits
+        for orbit2 in 1:norbits
+            # iterating over k-points
+            for k3 in 0:L3-1
+                for k2 in 0:L2-1
+                    for k1 in 0:L1-1
+                        # iterating over displacement vectors
+                        for r3 in 0:L3-1
+                            for r2 in 0:L2-1
+                                for r1 in 0:L1-1
+                                    # iterating oer imaginary time slices
+                                    for τ in 0:Lτ-1
+                                        # doing fourier transform
+                                        meas_kspace[τ+1,k1+1,k2+1,k3+1,orbit2,orbit1] +=
+                                            coeff[r1+1,r2+1,r3+1,k1+1,k2+1,k3+1] * meas_rspace[τ+1,r1+1,r2+1,r3+1,orbit2,orbit1]
                                     end
                                 end
                             end
-                            # recording fourier transform of measurement for current k-point
-                            meas_kspace[k1+1,k2+1,k3+1,orbit2,orbit1,τ+1] = real(temp)
                         end
                     end
                 end
             end
         end
     end
-    meas_kspace
 end
 
 end

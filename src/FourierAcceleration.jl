@@ -2,8 +2,8 @@ module FourierAcceleration
 
 using FFTW
 
-using Langevin.HolsteinModels: HolsteinModel
-using Langevin.HolsteinModels: get_index
+using ..HolsteinModels: HolsteinModel
+using ..HolsteinModels: get_index
 
 export FourierAccelerator
 export update_Q!

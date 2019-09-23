@@ -1,6 +1,6 @@
 module PhononAction
 
-using Langevin.HolsteinModels: HolsteinModel, get_index
+using ..HolsteinModels: HolsteinModel, get_index
 
 export calc_dSbosedϕ!
 

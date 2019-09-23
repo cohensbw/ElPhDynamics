@@ -4,11 +4,11 @@ using IterativeSolvers
 using Statistics
 using Random
 
-using Langevin.HolsteinModels: HolsteinModel, mulMᵀ!
-using Langevin.HolsteinModels: get_index, get_site, get_τ
+using ..HolsteinModels: HolsteinModel, mulMᵀ!
+using ..HolsteinModels: get_index, get_site, get_τ
 
 export EstimateGreensFunction
-export update!, estimate, estimate_time_ordered
+export update!, estimate
 
 ###########################################
 ## CODE FOR CALCULATING GREEN'S FUNCTION ##
@@ -113,23 +113,6 @@ function estimate(Gr::EstimateGreensFunction{T},i::Int,j::Int,τ₂::Int,τ₁::
     n = get_index(τ₂,i,Gr.β)
     m = get_index(τ₁,j,Gr.β)
     return Gr.g[n] * Gr.M⁻¹g[m]
-end
-
-"""
-Returns stochastic estmate of time-ordered Green's function
-⟨T⋅cᵢ(τ₁+τ)⋅c⁺ⱼ(τ₁)⟩=⟨cᵢ(τ)⋅c⁺ⱼ(0)⟩=Gᵢⱼ(τ) where 1⩽τ₁⩽β, 0⩽τ<β and 1⩽(i,j)⩽N.
-"""
-function estimate_time_ordered(Gr::EstimateGreensFunction{T},i::Int,j::Int,τ::Int,τ₁::Int)::T where {T<:AbstractFloat}
-    
-    # getting second time slice accounting for boundary conditions
-    τ₂ = (τ₁+τ-1)%Gr.β+1
-    # estimating Green's function
-    g =  estimate(Gr, i, j, τ₂, τ₁)
-    # time ordering the Green's function
-    if τ₂<τ₁
-        g *= -1.0
-    end
-    return g
 end
 
 end

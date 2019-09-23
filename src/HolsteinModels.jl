@@ -3,9 +3,9 @@ module HolsteinModels
 using Statistics
 using IterativeSolvers
 
-using Langevin.Geometries: Geometry
-using Langevin.Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
-using Langevin.Checkerboard: checkerboard_order, checkerboard_groups
+using ..Geometries: Geometry
+using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
+using ..Checkerboard: checkerboard_order, checkerboard_groups
 
 export HolsteinModel
 export assign_μ!, assign_ω!, assign_λ!

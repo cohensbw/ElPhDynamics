@@ -3,8 +3,7 @@ import LinearAlgebra: mul!
 
 using LinearAlgebra
 using SparseArrays
-using UnsafeArrays
-using Langevin.Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
+using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
 

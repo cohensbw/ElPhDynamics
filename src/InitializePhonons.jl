@@ -1,7 +1,7 @@
 module InitializePhonons
 
-using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!
-using Langevin.HolsteinModels: get_index
+using ..HolsteinModels: HolsteinModel, construct_expnΔτV!
+using ..HolsteinModels: get_index
 
 export init_phonons_single_site!
 

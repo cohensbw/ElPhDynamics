@@ -3,9 +3,9 @@ module LangevinDynamics
 using IterativeSolvers
 using Random
 using LinearAlgebra: mul!
-using Langevin.HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdϕ!, get_index
-using Langevin.PhononAction: calc_dSbosedϕ!
-using Langevin.FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
+using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdϕ!, get_index
+using ..PhononAction: calc_dSbosedϕ!
+using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
 
 export update_euler!, update_rk!, update_euler_fa!, update_rk_fa!
 
