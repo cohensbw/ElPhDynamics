@@ -61,7 +61,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ## HOLSTEIN PHONON FIELDS ##
     ############################
 
-    "phonon fields stored in the order `[ϕ₁(τ=1),ϕ₂(τ=1),...,ϕₙ(τ=1),...,ϕ₁(τ=Lτ),...,ϕₙ(τ=Lτ)]`
+    "phonon fields stored in the order `[ϕ₁(1),...,ϕ₁(Lτ),...,ϕₙ(1),...,ϕₙ(Lτ)]`
     where `n` is the number of sites in the lattice and `Lτ` is the length of the imaginary time axis."
     ϕ::Vector{T1}
 
@@ -221,11 +221,11 @@ function Base.show(io::IO, holstein::HolsteinModel)
     type2 = typeof(holstein.tij).parameters[1]
     printstyled( "HolsteinModel{" , type1 , "," , type2 , "}\n" ; bold=true , color=:cyan )
     print('\n')
-    println("•β = ",holstein.β)
-    println("•Δτ = ",holstein.Δτ)
-    println("•Lτ = ",holstein.Lτ)
-    println("•nsites = ",holstein.nsites)
-    println("•nindices = ",holstein.nindices)
+    println("β = ",holstein.β)
+    println("Δτ = ",holstein.Δτ)
+    println("Lτ = ",holstein.Lτ)
+    println("nsites = ",holstein.nsites)
+    println("nindices = ",holstein.nindices)
     print('\n')
     print(holstein.geom)
     print('\n')
@@ -234,7 +234,7 @@ function Base.show(io::IO, holstein::HolsteinModel)
     print('\n')
     printstyled("Parameters\n";bold=true)
     print('\n')
-    println("•trans_equiv_sets: ", typeof(holstein.trans_equiv_sets),size(holstein.trans_equiv_sets))
+    println("trans_equiv_sets: ", typeof(holstein.trans_equiv_sets),size(holstein.trans_equiv_sets))
     print('\n')
     _print_local_param(holstein.lattice.site_to_orbit,holstein.μ,"μ")
     _print_local_param(holstein.lattice.site_to_orbit,holstein.ω,"ω")
@@ -254,17 +254,16 @@ function _print_local_param(orbits::Vector,vals::Vector,param::String)
     for orbit in 1:maximum(orbits)
         avg = mean(vals[orbits.==orbit])
         sd = std(vals[orbits.==orbit])
-        println("•", param, ", orbit = ", orbit, ", mean = ",avg,", std = ",sd)
+        println(param, ", orbit = ", orbit, ", mean = ",avg,", std = ",sd)
     end
     return nothing
 end
 
 function _print_nonlocal_param(vals::Vector,neighbor_table::Matrix{Int},param::String)
 
-    println("•",param,": ", typeof(vals),size(vals), ", mean = ", mean(vals), ", std = ", std(vals))
-    print('\n')
-    println("•neighbor_table_", param, " =")
-    show(IOContext(stdout, :limit => true), "text/plain", neighbor_table)
+    println(param,": ", typeof(vals),size(vals), ", mean = ", mean(vals), ", std = ", std(vals))
+    println("neighbor_table_", param, ": ", typeof(neighbor_table), size(neighbor_table))
+    # show(IOContext(stdout, :limit => true), "text/plain", neighbor_table)
     print('\n')
     return nothing
 end

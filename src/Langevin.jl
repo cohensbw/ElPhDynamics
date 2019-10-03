@@ -36,7 +36,16 @@ using Langevin.LangevinSimulationParameters
 include("NonLocalMeasurements.jl")
 using Langevin.NonLocalMeasurements
 
+include("LocalMeasurements.jl")
+using Langevin.LocalMeasurements
+
 include("RunSimulation.jl")
 using Langevin.RunSimulation
+
+include("ProcessInputFile.jl")
+using Langevin.ProcessInputFile
+
+include("SimulationSummary.jl")
+using Langevin.SimulationSummary
 
 end # module

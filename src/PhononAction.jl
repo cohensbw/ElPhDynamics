@@ -18,33 +18,34 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
     Δτ         = holstein.Δτ::T1
     ω          = holstein.ω::Vector{T1}
     τp1        = 0
+    τm1        = 0
     indx_τ     = 0
     indx_τp1   = 0
+    indx_τm1   = 0
     Δτω²::T1   = 0.0
-    Δ::T2      = 0.0
 
     #####################################################
     ## Calculating Derivative Phonon Action Associated ##
     ## With Local Phonon Frequency And Phonon Momentum ##
-    #####################################################
+    #####################################################]
 
-    # iterating over sites
+    # iterating over site
     for site in 1:nsites
         Δτω² = Δτ * ω[site] * ω[site]
         # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
             τp1 = τ%Lτ+1
+            # get τ-1 accounting for periodic boundary conditions
+            τm1 = (τ-2+Lτ)%Lτ+1
             # indexing offset into vectors associated with τ time slice
             indx_τ = get_index(τ,site,Lτ)
             # indexing offset into vectors associated with τ+1 time slice
             indx_τp1 = get_index(τp1,site,Lτ)
-            # Δ = ( ϕᵢ(τ+1) - ϕᵢ(τ) ) / Δτ
-            Δ = ( ϕ[indx_τp1] - ϕ[indx_τ] ) / Δτ
-            # updating partial derivative ∂Sb∂ϕᵢ(τ)
-            dSbose[indx_τ]   += -Δ + Δτω² * ϕ[indx_τ]
-            # updating partial derivative ∂Sb∂ϕᵢ(τ+1)
-            dSbose[indx_τp1] +=  Δ
+            # indexing offset into vectors associated with τ-1 time slice
+            indx_τm1 = get_index(τm1,site,Lτ)
+            # updating partial derivative
+            dSbose[indx_τ] += Δτω²*ϕ[indx_τ] - ( ϕ[indx_τp1] + ϕ[indx_τm1] - 2.0*ϕ[indx_τ] )/Δτ
         end
     end
 

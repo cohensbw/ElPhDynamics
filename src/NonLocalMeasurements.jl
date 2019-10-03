@@ -10,7 +10,7 @@ export make_nonlocal_measurements!
 export reset_nonlocal_measurements!
 export process_nonlocal_measurements!
 export construct_nonlocal_measurements_container
-export initialize_nonlocal_measurements_file
+export initialize_nonlocal_measurement_files
 export write_nonlocal_measurements
 
 """
@@ -38,8 +38,13 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
     # normalization factor
     normalization = npairs * holstein.Lτ
 
+    # getting pointers to arrays containing measurements
+    greens = container["Greens"]
+    denden = container["DenDen"]
+    pairgreens = container["PairGreens"]
+
     # iterating over all possible parings of orbitals
-    for orbit1 in 1:lattice.norbits
+    @fastmath @inbounds for orbit1 in 1:lattice.norbits
         for orbit2 in 1:lattice.norbits
             # iterating over all displacements vectors defined in terms
             # of unit cells in the direction of each lattice vector.
@@ -55,7 +60,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                 j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                                 i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                                 # iterating over time slices
-                                for τ₁ in 1:holstein.Lτ
+                                @simd for τ₁ in 1:holstein.Lτ
                                     
                                     # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
                                     τ₂ = (τ₁+τ-1)%Gr1.β+1
@@ -77,12 +82,16 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                     Gᵢᵢτ₂τ₂2 = estimate(Gr2,i,i,τ₂,τ₂)
 
                                     # measuring electron green's function ⟨cᵢ(τ)c⁺ⱼ(0)⟩ where β>τ≥0.
-                                    container["Greens"][ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
-                                        measure_Greens(i,j,τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2) / normalization
+                                    greens[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
+                                        measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2) / normalization
 
-                                    # measuring density-density correlation
-                                    container["DenDen"][ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
+                                    # measuring density-density correlation ⟨nᵢ(τ)nⱼ(0)⟩
+                                    denden[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
                                         measure_DenDen(i,j,τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2,Gⱼᵢτ₁τ₂1,Gⱼᵢτ₁τ₂2,Gⱼⱼτ₁τ₁1,Gⱼⱼτ₁τ₁2,Gᵢᵢτ₂τ₂1,Gᵢᵢτ₂τ₂2) / normalization
+
+                                    # measuring Pair Green's Function ⟨Δᵢ(τ)Δ⁺ⱼ(0)+Δⱼ(0)Δ⁺ᵢ(τ)⟩
+                                    pairgreens[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
+                                        measure_PairGreens(Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2,Gⱼᵢτ₁τ₂1,Gⱼᵢτ₁τ₂2) / normalization
                                 end
                             end
                         end
@@ -94,13 +103,18 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
 end
 
 
+"""
+Construct a dictionary for the real space and momentum space measurements,
+where each measurement is a key in the dictionary and points to an array
+where the measured values will be stored.
+"""
 function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2})::Tuple{ Dict{String,Array{T1,6}} , Dict{String,Array{Complex{T1},6}} } where {T1<:AbstractFloat,T2<:Number}
 
     lattice = holstein.lattice
     container_rspace = Dict()
     container_kspace = Dict()
     # ierate over all measurements to be made
-    for meas in ("Greens","DenDen")
+    for meas in ("Greens","DenDen","PairGreens")
         container_rspace[meas] = zeros(T1,(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
         container_kspace[meas] = zeros(Complex{T1},(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
     end
@@ -108,6 +122,9 @@ function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2
 end
 
 
+"""
+Reset the arrays that contain the measurements to all zeros.
+"""
 function reset_nonlocal_measurements!(container::Dict{String,Array{T,6}}) where {T<:Number}
 
     for key in keys(container)
@@ -116,6 +133,11 @@ function reset_nonlocal_measurements!(container::Dict{String,Array{T,6}}) where 
 end
 
 
+"""
+Process the real-space and momentum-space measurements.
+This includes first performing the fourier transform and
+the normalzing by the number of measurement per bin.
+"""
 function process_nonlocal_measurements!(container_rspace::Dict{String,Array{T,6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}, ft_coeff::Array{Complex{T},6}) where {T<:AbstractFloat}
 
     # compute the fourier transform of the position-space measurements
@@ -131,46 +153,45 @@ function process_nonlocal_measurements!(container_rspace::Dict{String,Array{T,6}
 end
 
 
+"""
+Initializes files (including header) that each measurement will be written to.
+"""
 function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Array{T,6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T})  where {T<:AbstractFloat}
 
     # data filename
     filename = "" 
 
-    # constructing full filepath
-    filepath = sim_params.filepath * sim_params.foldername
-
-    # making directory the data will be written into
-    if !isdir(filepath)
-        mkdir(filepath)
-    end
-
     # iterating over real space measurements
     for key in keys(container_rspace)
         # Intializing data file
-        open(filepath * key * "_r.out", "w") do file
+        open(sim_params.datafolder * key * "_r.out", "w") do file
             # writing file header
-            write(file, "orbit1", "  ", "orbit2", "  ", "dL1",  "  ", "dL2",  "  ", "dL3",  "  ", "tau", "  ", key*"_r", "\n")
+            write(file, "orbit1", ",", "orbit2", ",", "dL1",  ",", "dL2",  ",", "dL3",  ",", "tau", ",", key*"_r", "\n")
         end
     end
 
     # iterating over momentum-space measurements
     for key in keys(container_kspace)
         # Intializing data file
-        open(filepath * key * "_k.out", "w") do file
+        open(sim_params.datafolder * key * "_k.out", "w") do file
             # writing file header
-            write(file, "orbit1", "  ", "orbit2", "  ", "dL1",  "  ", "dL2",  "  ", "dL3",  "  ", "tau", "  ", key*"_k", "\n")
+            write(file, "orbit1", ",", "orbit2", ",", "dL1",  ",", "dL2",  ",", "dL3",  ",", "tau", ",", key*"_k", "\n")
         end
     end
 end
 
 
-function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_params::SimulationParameters; real_space::Bool)  where {T<:Number}
-
-    # getting array of measurements
-    measurements::Vector{String} = collect(keys(container))
+"""
+Write non-local measurements to file. Each measurement gets its own file.
+"""
+function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_params::SimulationParameters, holstein::HolsteinModel; real_space::Bool)  where {T<:Number}
 
     # getting size of lattice
-    Lτ, L1, L2, L3, norbits, ignore = size(container[ measurements[1] ])
+    Lτ = holstein.Lτ::Int
+    L1 = holstein.lattice.L1::Int
+    L2 = holstein.lattice.L2::Int
+    L3 = holstein.lattice.L3::Int
+    norbits = holstein.lattice.norbits::Int
 
     # measurement value to be written to file
     meas = 0.0
@@ -179,14 +200,18 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
     filename = ""
 
     # iterate over measurements
-    for measurement in measurements
+    for measurement in keys(container)
+
+        # getting a pointer to the array containing the measurements
+        vals = container[measurement]
+
         # constructing filename that measurements should be written to.
         # filename is adjusted according to whether the measurement is being
         # given in real-space or momentum-space.
         if real_space
-            filename = sim_params.filepath * sim_params.foldername * measurement * "_r.out"
+            filename = sim_params.datafolder * measurement * "_r.out"
         else
-            filename = sim_params.filepath * sim_params.foldername * measurement * "_k.out"
+            filename = sim_params.datafolder * measurement * "_k.out"
         end
         # opening file correspond to current measurement
         open( filename , "a" ) do file
@@ -201,10 +226,10 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
                                 for τ in 0:Lτ-1
                                     # Getting value of measurement. 
                                     # Note that this averages over the two possible ordering for the orbitals
-                                    meas  = real( container[measurement][τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1] )
-                                    meas += real( container[measurement][τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit1,orbit2] )
+                                    meas  = real( vals[τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1] )
+                                    meas += real( vals[τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit1,orbit2] )
                                     meas /= 2.0
-                                    write(file, @sprintf("%d  %d  %d  %d  %d  %d  %.6f\n", orbit1, orbit2, ΔL1, ΔL2, ΔL3, τ, meas))
+                                    write(file, @sprintf("%d,%d,%d,%d,%d,%d,%.6f\n", orbit1, orbit2, ΔL1, ΔL2, ΔL3, τ, meas))
                                 end
                             end
                         end
@@ -222,7 +247,7 @@ end
 """
 Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
 """
-function measure_Greens(i,j,τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2)
+function measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2)
 
     G = (Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
     # time ordering
@@ -257,6 +282,18 @@ function measure_DenDen(i, j, τ₂, τ₁, Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ�
     nᵢτ₂_nⱼτ₁ = nᵢ₊τ₂_nⱼ₊τ₁ + nᵢ₋τ₂_nⱼ₋τ₁ + nᵢ₊τ₂_nⱼ₋τ₁ + nᵢ₋τ₂_nⱼ₊τ₁
 
     return nᵢτ₂_nⱼτ₁
+end
+
+
+"""
+Measure pair Green's function ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+h.c.⟩=⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩
+where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
+"""
+function measure_PairGreens(Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁τ₂1, Gⱼᵢτ₁τ₂2)
+
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
+    return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
 end
 
 

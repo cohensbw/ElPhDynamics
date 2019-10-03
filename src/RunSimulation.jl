@@ -2,16 +2,22 @@ module RunSimulation
 
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
-using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
-using ..NonLocalMeasurements: process_nonlocal_measurements!, construct_nonlocal_measurements_container
-using ..NonLocalMeasurements: initialize_nonlocal_measurement_files
-using ..NonLocalMeasurements: write_nonlocal_measurements
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
 using ..FourierAcceleration: FourierAccelerator
 using ..FourierTransforms: calc_fourier_transform_coefficients
 
-export run_simulation!
+using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
+using ..NonLocalMeasurements: process_nonlocal_measurements!, construct_nonlocal_measurements_container
+using ..NonLocalMeasurements: initialize_nonlocal_measurement_files
+using ..NonLocalMeasurements: write_nonlocal_measurements
+
+using ..LocalMeasurements: make_local_measurements!, reset_local_measurements!
+using ..LocalMeasurements: process_local_measurements!, construct_local_measurements_container
+using ..LocalMeasurements: initialize_local_measurements_file
+using ..LocalMeasurements: write_local_measurements
+
+export run_simulation!, read_input_file
 
 function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1}) where {T1<:AbstractFloat, T2<:Number}
 
@@ -41,11 +47,15 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # position-space and momentum-space
     container_rspace, container_kspace = construct_nonlocal_measurements_container(holstein)
 
+    # constructing container to hold local measurements
+    local_meas_container = construct_local_measurements_container(holstein)
+
     # caluclating Fourier Transform coefficients
     ft_coeff = calc_fourier_transform_coefficients(holstein.lattice)
 
     # Creating files that data will be written to.
     initialize_nonlocal_measurement_files(container_rspace, container_kspace, sim_params)
+    initialize_local_measurements_file(local_meas_container, sim_params)
 
     # keeps track of number of iterations needed to solve linear system
     iters = 0.0
@@ -83,6 +93,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         # reset values in measurement containers
         reset_nonlocal_measurements!(container_rspace)
         reset_nonlocal_measurements!(container_kspace)
+        reset_local_measurements!(local_meas_container)
 
         # iterating over the size of each bin i.e. the number of measurements made per bin
         for n in 1:sim_params.bin_size
@@ -103,6 +114,9 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
             # making non-local measurements
             measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr1, Gr2)
+
+            # make local measurements
+            measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr1, Gr2)
         end
 
         # process non-local measurements. This include normalizing the real-space measurements
@@ -110,18 +124,24 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         # to get the momentum-space measurements.
         measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, ft_coeff)
 
+        # process local measurements
+        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params)
+
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
-        write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,real_space=true)
-        write_time += @elapsed write_nonlocal_measurements(container_kspace,sim_params,real_space=false)
+        write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,holstein,real_space=true)
+        write_time += @elapsed write_nonlocal_measurements(container_kspace,sim_params,holstein,real_space=false)
+
+        # write local measurements to file
+        write_time += @elapsed write_local_measurements(local_meas_container,sim_params,holstein)
     end
 
     # calculating the average number of iterations needed to solve linear system
     iters /= (sim_params.nsteps+sim_params.burnin)
 
-    # report times in units of minutes
+    # report timings in units of minutes
     simulation_time  /= 60.0
     measurement_time /= 60.0
-    write_time /= 60.0
+    write_time       /= 60.0
 
     return simulation_time, measurement_time, write_time, iters
 end

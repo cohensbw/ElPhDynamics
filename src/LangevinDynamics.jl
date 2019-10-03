@@ -17,7 +17,7 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
                        dSdϕ2::AbstractVector{T1}, dSdϕ1::AbstractVector{T1}, fft_dSdϕ::AbstractVector{Complex{T1}},
                        g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
                        η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
-                       Δt::AbstractFloat, tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
+                       Δt::AbstractFloat, tol::AbstractFloat, T::AbstractFloat=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)
@@ -25,15 +25,28 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
-    # tentatively update fields using euler method
-    @. holstein.ϕ -= sqrt(2.0*Δt)*η + Δt*dSdϕ1
+    # get the update for the fields using euler method
+    @. dϕdt += -sqrt(2*Δt)*η - Δt*dSdϕ1
+
+    # update phonon fields
+    @. holstein.ϕ += dϕdt
+ 
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
 
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ2, g, Mᵀg, M⁻¹g, holstein, tol)
 
-    # take the difference in the partial derivatives before and after
-    # the tentative euler update
-    @. dSdϕ2 = ( dSdϕ1 - dSdϕ2 ) / 2.0
+    # revert back to original phonon fields
+    @. holstein.ϕ -= dϕdt
+
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
+
+    # get the partial derivative for the RK step
+    dSdϕ2 = (dSdϕ2+dSdϕ1)/2.0
 
     # fourier transform dSdϕ2
     forward_fft!( fft_dSdϕ , dSdϕ2 , fa)
@@ -48,7 +61,7 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     accelerate_noise!( fft_η , fa )
 
     # calculate fft_dϕdt
-    @. fft_dϕdt = 2.0*fft_η + fft_dSdϕ
+    @. fft_dϕdt = fft_η - fft_dSdϕ
 
     # perform inverse fourier transform to get dϕdt
     inverse_fft!( dϕdt , fft_dϕdt , fa )
@@ -72,7 +85,7 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
                           dSdϕ::AbstractVector{T1}, fft_dSdϕ::AbstractVector{Complex{T1}},
                           g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
                           η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
-                          Δt::AbstractFloat, tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
+                          Δt::AbstractFloat, tol::AbstractFloat, T::AbstractFloat=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)
@@ -114,7 +127,7 @@ Update phonon fields using Runge-Kutta/Heun's equation and fourier acceleration.
 """
 function update_rk!(holstein::HolsteinModel{T1,T2}, dSdϕ2::AbstractVector{T1}, dSdϕ1::AbstractVector{T1},
                     g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
-                    η::AbstractVector{T1}, Δt::AbstractFloat, tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
+                    η::AbstractVector{T1}, Δt::AbstractFloat, tol::AbstractFloat, T::AbstractFloat=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)
@@ -123,13 +136,17 @@ function update_rk!(holstein::HolsteinModel{T1,T2}, dSdϕ2::AbstractVector{T1}, 
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
     # tentatively update fields using euler method
-    @. holstein.ϕ += -sqrt(2.0*Δt)*η - Δt*dSdϕ1
+    @. holstein.ϕ += -sqrt(2*Δt)*η - Δt*dSdϕ1
+
+    # update the exponentiated interaction matrix so that it reflects the current
+    # phonon field configuration.
+    construct_expnΔτV!(holstein)
 
     # calculate dSdϕ2 = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ2, g, Mᵀg, M⁻¹g, holstein, tol)
 
     # final update of phonon field
-    @. holstein.ϕ += 2*sqrt(2*Δt)*η + Δt/2*(dSdϕ1-dSdϕ2)
+    @. holstein.ϕ += 2*sqrt(2*Δt)*η - Δt*(dSdϕ2-dSdϕ1)/2
 
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
@@ -144,7 +161,7 @@ Update phonon fields using Euler equation.
 """
 function update_euler!(holstein::HolsteinModel{T1,T2}, dSdϕ::AbstractVector{T1},
                        g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
-                       η::AbstractVector{T1}, Δt::AbstractFloat, tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
+                       η::AbstractVector{T1}, Δt::AbstractFloat, tol::AbstractFloat, T::AbstractFloat=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)

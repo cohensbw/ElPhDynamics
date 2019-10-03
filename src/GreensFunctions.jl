@@ -17,7 +17,7 @@ export update!, estimate
 """
 A type for facilitating the stochastic estimation of the the Green's function Gr = ⟨cᵢ(τ)⋅cᵀⱼ(0)⟩.
 """
-struct EstimateGreensFunction{T<:AbstractFloat}
+struct EstimateGreensFunction{T<:Number}
 
     """
     Total number of indices (sites) in D+1 dimensional lattice.
@@ -32,17 +32,17 @@ struct EstimateGreensFunction{T<:AbstractFloat}
     """
     Number of unit cells in direction of first lattice vector.
     """
-    L1
+    L1::Int
 
     """
     Number of unit cells in direction of second lattice vector.
     """
-    L2
+    L2::Int
 
     """
     Number of unit cells in direction of third lattice vector.
     """
-    L3
+    L3::Int
 
     """
     Length of imaginary time axis.
@@ -67,7 +67,7 @@ struct EstimateGreensFunction{T<:AbstractFloat}
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function EstimateGreensFunction(holstein::HolsteinModel{T1,T2}, is_complex::Bool=false) where {T1<:AbstractFloat,T2<:Number}
 
         βN  = holstein.nindices
         N   = holstein.nsites
@@ -80,7 +80,11 @@ struct EstimateGreensFunction{T<:AbstractFloat}
         Mᵀg  = zeros(T1,βN)
         M⁻¹g = zeros(T1,βN)
 
-        new{T1}(βN,N,L1,L2,L3,β,g,Mᵀg,M⁻¹g)
+        if is_complex
+            new{Complex{T1}}(βN,N,L1,L2,L3,β,g,Mᵀg,M⁻¹g)
+        else
+            new{T1}(βN,N,L1,L2,L3,β,g,Mᵀg,M⁻¹g)
+        end
     end
 end
 
@@ -108,11 +112,11 @@ end
 Returns ⟨cᵢ(τ₂)⋅c⁺ⱼ(τ₁)⟩ where 1⩽τ₁⩽β, 1⩽τ₂⩽β and 1⩽(i,j)⩽N.
 Note that no time ordering is considered here.
 """
-function estimate(Gr::EstimateGreensFunction{T},i::Int,j::Int,τ₂::Int,τ₁::Int)::T where {T<:AbstractFloat}
+function estimate(Gr::EstimateGreensFunction{T},i::Int,j::Int,τ₂::Int,τ₁::Int)::T where {T<:Number}
     
-    n = get_index(τ₂,i,Gr.β)
     m = get_index(τ₁,j,Gr.β)
-    return Gr.g[n] * Gr.M⁻¹g[m]
+    n = get_index(τ₂,i,Gr.β)
+    return real( conj(Gr.g[n]) * Gr.M⁻¹g[m] )
 end
 
 end

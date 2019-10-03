@@ -23,13 +23,14 @@ function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
     nsites = holstein.nsites::Int
     
     # phonon frequency of site
-    ω::T1 = 0.0
+    ω = 0.0
     # el-ph coupling on site
-    λ::T1 = 0.0
+    λ = 0.0
     # chemical potential of site
-    μ::T1 = 0.0
+    μ = 0.0
     
-    # statistical weight associated with 0, 1 or 2 electrons on site
+    # statistical weight associated with 1 or 2 electrons on site.
+    # The statistical weight of 0 electrons is just 1.
     Z1 = 0.0
     Z2 = 0.0
     # normalization
@@ -115,7 +116,7 @@ at inverse temperature `β`.
 """
 function sample_qho(ω::T,β::AbstractFloat)::T where {T<:Number}
     
-    σ = sqrt( 1.0/(2.0*tanh(ω*β/2.0)) )
+    σ = sqrt( 1.0/(2.0*ω*tanh(ω*β/2.0)) )
     return σ*randn()
 end
 

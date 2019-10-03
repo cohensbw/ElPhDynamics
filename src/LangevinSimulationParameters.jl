@@ -34,11 +34,14 @@ struct SimulationParameters{T<:AbstractFloat}
     "Number of langevin steps per bin."
     bin_steps::Int
 
-    "file path to where the data should be written"
+    "path to where the data should be written"
     filepath::String
 
     "name of folder data will be dumped into"
     foldername::String
+
+    "data folder"
+    datafolder::String
 
     function SimulationParameters(Δt::T, euler::Bool, tol::T, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int,
                                   filepath::String, foldername::String) where {T<:AbstractFloat}
@@ -64,7 +67,15 @@ struct SimulationParameters{T<:AbstractFloat}
             foldername *= "/"
         end
 
-        new{T}(Δt,euler,tol,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername)
+        # data folder, including complete path to folder
+        datafolder = filepath*foldername
+
+        # making directory the data will be written into
+        if !isdir(datafolder)
+            mkdir(datafolder)
+        end
+
+        new{T}(Δt,euler,tol,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername,datafolder)
     end
 end
 
