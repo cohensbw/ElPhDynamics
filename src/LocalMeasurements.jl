@@ -36,7 +36,6 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
     # for measuring phonon kinetic energy
     Δτ  = holstein.Δτ
     Δτ² = Δτ * Δτ
-    inv2Δτ = 1.0/(2.0*Δτ)
 
     # normalization
     normalization = div(nsites,norbits)*Lτ
@@ -59,7 +58,7 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
                 # measuring phonon kinetic energy such that
                 # ⟨KE⟩ = 1/(2Δτ) - ⟨[ϕᵢ(τ+1)-ϕᵢ(τ)]²/Δτ²⟩
                 Δϕ = ϕ[get_index(τ%Lτ+1,site,Lτ)]-ϕ[index]
-                container["phonon_kin"][orbit] += (1.0/2.0/Δτ-(Δϕ*Δϕ)/(2.0*Δτ²)) / normalization
+                container["phonon_kin"][orbit] += (0.5/Δτ-(Δϕ*Δϕ)/Δτ²/2) / normalization
                 # measuring phonon potential energy
                 container["phonon_pot"][orbit] += ω[site]*ω[site]*ϕ[index]*ϕ[index]/2.0 / normalization
                 # measuring the electron phonon energy λ⟨ϕ⋅(n₊+n₋)⟩
@@ -90,11 +89,12 @@ end
 """
 Process Local Measurements.
 """
-function process_local_measurements!(container::Dict{String,Vector{T}}, sim_params::SimulationParameters{T}) where {T<:Number}
+function process_local_measurements!(container::Dict{String,Vector{T}}, sim_params::SimulationParameters{T}, holstein::HolsteinModel) where {T<:Number}
 
     for key in keys(container)
         container[key] ./= sim_params.bin_size
     end
+    # @. container["phonon_kin"] = 0.5/holstein.Δτ - container["phonon_kin"]/2
 end
 
 

@@ -25,8 +25,8 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    dϕdt     = zeros(Float64,          length(holstein))
-    fft_dϕdt = zeros(Complex{Float64}, length(holstein))
+    dϕ     = zeros(Float64,          length(holstein))
+    fft_dϕ = zeros(Complex{Float64}, length(holstein))
 
     dSdϕ     = zeros(Float64,          length(holstein))
     fft_dSdϕ = zeros(Complex{Float64}, length(holstein))
@@ -79,11 +79,11 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         if sim_params.euler
 
             # using Euler method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕdt, fft_dϕdt, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
         else
 
             # using Runge-Kutta method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕdt, fft_dϕdt, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
         end
     end
 
@@ -104,11 +104,11 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
                 if sim_params.euler
 
                     # using Euler method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕdt, fft_dϕdt, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
                 else
 
                     # using Runge-Kutta method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕdt, fft_dϕdt, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
                 end
             end
 
@@ -125,7 +125,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, ft_coeff)
 
         # process local measurements
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params)
+        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein)
 
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
         write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,holstein,real_space=true)

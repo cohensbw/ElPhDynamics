@@ -13,7 +13,7 @@ export update_euler!, update_rk!, update_euler_fa!, update_rk_fa!
 Update phonon fields using Runge-Kutta/Heun's equation and fourier acceleration.
 """
 function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
-                       dϕdt::AbstractVector{T1}, fft_dϕdt::AbstractVector{Complex{T1}},
+                       dϕ::AbstractVector{T1}, fft_dϕ::AbstractVector{Complex{T1}},
                        dSdϕ2::AbstractVector{T1}, dSdϕ1::AbstractVector{T1}, fft_dSdϕ::AbstractVector{Complex{T1}},
                        g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
                        η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
@@ -26,10 +26,10 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
     # get the update for the fields using euler method
-    @. dϕdt += -sqrt(2*Δt)*η - Δt*dSdϕ1
+    @. dϕ = sqrt(2*Δt)*η - Δt*dSdϕ1
 
     # update phonon fields
-    @. holstein.ϕ += dϕdt
+    @. holstein.ϕ += dϕ
  
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
@@ -39,14 +39,14 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     iters = calc_dSdϕ!(dSdϕ2, g, Mᵀg, M⁻¹g, holstein, tol)
 
     # revert back to original phonon fields
-    @. holstein.ϕ -= dϕdt
+    @. holstein.ϕ -= dϕ
 
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
     construct_expnΔτV!(holstein)
 
     # get the partial derivative for the RK step
-    dSdϕ2 = (dSdϕ2+dSdϕ1)/2.0
+    @. dSdϕ2 = (dSdϕ2+dSdϕ1)/2.0
 
     # fourier transform dSdϕ2
     forward_fft!( fft_dSdϕ , dSdϕ2 , fa)
@@ -60,14 +60,14 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # accelerate noise vector fft_η ==> √(2Q)⋅fft_η
     accelerate_noise!( fft_η , fa )
 
-    # calculate fft_dϕdt
-    @. fft_dϕdt = fft_η - fft_dSdϕ
+    # calculate fft_dϕ
+    @. fft_dϕ = fft_η - fft_dSdϕ
 
-    # perform inverse fourier transform to get dϕdt
-    inverse_fft!( dϕdt , fft_dϕdt , fa )
+    # perform inverse fourier transform to get dϕ
+    inverse_fft!( dϕ , fft_dϕ , fa )
 
     # update phonon fields
-    @. holstein.ϕ += dϕdt
+    @. holstein.ϕ += dϕ
 
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
@@ -81,7 +81,7 @@ end
 Update phonon fields using Euler equation and fourier acceleration.
 """
 function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
-                          dϕdt::AbstractVector{T1}, fft_dϕdt::AbstractVector{Complex{T1}},
+                          dϕ::AbstractVector{T1}, fft_dϕ::AbstractVector{Complex{T1}},
                           dSdϕ::AbstractVector{T1}, fft_dSdϕ::AbstractVector{Complex{T1}},
                           g::AbstractVector{T1}, Mᵀg::AbstractVector{T1}, M⁻¹g::AbstractVector{T1},
                           η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
@@ -105,14 +105,14 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     # accelerate fft_η ==> √(2Q)⋅fft_η
     accelerate_noise!( fft_η , fa )
 
-    # calculate fft_dϕdt
-    @. fft_dϕdt = fft_η - fft_dSdϕ
+    # calculate fft_dϕ
+    @. fft_dϕ = fft_η - fft_dSdϕ
 
-    # perform inverse fourier transform to get dϕdt
-    inverse_fft!( dϕdt , fft_dϕdt , fa )
+    # perform inverse fourier transform to get dϕ
+    inverse_fft!( dϕ , fft_dϕ , fa )
 
     # update phonon fields
-    @. holstein.ϕ += dϕdt
+    @. holstein.ϕ += dϕ
 
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
@@ -206,15 +206,17 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::Abst
     # If a longer-range electron-phonon interaction were added of the form ∑(λᵢⱼ⋅ϕᵢ⋅nⱼ), then this way of doing
     # things would no longer work, and a loop over each individual phonon field ϕᵢ(τ) would need to be added.
 
+    # intialize relevant vectors to zero.
+    Mᵀg  .= 0.0
+    M⁻¹g .= 0.0
+    dSdϕ .= 0.0
+
     # intialize random vector g.
     randn!(g)
     #rand!(g,-1:2:1)
 
     # getting Mᵀg.
     mulMᵀ!( Mᵀg , holstein , g )
-
-    # intialize M⁻¹g to vector of zeros.
-    M⁻¹g .= 0.0
 
     # solve MᵀM⋅v = Mᵀg ==> v = M⁻¹g.
     info = cg!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true )[2]
