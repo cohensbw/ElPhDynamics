@@ -4,6 +4,7 @@ using DataFrames
 using CSV
 using Statistics
 using Printf
+using TOML
 
 using ..LangevinSimulationParameters: SimulationParameters
 
@@ -13,7 +14,7 @@ export write_simulation_summary
 """
 Writes a simulation summary file after a simulation completes.
 """
-function write_simulation_summary(inputfn::String, sim_params::SimulationParameters{T}, simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
+function write_simulation_summary(input::Dict, sim_params::SimulationParameters{T}, simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
     
     # array to contain binned data
     bins = zeros(T,nbins)
@@ -69,13 +70,7 @@ function write_simulation_summary(inputfn::String, sim_params::SimulationParamet
         write(outfile,"## INPUT FILE CONTENTS ##\n")
         write(outfile,"#########################\n\n")
         
-        open(inputfn,"r") do inputfn
-            for line in eachline(inputfn)
-                if !startswith(line,"#") && (line!="")
-                    write(outfile,line,"\n")
-                end
-            end
-        end
+        TOML.print(outfile, input)
         
         ###########################
         ## WRITE SIMULATION INFO ##

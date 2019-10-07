@@ -1,0 +1,108 @@
+######################
+## DEFINING LATTICE ##
+######################
+
+[lattice]
+
+# number of dimensions
+ndim = 2
+
+# number of orbitals/sites per unit cell
+norbits = 1
+
+# define lattice vectors.
+lattice_vectors = [[1.0,0.0], # first lattice vector
+                   [0.0,1.0]] # second lattice vector
+
+# define basis vectors
+basis_vectors = [[0.0,0.0]] # first basis vector
+
+# size of lattice
+L = 4
+
+#############################
+## DEFINING HOLSTEIN MODEL ##
+#############################
+
+[holstein]
+
+# discretization
+dtau = 0.1
+
+# setting temperature
+beta = 2.0
+
+# define hopping in lattice
+[[holstein.t]]
+mean   = 1.0
+std    = 1.0       # standard deviation
+orbit  = [1, 1]    # orbital types being connected
+dL     = [1, 0, 0] # displacement vector in unit cells
+
+# define hopping in lattice
+[[holstein.t]]
+mean   = 1.0
+std    = 1.0
+orbit  = [1, 1]
+dL     = [0, 1, 0]
+
+# define phonon frequency
+[[holstein.omega]]
+orbit = [1] # which orbital types the omega value is applied to
+mean  = 1.0
+std   = 0.0
+
+# define electron-phonon coupling
+[[holstein.lambda]]
+orbit = [1]
+mean  = 1.0
+std   = 0.0
+
+# define chemical potential
+[[holstein.mu]]
+orbit = [1]
+mean  = -1.0
+std   = 0.0
+
+###################################
+## DEFINING FOURIER ACCELERATION ##
+###################################
+
+[[fourier_acceleration]]
+mass = 0.5
+omega_min = 0.0
+omega_max = 1.0
+
+####################################
+## DEFINING SIMULATION PARAMETERS ##
+####################################
+
+[simulation]
+
+# langevin time step
+dt = 1e-3
+
+# tolerace of IterativeSolvers
+tol = 1e-4
+
+# number of thermalization steps
+burnin = 100000
+
+# total number of steps
+nsteps = 500000
+
+# measurement frequency
+meas_freq = 1000
+
+# number of bins ie the number of times measurements will
+# be written to file.
+num_bins = 100
+
+# euler or runge-kutta updates
+euler = false
+
+# filepath to where to write data
+filepath = "."
+
+# name of folder for data to get dumped into
+foldername = "test"
