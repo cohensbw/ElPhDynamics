@@ -52,9 +52,9 @@ version = "0.19.4"
 
 [[DataStructures]]
 deps = ["InteractiveUtils", "OrderedCollections"]
-git-tree-sha1 = "517ce30aa57cdfae1ab444a7c0aef8bb86345bc2"
+git-tree-sha1 = "f94423c68f2e47db0d6f626a26d4872266e0ec3d"
 uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
-version = "0.17.1"
+version = "0.17.2"
 
 [[DataValueInterfaces]]
 git-tree-sha1 = "bfc1187b79289637fa0ef6d4436ebdfe6905cbd6"
@@ -213,11 +213,11 @@ uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [[TOML]]
 deps = ["Dates"]
-git-tree-sha1 = "2dbfe34f210980d78f5bb0cd4b0f829ab3e4ceb4"
+git-tree-sha1 = "f0955321b78cffbe95507e99fde6c41efd03698a"
 repo-rev = "master"
-repo-url = "https://github.com/wildart/TOML.jl.git"
-uuid = "191fdcea-f9f2-43e0-b922-d33f71e2abc3"
-version = "0.4.0"
+repo-url = "https://github.com/JuliaStdlibs/TOML.jl.git"
+uuid = "037cace4-c66a-5006-a6b7-c26ba1b2f83e"
+version = "0.3.0+"
 
 [[TableTraits]]
 deps = ["IteratorInterfaceExtensions"]
