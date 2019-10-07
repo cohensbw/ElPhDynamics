@@ -1,6 +1,6 @@
 module ProcessInputFile
 
-using TOML
+using Pkg.TOML
 
 using ..Geometries: Geometry
 using ..Lattices: Lattice

@@ -4,7 +4,7 @@ using DataFrames
 using CSV
 using Statistics
 using Printf
-using TOML
+using Pkg.TOML
 
 using ..LangevinSimulationParameters: SimulationParameters
 
