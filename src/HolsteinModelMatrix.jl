@@ -60,7 +60,7 @@ function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstr
     # y' = M⋅v
     mulM!(holstein.y′, holstein, v)
 
-    # y = Mᵀ⋅y' = MᵀM⋅v
+    # y  = Mᵀ⋅y' = MᵀM⋅v
     mulMᵀ!(y, holstein, holstein.y′)
 end
 
@@ -105,8 +105,6 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
         # y(Lτ) = v(Lτ) + B(1)⋅v(1)
         y[idx_L] = yL_temp
     end
-
-    return nothing
 end
 
 
@@ -149,8 +147,6 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstra
     # y(τ) = v(τ) - Bᵀ(τ)⋅v(τ-1) for τ > 1
     # y(τ) = v(τ) + Bᵀ(τ)⋅v(τ-1) for τ = 1
     y .+= v
-
-    return nothing
 end
 
 
@@ -170,8 +166,8 @@ function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstr
     # • yᵢ(Lτ)  = +∂B/∂ϕᵢ(1)⋅vᵢ(1) for τ = 1
     #
     # • B(τ) = exp{-Δτ⋅V[ϕ(τ)]} exp{-Δτ⋅K}
-    # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅ dV/dϕᵢ(τ) ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
-    # • ∂B/∂ϕᵢ(τ) = -Δτ ⋅    λᵢ     ⋅ exp{-Δτ⋅V[ϕ(τ)]} ⋅ exp{-Δτ⋅K}
+    # • ∂B/∂ϕᵢ(τ) = -Δτ⋅dV/dϕᵢ(τ)⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}
+    # • ∂B/∂ϕᵢ(τ) = -Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}
     #
     # • Therefore the final expression is:
     # • yᵢ(τ-1) = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[ϕ(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ > 1

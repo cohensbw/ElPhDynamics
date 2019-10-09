@@ -7,7 +7,7 @@ using ..Lattices: Lattice
 using ..HolsteinModels: HolsteinModel
 using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!
 using ..HolsteinModels: assign_tij!, assign_ωij!
-using ..HolsteinModels: setup_checkerboard!
+using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!
 using ..InitializePhonons: init_phonons_single_site!
 using ..FourierAcceleration: FourierAccelerator, update_Q!
 using ..LangevinSimulationParameters: SimulationParameters
@@ -69,6 +69,15 @@ function process_input_file(filename::String)
                         tij["orbit"][1], tij["orbit"][2], tij["dL"])
         end
     end
+
+    # organize electron hoppings for checkerboard decomposition
+    setup_checkerboard!(holstein)
+
+    # intialize phonon field
+    init_phonons_single_site!(holstein)
+
+    # construct exponentiated interaction matrix
+    construct_expnΔτV!(holstein)
     
     #################################
     ## DEFINE FOURIER ACCELERATION ##

@@ -35,14 +35,14 @@ beta = 2.0
 # define hopping in lattice
 [[holstein.t]]
 mean   = 1.0
-std    = 1.0       # standard deviation
+std    = 0.0       # standard deviation
 orbit  = [1, 1]    # orbital types being connected
 dL     = [1, 0, 0] # displacement vector in unit cells
 
 # define hopping in lattice
 [[holstein.t]]
 mean   = 1.0
-std    = 1.0
+std    = 0.0
 orbit  = [1, 1]
 dL     = [0, 1, 0]
 

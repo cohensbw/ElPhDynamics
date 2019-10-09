@@ -48,11 +48,11 @@ function write_simulation_summary(input::Dict, sim_params::SimulationParameters{
     df_local = CSV.read(sim_params.datafolder*"local_measurements.out",delim=",")
     
     # getting lattice size info
-    norbits = maximum(df_rspace["Greens_r"].orbit1)
-    L1 = maximum(df_rspace["Greens_r"].dL1)+1
-    L2 = maximum(df_rspace["Greens_r"].dL2)+1
-    L3 = maximum(df_rspace["Greens_r"].dL3)+1
-    Lτ = maximum(df_rspace["Greens_r"].tau)+1
+    norbits = input["lattice"]["norbits"]
+    L1      = input["lattice"]["L"]
+    L2      = input["lattice"]["L"]
+    L3      = input["lattice"]["L"]
+    Lτ      = round(Int,input["holstein"]["beta"]/input["holstein"]["dtau"])
     
     ########################
     ## WRITE SUMMARY FILE ##
@@ -92,27 +92,31 @@ function write_simulation_summary(input::Dict, sim_params::SimulationParameters{
         write(outfile,"\n########################\n")
         write(outfile,"## LOCAL MEASUREMENTS ##\n")
         write(outfile,"########################\n\n")
+
+        # check if there is data do analyze
+        if !isempty(df_local)
         
-        # write header associated with local data
-        write(outfile,"measurement","  ","orbit","  ","avg","  ","std","\n")
-        
-        # getting names of measurements
-        cols = names(df_local)
-        
-        # iterate of orbitals
-        for orbit in 1:norbits
+            # write header associated with local data
+            write(outfile,"measurement","  ","orbit","  ","avg","  ","std","\n")
             
-            # select portion of dataframe corresponding to current orbital
-            df_sel = df_local[df_local.orbit.==orbit,:]
+            # getting names of measurements
+            cols = names(df_local)
             
-            # iterate over measurements
-            for col in cols[2:end]
+            # iterate of orbitals
+            for orbit in 1:norbits
                 
-                # calculating average and standard deviation of measurement
-                avg, sd = binned_statistics(df_sel[:,col],bins)
+                # select portion of dataframe corresponding to current orbital
+                df_sel = df_local[df_local.orbit.==orbit,:]
                 
-                # writing measurement to file
-                write( outfile, string(col), "  ", @sprintf("%d  %.6f  %.6f",orbit,avg,sd), "\n" )
+                # iterate over measurements
+                for col in cols[2:end]
+                    
+                    # calculating average and standard deviation of measurement
+                    avg, sd = binned_statistics(df_sel[:,col],bins)
+                    
+                    # writing measurement to file
+                    write( outfile, string(col), "  ", @sprintf("%d  %.6f  %.6f",orbit,avg,sd), "\n" )
+                end
             end
         end
         
@@ -124,7 +128,10 @@ function write_simulation_summary(input::Dict, sim_params::SimulationParameters{
         write(outfile,   "## WRITE REAL-SPACE NON-LOCAL MEASUREMENTS ##\n")
         write(outfile,   "#############################################\n\n")
         
-        write_nonlocal_data(outfile, df_rspace, norbits, L1, L2, L3, Lτ, bins)
+        # check if there is data do analyze
+        if !isempty(df_rspace)
+            write_nonlocal_data(outfile, df_rspace, norbits, L1, L2, L3, Lτ, bins)
+        end
         
         #################################################
         ## WRITE REAL-SPACE NON-LOCAL MEASUREMENT DATA ##
@@ -134,7 +141,10 @@ function write_simulation_summary(input::Dict, sim_params::SimulationParameters{
         write(outfile,   "## WRITE MOMENTUM-SPACE NON-LOCAL MEASUREMENTS ##\n")
         write(outfile,   "#################################################\n\n")
         
-        write_nonlocal_data(outfile, df_kspace, norbits, L1, L2, L3, Lτ, bins)
+        # check if there is data do analyze
+        if !isempty(df_kspace)
+            write_nonlocal_data(outfile, df_kspace, norbits, L1, L2, L3, Lτ, bins)
+        end
 
     end
 end

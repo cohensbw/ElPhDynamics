@@ -24,8 +24,8 @@ function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2
     # iterating over rows
     for col in 1:N
         # initialize column vector as unit vector
-        colvector     .= 0.0
-        colvector[col] = 1.0
+        colvector      .= 0.0
+        colvector[col]  = 1.0
         # doing matrix vector multiply
         if transposed==true
             # multiply unit vector by Mᵀ matrix

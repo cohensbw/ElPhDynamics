@@ -148,7 +148,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         nindices = nsites*Lτ
 
         # constructing translationally equivalent sets of sites
-        trans_equiv_sets = Array{Int32,7}(translationally_equivalent_sets(lattice))
+        trans_equiv_sets = translationally_equivalent_sets(lattice)
 
         # initialize ineraction matrix, which is diagonal so stored as vector
         expnΔτV = zeros(T,nindices)
@@ -335,16 +335,8 @@ for param in [ :tij , :ωij ]
     @eval begin
         function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:AbstractFloat}
 
-            # recasting 0 displacement in unit cell to displacement by L (width of lattice)
-            # so that indexing in next step works
-            for i in 1:3
-                if displacement[i] == 0
-                    displacement[i] = holstein.lattice.dims[i]
-                end
-            end
-
             # getting new neighbors
-            newneighbors = holstein.trans_equiv_sets[:,:,displacement[1],displacement[2],displacement[3],orbit2,orbit1]
+            newneighbors = holstein.trans_equiv_sets[:,:,displacement[1]+1,displacement[2]+1,displacement[3]+1,orbit2,orbit1]
 
             # getting number of new neighbors
             nnewneighbors = size(newneighbors,2)
@@ -356,9 +348,6 @@ for param in [ :tij , :ωij ]
             for i in 1:nnewneighbors
                 push!( holstein.$param , μ0 + σ0 * randn() )
             end
-
-            # total number of neighbors
-            nneighbors = size(holstein.$neighbor_table,2)
 
             return nothing
         end
