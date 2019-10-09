@@ -51,14 +51,14 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
             for ΔL3 in 0:lattice.L3-1
                 for ΔL2 in 0:lattice.L2-1
                     for ΔL1 in 0:lattice.L1-1
-                        # iterate over possible time seperations
-                        for τ in 0:holstein.Lτ-1
-                            # iterating over pairs of sites corresponding to current displacement vector
-                            for pair in 1:npairs
-                                # getting current pair of sites associated with specified
-                                # displacement vector r=i-j
-                                j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
-                                i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
+                        # iterating over pairs of sites corresponding to current displacement vector
+                        for pair in 1:npairs
+                            # getting current pair of sites associated with specified
+                            # displacement vector r=i-j
+                            j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
+                            i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
+                            # iterate over possible time seperations
+                            for τ in 0:holstein.Lτ-1
                                 # iterating over time slices
                                 @simd for τ₁ in 1:holstein.Lτ
                                     
