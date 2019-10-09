@@ -60,7 +60,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                 j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                                 i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                                 # iterating over time slices
-                                for τ₁ in 1:holstein.Lτ
+                                @simd for τ₁ in 1:holstein.Lτ
                                     
                                     # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
                                     τ₂ = (τ₁+τ-1)%Gr1.β+1

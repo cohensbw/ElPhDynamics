@@ -7,6 +7,7 @@ using Printf
 using Pkg.TOML
 
 using ..LangevinSimulationParameters: SimulationParameters
+using ..HolsteinModels: HolsteinModel
 
 export write_simulation_summary
 
@@ -14,7 +15,7 @@ export write_simulation_summary
 """
 Writes a simulation summary file after a simulation completes.
 """
-function write_simulation_summary(input::Dict, sim_params::SimulationParameters{T}, simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
+function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters{T}, simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
     
     # array to contain binned data
     bins = zeros(T,nbins)
@@ -48,12 +49,12 @@ function write_simulation_summary(input::Dict, sim_params::SimulationParameters{
     df_local = CSV.read(sim_params.datafolder*"local_measurements.out",delim=",")
     
     # getting lattice size info
-    norbits = input["lattice"]["norbits"]
-    L1      = input["lattice"]["L"]
-    L2      = input["lattice"]["L"]
-    L3      = input["lattice"]["L"]
-    Lτ      = round(Int,input["holstein"]["beta"]/input["holstein"]["dtau"])
-    
+    norbits = holstein.lattice.norbits
+    L1      = holstein.lattice.L1
+    L2      = holstein.lattice.L2
+    L3      = holstein.lattice.L3
+    Lτ      = holstein.Lτ
+
     ########################
     ## WRITE SUMMARY FILE ##
     ########################

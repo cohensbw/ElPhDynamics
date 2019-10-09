@@ -22,4 +22,4 @@ simulation_time, measurement_time, write_time, iters = run_simulation!(holstein,
 ## SUMARIZING SIMULATION RESULTS ##
 ###################################
 
-write_simulation_summary(input, sim_params, simulation_time, measurement_time, write_time, iters)
+write_simulation_summary(holstein, input, sim_params, simulation_time, measurement_time, write_time, iters)
