@@ -1,7 +1,7 @@
 module Lattices
 
 using LinearAlgebra
-using Langevin.Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
+using ..Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
 
 export Lattice
 export loc_to_cell, loc_to_site, site_to_site

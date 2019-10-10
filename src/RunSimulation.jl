@@ -17,7 +17,7 @@ using ..LocalMeasurements: process_local_measurements!, construct_local_measurem
 using ..LocalMeasurements: initialize_local_measurements_file
 using ..LocalMeasurements: write_local_measurements
 
-export run_simulation!, read_input_file
+export run_simulation!
 
 function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1}) where {T1<:AbstractFloat, T2<:Number}
 
