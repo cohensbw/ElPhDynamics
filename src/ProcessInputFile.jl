@@ -21,6 +21,9 @@ function process_input_file(filename::String)
     ########################
     
     input = TOML.parsefile(filename)
+
+    # checking correct version for input file is specified
+    @assert input["input_format_version"] == "0.1.0"
     
     ##############################
     ## CONSTRUCT HOLSTEIN MODEL ##
@@ -42,30 +45,45 @@ function process_input_file(filename::String)
     
     # adding phonon frequencies
     for d in input["holstein"]["omega"]
+        stddev = 0.0
+        if "stddev" in keys(d)
+            stddev = d["stddev"]
+        end
         for orbit in d["orbit"]
-            assign_ω!(holstein,d["mean"],d["std"],orbit)
+            assign_ω!(holstein,d["val"],stddev,orbit)
         end
     end
     
     # adding electron-phonon coupling
     for d in input["holstein"]["lambda"]
+        stddev = 0.0
+        if "stddev" in keys(d)
+            stddev = d["stddev"]
+        end
         for orbit in d["orbit"]
-            assign_λ!(holstein,d["mean"],d["std"],orbit)
+            assign_λ!(holstein,d["val"],stddev,orbit)
         end
     end
     
     # adding chemical potential
     for d in input["holstein"]["mu"]
+        stddev = 0.0
+        if "stddev" in keys(d)
+            stddev = d["stddev"]
+        end
         for orbit in d["orbit"]
-            assign_μ!(holstein,d["mean"],d["std"],orbit)
+            assign_μ!(holstein,d["val"],stddev,orbit)
         end
     end
     
     # check if any hopping defined
     if "t" in keys(input["holstein"])
-        # adding electron hopping
         for tij in input["holstein"]["t"]
-            assign_tij!(holstein, tij["mean"], tij["std"],
+            stddev = 0.0
+            if "stddev" in keys(tij)
+                stddev = tij["stddev"]
+            end
+            assign_tij!(holstein, tij["val"], stddev,
                         tij["orbit"][1], tij["orbit"][2], tij["dL"])
         end
     end
@@ -94,7 +112,20 @@ function process_input_file(filename::String)
     ##################################
     ## DEFINE SIMULATION PARAMETERS ##
     ##################################
-    
+
+    # define initial annealing temperature
+    annealing_init_temp = 1.0
+    if "annealing_init_temp" in keys(input["simulation"])
+        annealing_init_temp = input["simulation"]["annealing_init_temp"]
+    end
+    @assert annealing_init_temp >= 1.0
+
+    # define annealing exponent
+    annealing_exponent = 1.0
+    if "annealing_exponent" in keys(input["simulation"])
+        annealing_exponent = input["simulation"]["annealing_exponent"]
+    end
+
     # construct simulation parameters object.
     sim_params = SimulationParameters(input["simulation"]["dt"],
                                       input["simulation"]["euler"],
@@ -104,7 +135,9 @@ function process_input_file(filename::String)
                                       input["simulation"]["meas_freq"],
                                       input["simulation"]["num_bins"],
                                       input["simulation"]["filepath"],
-                                      input["simulation"]["foldername"])
+                                      input["simulation"]["foldername"],
+                                      annealing_init_temp,
+                                      annealing_exponent)
     
     
     return holstein, sim_params, fa, input

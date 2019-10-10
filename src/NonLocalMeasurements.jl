@@ -247,14 +247,10 @@ end
 """
 Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
 """
-function measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2)
+@inline function measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2)
 
-    G = (Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
-    # time ordering
-    if τ₂<τ₁
-        G *= -1.0
-    end
-    return G
+    # takes care of time-ordering heavey-side step function
+    return (1-2*θ(τ₁-τ₂))*(Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
 end
 
 
@@ -296,6 +292,9 @@ function measure_PairGreens(Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁
     return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
 end
 
+############################
+## USEFULE MATH FUNCTIONS ##
+############################
 
 """
 Delta function.
@@ -303,6 +302,14 @@ Delta function.
 @inline function δ(i::T,j::T)::T where {T<:Number}
 
     return i==j
+end
+
+"""
+Heavy-side step function.
+"""
+@inline function θ(i::T)::T where {T<:Number}
+
+    return i>0
 end
 
 end

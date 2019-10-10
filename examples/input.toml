@@ -1,3 +1,12 @@
+# NOTE: COMMAND TO RUN SIMULATION
+# julia -O3 -e "using Langevin; simulate(ARGS)" -- input.toml
+
+##################################
+## SPECIFY INPUT FORMAT VERSION ##
+##################################
+
+input_format_version = "0.1.0"
+
 ######################
 ## DEFINING LATTICE ##
 ######################
@@ -34,35 +43,32 @@ beta = 2.0
 
 # define hopping in lattice
 [[holstein.t]]
-mean   = 1.0
-std    = 0.0       # standard deviation
+val    = 1.0       # mean value
+stddev = 0.0       # (optional) standard deviation
 orbit  = [1, 1]    # orbital types being connected
 dL     = [1, 0, 0] # displacement vector in unit cells
 
 # define hopping in lattice
 [[holstein.t]]
-mean   = 1.0
-std    = 0.0
-orbit  = [1, 1]
-dL     = [0, 1, 0]
+val   = 1.0
+orbit = [1, 1]
+dL    = [0, 1, 0]
 
 # define phonon frequency
 [[holstein.omega]]
-orbit = [1] # which orbital types the omega value is applied to
-mean  = 1.0
-std   = 0.0
+orbit  = [1] # which orbital types the omega value is applied to
+val    = 1.0 # mean value used for parameter
+stddev = 0.0 # (optional) standard deviation
 
 # define electron-phonon coupling
 [[holstein.lambda]]
 orbit = [1]
-mean  = 1.0
-std   = 0.0
+val   = 1.0
 
 # define chemical potential
 [[holstein.mu]]
 orbit = [1]
-mean  = -1.0
-std   = 0.0
+val   = -1.0
 
 ###################################
 ## DEFINING FOURIER ACCELERATION ##

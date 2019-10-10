@@ -69,6 +69,12 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # time taken writing data to file
     write_time = 0.0
 
+    # variables used in annealing process during thermalization process
+    annealing_init_temp  = sim_params.annealing_init_temp
+    annealing_exponent   = sim_params.annealing_exponent
+    annealing_coeff      = (annealing_init_temp-1.0)*(sim_params.burnin-1.0)^(-annealing_exponent)
+    annealing_temp       = 0.0
+
     ########################
     ## RUNNING SIMULATION ##
     ########################
@@ -76,14 +82,17 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # thermalizing system
     for timestep in 1:sim_params.burnin
 
+        # calculating current temperature in annealing process
+        annealing_temp = annealing_init_temp-annealing_coeff*(timestep-1.0)^annealing_exponent
+
         if sim_params.euler
 
             # using Euler method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol, annealing_temp)
         else
 
             # using Runge-Kutta method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol, annealing_temp)
         end
     end
 

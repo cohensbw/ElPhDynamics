@@ -22,6 +22,9 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     # itialize η as vector of gaussian random number
     randn!(η)
 
+    # apply langevin dynmaics temperatures
+    η .*= sqrt(T)
+
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
 
@@ -89,6 +92,9 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     
     # itialize η as vector of gaussian random number
     randn!(η)
+
+    # apply langevin dynmaics temperatures
+    η .*= sqrt(T)
 
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
     iters = calc_dSdϕ!(dSdϕ, g, Mᵀg, M⁻¹g, holstein, tol)
