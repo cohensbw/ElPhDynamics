@@ -67,7 +67,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_mul!(y::AbstractVector{T}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T}, sinhtij::Vector{T}, Lτ::Int=1) where {T<:Number}
+function checkerboard_mul!(y, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T}, sinhtij::Vector{T}, Lτ::Int=1) where {T<:Number}
 
     # iterating over pairs of neighboring sites
     @fastmath @inbounds for n in 1:length(coshtij)
