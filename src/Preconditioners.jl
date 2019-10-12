@@ -236,7 +236,7 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
     transpose!(z1t, z2)
     
     # apply Mtilde_{ω, ω}
-    for ω = 1:L
+    for ω = 1 : round(Int, L/2, RoundUp)
         z1tv = view(z1t, :, ω)
         z2tv = view(z2t, :, ω)
     
@@ -267,6 +267,8 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
 
         # println(mvps)
         mvps_total += mvps
+
+        @. z2t[:, L-ω+1] =  conj(z2t[:, ω])
     end
     
     transpose!(z1, z2t)
