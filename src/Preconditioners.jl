@@ -6,10 +6,66 @@ using LinearAlgebra
 using IterativeSolvers
 
 import LinearAlgebra: mul!, ldiv!
-import Base: eltype, size
+import Base: eltype, size, *
 
 using ..HolsteinModels: HolsteinModel, mulM!
 using ..Checkerboard: checkerboard_mul!
+
+
+
+
+######################################################################################
+# GMRES that can restart without reallocation
+
+using Printf
+using IterativeSolvers: GMRESIterable, reserve!, gmres_iterable!, init!, init_residual!, converged
+
+function reset_gmres_iterable!(g::GMRESIterable, new_x, new_A, new_b;
+        tol = nothing,
+        initially_zero::Bool = nothing)
+    @assert size(g.x, 1) == size(new_x, 1) == size(new_A, 2) == size(new_b, 1)
+    @assert size(g.arnoldi.A, 1) == size(new_A, 1)
+
+    # Reset solution vector and RHS
+    g.x = new_x
+    g.b = new_b
+
+    # I want to do this:
+    #     g.arnoldi.A = new_A
+    #
+    # However, 'arnoldi' field is immutable. For now, simply assert that
+    # the pointer to A is unchanged (although internally it may change)
+    @assert g.arnoldi.A == new_A
+
+    fill!(g.arnoldi.V, zero(eltype(new_x)))
+    fill!(g.arnoldi.H, zero(eltype(new_x)))
+
+    # Reset size of Krylov space
+    g.k = 1
+
+    # One matrix-vector product so far
+    g.mv_products = initially_zero ? 1 : 0
+
+    # Set the first basis vector
+    g.residual.current = init!(g.arnoldi, g.x, g.b, g.Pl, g.Ax, initially_zero=initially_zero)
+    init_residual!(g.residual, g.residual.current)
+
+    # Set the tolerance for the relative residual
+    g.reltol = tol * g.residual.current
+
+    # Figuring out this line took me 6 hours...
+    g.β = g.residual.current
+
+    nothing
+end
+
+function run_gmres_iterable!(g::GMRESIterable; verbose=false)
+    for (iteration, residual) = enumerate(g)
+        verbose && @printf("%3d\t%3d\t%1.2e\n", 1 + div(iteration - 1, g.restart), 1 + mod(iteration - 1, g.restart), residual)
+    end
+
+    converged(g)
+end
 
 
 ######################################################################################
@@ -44,7 +100,7 @@ mutable struct MtildeBlockOp
     
     "Array of complex phases for each ω"
     phases :: Vector{Complex{Float64}}
-    
+
     "Temporary storage of length `L`"
     z1 :: Vector{Complex{Float64}}
     z2 :: Vector{Complex{Float64}}
@@ -56,7 +112,7 @@ mutable struct MtildeBlockOp
         expnΔτV_bar = dropdims(sum(reshape(holstein.expnΔτV, (L, N)); dims=1); dims=1) / L
         
         phases = [exp(-2π*im*((ω-1)+1/2)/L) for ω = 1:L]
-        
+
         z1 = zeros(Complex{Float64}, N)
         z2 = zeros(Complex{Float64}, N)
         
@@ -84,6 +140,21 @@ function mul!(z_out, op::MtildeBlockOp, z)
     @. z_out = z - op.z1
 end
 
+function *(op::MtildeBlockOp, z)
+    z_out = complex(similar(z))
+    mul!(z_out, op, z)
+end
+
+function construct_matrix(op::MtildeBlockOp)
+    N = op.holstein.nsites
+    out = Array{ComplexF64}(I, N, N)
+    for j = 1:N
+        col = @view out[:, j]
+        mul!(col, op, col)
+    end
+    out
+end
+
 
 ######################################################################################
 # Block diagonal (Jacobi) preconditioner applied in Fourier basis, ω
@@ -105,6 +176,9 @@ mutable struct BlockPreconditioner
     z1 :: Array{Complex{Float64}, 1}
     z2 :: Array{Complex{Float64}, 1}
     
+    "Reuse of GMRES storage"
+    block_gmres:: Union{Nothing, GMRESIterable}
+
     plan :: FFTW.cFFTWPlan
     
     
@@ -121,7 +195,7 @@ mutable struct BlockPreconditioner
 
         plan = plan_fft(reshape(z1, (L, N)), (1,), flags=FFTW.PATIENT)
         
-        new(holstein, mtilde, subtol, phases, z1, z2, plan)
+        new(holstein, mtilde, subtol, phases, z1, z2, nothing, plan)
     end
 end
 
@@ -160,24 +234,39 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
     ldiv!(z2, op.plan, z1)
     
     transpose!(z1t, z2)
-        
+    
     # apply Mtilde_{ω, ω}
     for ω = 1:L
-        z1tv = @view z1t[:, ω]
-        z2tv = @view z2t[:, ω]
+        z1tv = view(z1t, :, ω)
+        z2tv = view(z2t, :, ω)
     
-        fill!(z2tv, 0)
-        
+        fill!(z2tv, 0) # TODO: find better initial guess?
         op.mtilde.ω = ω
         
-        # mul!(z2tv, op.mtilde, z1tv)
-        
-        history = IterativeSolvers.gmres!(z2tv, op.mtilde, z1tv, tol=op.subtol, maxiter=100, restart=5, log=true)
-#        history = IterativeSolvers.gmres!(temp2, op.mtilde, temp1, tol=1e-2, log=true, maxiter=100, restart=5)
-        @assert history[2].isconverged
-        mvps_total += history[2].mvps
-        
-        #IterativeSolvers.bicgstabl(op.mtilde, r, 2, tol=1e-2, log=true, max_mv_products=1000)
+        mvps = 0
+        if false
+            history = IterativeSolvers.gmres!(z2tv, op.mtilde, z1tv, tol=op.subtol, maxiter=1000, restart=5, log=true)
+
+            # history = IterativeSolvers.bicgstabl!(z2tv, op.mtilde, z1tv, 4, tol=op.subtol, max_mv_products=1000, log=true)
+
+            # Mtilde = construct_matrix(op.mtilde)
+            # history = IterativeSolvers.cg!(z2tv, Mtilde' * Mtilde, Mtilde' * z1tv, tol=op.subtol, maxiter=100, log=true)
+
+            mvps = history[2].mvps + history[2].mtvps
+            @assert history[2].isconverged "Krylov inversion for ω=$ω did not converge to tolerance $(op.subtol) after $mvps mat-vec products"
+        else
+            if isnothing(op.block_gmres)
+                op.block_gmres = gmres_iterable!(z2tv, op.mtilde, z1tv; tol=op.subtol, maxiter=1000, restart=5, initially_zero=true)
+            else
+                reset_gmres_iterable!(op.block_gmres, z2tv, op.mtilde, z1tv; tol=op.subtol, initially_zero=true)
+            end
+            converged = run_gmres_iterable!(op.block_gmres)
+            mvps = op.block_gmres.mv_products
+            @assert converged "Krylov inversion for ω=$ω did not converge to tolerance $(op.subtol) after $mvps mat-vec products"
+        end
+
+        # println(mvps)
+        mvps_total += mvps
     end
     
     transpose!(z1, z2t)
@@ -190,9 +279,9 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
         @. z2[:, i] = z2[:, i] * conj(op.phases[:])
     end
 
-    @assert norm(imag(z2)) < 1e-10
+    @assert norm(imag(z2)) < 1e-12 "Imagine component imag(z2)=$(norm(imag(z2))) too large."
     
-    println("Effective mat-vec products: ", mvps_total/L)
+    # println("Effective mat-vec products: ", mvps_total/L)
     
     @. r_out = real(z2[:])
 end
