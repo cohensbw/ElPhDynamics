@@ -59,7 +59,7 @@ function reset_gmres_iterable!(g::GMRESIterable, new_x, new_A, new_b;
     nothing
 end
 
-function run_gmres_iterable!(g::GMRESIterable; verbose=false)
+function run_gmres_iterable!(g::GMRESIterable; verbose=false):: Bool
     for (iteration, residual) = enumerate(g)
         verbose && @printf("%3d\t%3d\t%1.2e\n", 1 + div(iteration - 1, g.restart), 1 + mod(iteration - 1, g.restart), residual)
     end
@@ -73,7 +73,7 @@ end
 # This struct can be replaced by mul!(r_out, HolsteinModel, r) in the future.
 
 struct MatrixMOp
-    holstein :: HolsteinModel
+    holstein :: HolsteinModel{Float64, Float64}
 end
 
 function Base.size(op::MatrixMOp, d)
@@ -93,7 +93,7 @@ mutable struct MtildeBlockOp
     ω :: Int
     
     "Holstein model"
-    holstein :: HolsteinModel
+    holstein :: HolsteinModel{Float64, Float64}
     
     "τ-averaged matrix exp(-Δτ⋅V[ϕ])"
     expnΔτV_bar :: Vector{Float64}
@@ -161,7 +161,7 @@ end
 
 mutable struct BlockPreconditioner
     "Holstein model"
-    holstein :: HolsteinModel
+    holstein :: HolsteinModel{Float64, Float64}
     
     "Block matrix multiplication"
     mtilde :: MtildeBlockOp
@@ -179,7 +179,8 @@ mutable struct BlockPreconditioner
     "Reuse of GMRES storage"
     block_gmres:: Union{Nothing, GMRESIterable}
 
-    plan :: FFTW.cFFTWPlan
+    "Plan for Fourier transform"
+    plan :: FFTW.cFFTWPlan{Complex{Float64},-1,false,2}
     
     
     function BlockPreconditioner(holstein; subtol=1e-1)
