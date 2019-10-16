@@ -145,7 +145,7 @@ function construct_matrix(op::MtildeBlockOp)
     N = op.holstein.nsites
     out = Array{ComplexF64}(I, N, N)
     for j = 1:N
-        col = @view out[:, j]
+        col = view(out, :, j)
         mul!(col, op, col)
     end
     out
@@ -186,7 +186,7 @@ mutable struct BlockPreconditioner
     z2 :: Array{ComplexF64, 1}
     
     "Reuse of GMRES storage"
-    block_gmres:: Union{Nothing, BlockGMRESIterable}
+    block_gmres :: Union{Nothing, BlockGMRESIterable}
 
     "Plan for Fourier transform"
     plan :: FFTW.cFFTWPlan{ComplexF64,-1,false,2}
@@ -226,17 +226,19 @@ function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
     L = op.holstein.Lτ
     N = op.holstein.nsites
 
-    @. op.z1 = complex(r)
-
     z1 = reshape(op.z1, (L, N))
     z1t = reshape(op.z1, (N, L))
 
     z2 = reshape(op.z2, (L, N))
     z2t = reshape(op.z2, (N, L))
+
+    @. op.z1 = complex(r)
     
     # apply Θ phase
     for i = 1:N
-        @. z1[:, i] = z1[:, i] * op.phases[:]
+        for τ = 1:L
+            z1[τ, i] = z1[τ, i] * op.phases[τ]
+        end
     end
     
     # transform basis τ → ω by applying F
@@ -278,7 +280,9 @@ function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
         # println(mvps)
         mvps_total += mvps
 
-        @. z2t[:, L-ω+1] =  conj(z2t[:, ω])
+        for i = 1:N
+            z2t[i, L-ω+1] =  conj(z2t[i, ω])
+        end
     end
     
     transpose!(z1, z2t)
@@ -288,14 +292,16 @@ function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
 
     # apply Θ† phase
     for i = 1:N
-        @. z2[:, i] = z2[:, i] * conj(op.phases[:])
+        for τ = 1:L
+            z2[τ, i] *= conj(op.phases[τ])
+        end
     end
 
     @assert norm(imag(z2)) < 1e-12 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
     
     # println("Effective mat-vec products: ", mvps_total/L)
     
-    @. r_out = real(z2[:])
+    @. r_out = real(op.z2)
 end
 
 function LinearAlgebra.ldiv!(op::BlockPreconditioner, r)
