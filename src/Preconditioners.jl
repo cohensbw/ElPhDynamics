@@ -95,11 +95,11 @@ mutable struct MtildeBlockOp
     expnΔτV_bar :: Vector{Float64}
     
     "Array of complex phases for each ω"
-    phases :: Vector{Complex{Float64}}
+    phases :: Vector{ComplexF64}
 
     "Temporary storage of length `L`"
-    z1 :: Vector{Complex{Float64}}
-    z2 :: Vector{Complex{Float64}}
+    z1 :: Vector{ComplexF64}
+    z2 :: Vector{ComplexF64}
     
     function MtildeBlockOp(ω, holstein)
         N = holstein.nsites
@@ -109,15 +109,15 @@ mutable struct MtildeBlockOp
         
         phases = [exp(-2π*im*((ω-1)+1/2)/L) for ω = 1:L]
 
-        z1 = zeros(Complex{Float64}, N)
-        z2 = zeros(Complex{Float64}, N)
+        z1 = zeros(ComplexF64, N)
+        z2 = zeros(ComplexF64, N)
         
         new(ω, holstein, expnΔτV_bar, phases, z1, z2)
     end
 end
 
 function Base.eltype(::Type{MtildeBlockOp})
-    Complex{Float64}
+    ComplexF64
 end
 
 function Base.size(op::MtildeBlockOp, d)
@@ -157,15 +157,15 @@ end
 
 const BlockGMRESIterable = IterativeSolvers.GMRESIterable{
     Identity,Identity,
-    SubArray{Complex{Float64},
-            1,Array{Complex{Float64},2},
+    SubArray{ComplexF64,
+            1,Array{ComplexF64,2},
             Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true},
-    SubArray{Complex{Float64},1,
-            Array{Complex{Float64},2},
+    SubArray{ComplexF64,1,
+            Array{ComplexF64,2},
             Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true},
-    Array{Complex{Float64},1},
-    IterativeSolvers.ArnoldiDecomp{Complex{Float64},MtildeBlockOp},
-    IterativeSolvers.Residual{Complex{Float64},Float64},Float64
+    Array{ComplexF64,1},
+    IterativeSolvers.ArnoldiDecomp{ComplexF64,MtildeBlockOp},
+    IterativeSolvers.Residual{ComplexF64,Float64},Float64
 }
 
 mutable struct BlockPreconditioner
@@ -179,17 +179,17 @@ mutable struct BlockPreconditioner
     subtol :: Float64
 
     "Array of complex phases for each ω"
-    phases :: Vector{Complex{Float64}}
+    phases :: Vector{ComplexF64}
 
     "Temporary storage of size (L, N)"
-    z1 :: Array{Complex{Float64}, 1}
-    z2 :: Array{Complex{Float64}, 1}
+    z1 :: Array{ComplexF64, 1}
+    z2 :: Array{ComplexF64, 1}
     
     "Reuse of GMRES storage"
     block_gmres:: Union{Nothing, BlockGMRESIterable}
 
     "Plan for Fourier transform"
-    plan :: FFTW.cFFTWPlan{Complex{Float64},-1,false,2}
+    plan :: FFTW.cFFTWPlan{ComplexF64,-1,false,2}
     
     
     function BlockPreconditioner(holstein; subtol=1e-1)
@@ -200,8 +200,8 @@ mutable struct BlockPreconditioner
     
         phases = [exp(π * im * (τ-1) / L) for τ = 1:L]
         
-        z1 = zeros(Complex{Float64}, L*N)
-        z2 = zeros(Complex{Float64}, L*N)
+        z1 = zeros(ComplexF64, L*N)
+        z2 = zeros(ComplexF64, L*N)
 
         plan = plan_fft(reshape(z1, (L, N)), (1,), flags=FFTW.PATIENT)
         
