@@ -5,12 +5,8 @@ using FFTW
 using LinearAlgebra
 using IterativeSolvers
 
-import LinearAlgebra: mul!, ldiv!
-import Base: eltype, size, *
-
 using ..HolsteinModels: HolsteinModel, mulM!
 using ..Checkerboard: checkerboard_mul!
-
 
 
 
@@ -80,7 +76,7 @@ function Base.size(op::MatrixMOp, d)
     size(op.holstein)[d]
 end
 
-function mul!(r_out, op::MatrixMOp, r)
+function LinearAlgebra.mul!(r_out, op::MatrixMOp, r)
    mulM!(r_out, op.holstein, r)
 end
 
@@ -128,7 +124,7 @@ function Base.size(op::MtildeBlockOp, d)
     op.holstein.nsites
 end
 
-function mul!(z_out, op::MtildeBlockOp, z)
+function LinearAlgebra.mul!(z_out, op::MtildeBlockOp, z)
     N = op.holstein.nsites
     
     op.z1 .= z
@@ -140,7 +136,7 @@ function mul!(z_out, op::MtildeBlockOp, z)
     @. z_out = z - op.z1
 end
 
-function *(op::MtildeBlockOp, z)
+function Base.:*(op::MtildeBlockOp, z)
     z_out = complex(similar(z))
     mul!(z_out, op, z)
 end
@@ -158,6 +154,19 @@ end
 
 ######################################################################################
 # Block diagonal (Jacobi) preconditioner applied in Fourier basis, ω
+
+const BlockGMRESIterable = IterativeSolvers.GMRESIterable{
+    Identity,Identity,
+    SubArray{Complex{Float64},
+            1,Array{Complex{Float64},2},
+            Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true},
+    SubArray{Complex{Float64},1,
+            Array{Complex{Float64},2},
+            Tuple{Base.Slice{Base.OneTo{Int64}},Int64},true},
+    Array{Complex{Float64},1},
+    IterativeSolvers.ArnoldiDecomp{Complex{Float64},MtildeBlockOp},
+    IterativeSolvers.Residual{Complex{Float64},Float64},Float64
+}
 
 mutable struct BlockPreconditioner
     "Holstein model"
@@ -177,7 +186,7 @@ mutable struct BlockPreconditioner
     z2 :: Array{Complex{Float64}, 1}
     
     "Reuse of GMRES storage"
-    block_gmres:: Union{Nothing, GMRESIterable}
+    block_gmres:: Union{Nothing, BlockGMRESIterable}
 
     "Plan for Fourier transform"
     plan :: FFTW.cFFTWPlan{Complex{Float64},-1,false,2}
@@ -211,7 +220,7 @@ function Base.size(op::BlockPreconditioner, d)
 end
 
 
-function ldiv!(r_out, op::BlockPreconditioner, r)
+function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
     mvps_total = 0
     
     L = op.holstein.Lτ
@@ -237,7 +246,7 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
     transpose!(z1t, z2)
     
     # apply Mtilde_{ω, ω}
-    for ω = 1 : round(Int, L/2, RoundUp)
+    for ω = 1 : cld(L, 2)
         z1tv = view(z1t, :, ω)
         z2tv = view(z2t, :, ω)
     
@@ -282,14 +291,14 @@ function ldiv!(r_out, op::BlockPreconditioner, r)
         @. z2[:, i] = z2[:, i] * conj(op.phases[:])
     end
 
-    @assert norm(imag(z2)) < 1e-12 "Imagine component imag(z2)=$(norm(imag(z2))) too large."
+    @assert norm(imag(z2)) < 1e-12 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
     
     # println("Effective mat-vec products: ", mvps_total/L)
     
     @. r_out = real(z2[:])
 end
 
-function ldiv!(op::BlockPreconditioner, r)
+function LinearAlgebra.ldiv!(op::BlockPreconditioner, r)
     ldiv!(r, op, r)
 end
 
