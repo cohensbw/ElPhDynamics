@@ -6,7 +6,7 @@ using LinearAlgebra
 using IterativeSolvers
 
 using ..HolsteinModels: HolsteinModel, mulM!
-using ..Checkerboard: checkerboard_mul!
+using ..Checkerboard: checkerboard_mul!, checkerboard_matrix
 
 
 
@@ -178,7 +178,7 @@ mutable struct BlockPreconditioner
     "Tolerance of GMRES sub-solver"
     subtol :: Float64
 
-    "Array of complex phases for each ω"
+    "Array of complex phases for each τ"
     phases :: Vector{ComplexF64}
 
     "Temporary storage of size (L, N)"
@@ -306,5 +306,167 @@ end
 function LinearAlgebra.ldiv!(op::BlockPreconditioner, r)
     ldiv!(r, op, r)
 end
+
+
+######################################################################################
+# One-shot Fourier preconditioner
+
+mutable struct FourierPreconditioner
+    "Holstein model"
+    holstein :: HolsteinModel{Float64, Float64}
+    
+    "Array of complex phases, needed to implement antiperiodic FFT"
+    Θ :: Vector{ComplexF64}
+
+    "Array of complex phases, needed to define Mhat_{k,ω}"
+    ω_phases :: Vector{ComplexF64}
+
+    "Transpose of NxN Fourier transform matrix, x->k"
+    G :: Array{ComplexF64, 2}
+
+    "H† = exp(-dτ K) G†"
+    Hdag :: Array{ComplexF64, 2}
+
+    "Storage for φ0 = <exp(-dτ V)>, averaged over τ"
+    φ0 :: Array{Float64, 1}
+    
+    "Storage for α_k = <k| B_0 |k>. These are complex because B_0 is not Hermitian."
+    α :: Array{ComplexF64, 1}
+
+    "Temporary storage of size (L, N)"
+    z1 :: Array{ComplexF64, 1}
+    z2 :: Array{ComplexF64, 1}
+
+    "Plan for Fourier transform"
+    plan :: FFTW.cFFTWPlan{ComplexF64,-1,false,4} # one time dimension, three space dimensions
+    
+    
+    function FourierPreconditioner(holstein)
+        @assert holstein.lattice.norbits == 1 "Only a single orbital per unit cell currently supported"
+
+        L = holstein.Lτ
+        (N1, N2, N3) = holstein.lattice.dims
+        N = N1*N2*N3
+
+        Θ = [exp(-π*im*(τ-1)/L) for τ = 1:L]
+        ω_phases = [exp(2π*im*((ω-1)+1/2)/L) for ω = 1:L]
+
+        G = zeros(ComplexF64, (N, N))
+        Hdag = zeros(ComplexF64, (N, N))
+
+        # TODO: replace this with Ben's generic FFT routines
+        Gr = reshape(G, (N1, N2, N3, N1, N2, N3))
+        for k1 = 1:N1
+            for k2 = 1:N2
+                for k3 = 1:N3
+                    for x1 = 1:N1
+                        for x2 = 1:N2
+                            for x3 = 1:N3
+                                Gr[k1, k2, k3, x1, x2, x3] =
+                                    exp(-2π*im*(
+                                        (x1-1)*(k1-1)/N1 + 
+                                        (x2-1)*(k2-1)/N2 + 
+                                        (x3-1)*(k3-1)/N3)
+                                    )
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        G ./= sqrt(N)
+
+        # TODO: apply checkerboard_mul! instead, column by column
+        expnΔτK = checkerboard_matrix(holstein.neighbor_table_tij, holstein.tij, holstein.Δτ)
+        Hdag = Array(expnΔτK) * conj(G)
+
+        φ0 = zeros(Float64, N)
+        α  = zeros(ComplexF64, N)
+        z1 = zeros(ComplexF64, L*N)
+        z2 = zeros(ComplexF64, L*N)
+        plan = plan_fft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
+
+        new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan)
+    end
+end
+
+
+function Base.eltype(::Type{FourierPreconditioner})
+    Float64
+end
+
+
+function Base.size(op::FourierPreconditioner, d)
+    op.holstein.Lτ * op.holstein.nsites
+end
+
+
+function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)    
+    L = op.holstein.Lτ
+    (N1, N2, N3) = op.holstein.lattice.dims
+    N = N1*N2*N3
+
+    z1 = reshape(op.z1, (L, N))
+    z2 = reshape(op.z2, (L, N))
+
+    @. op.z1 = complex(r)
+    
+    # calculate φ0
+    expnΔτV = reshape(op.holstein.expnΔτV,(L, N))
+    for x = 1:N
+        op.φ0[x] = 0
+        for τ = 1:L
+            op.φ0[x] += expnΔτV[τ, x]
+        end
+    end
+    op.φ0 ./= L
+
+    # calculate αk . this costs O(N^2) operations, but does not yet appear to be a bottleneck.
+    @inbounds for k = 1:N
+        op.α[k] = ComplexF64(0)
+        for x = 1:N
+            op.α[k] += op.G[x, k] * op.φ0[k] * op.Hdag[x, k]
+        end
+    end
+
+    # apply Θ phase
+    for i = 1:N
+        for τ = 1:L
+            z1[τ, i] = z1[τ, i] * op.Θ[τ]
+        end
+    end
+    
+    # apply Fourier transforms F (taking τ → ω) and G (taking x → k)
+    mul!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
+    copy!(z1, z2)
+
+    # apply Mhat
+    for k = 1:N
+        for ω = 1:L
+            Mhat = 1 - op.ω_phases[ω] * op.α[k]
+            z1[ω, k] /= Mhat
+        end
+    end
+    
+    # reverse Fourier transforms
+    ldiv!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
+
+    # apply Θ† phase
+    for i = 1:N
+        for τ = 1:L
+            z2[τ, i] *= conj(op.Θ[τ])
+        end
+    end
+
+    # @assert norm(imag(z2)) < 1e-10 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
+    
+    @. r_out = real(op.z2)
+end
+
+
+function LinearAlgebra.ldiv!(op::FourierPreconditioner, r)
+    ldiv!(r, op, r)
+end
+
 
 end
