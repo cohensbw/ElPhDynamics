@@ -107,7 +107,7 @@ mutable struct MtildeBlockOp
         
         expnΔτV_bar = dropdims(sum(reshape(holstein.expnΔτV, (L, N)); dims=1); dims=1) / L
         
-        phases = [exp(-2π*im*((ω-1)+1/2)/L) for ω = 1:L]
+        phases = [exp(2π*im*((ω-1)+1/2)/L) for ω = 1:L]
 
         z1 = zeros(ComplexF64, N)
         z2 = zeros(ComplexF64, N)
@@ -198,7 +198,7 @@ mutable struct BlockPreconditioner
         
         mtilde = MtildeBlockOp(1, holstein)
     
-        phases = [exp(π * im * (τ-1) / L) for τ = 1:L]
+        phases = [exp(-π*im*(τ-1)/L) for τ = 1:L]
         
         z1 = zeros(ComplexF64, L*N)
         z2 = zeros(ComplexF64, L*N)
@@ -242,8 +242,7 @@ function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
     end
     
     # transform basis τ → ω by applying F
-    # (whoops, this is an inverse FFT because I got sign backwards in my notes...)
-    ldiv!(z2, op.plan, z1)
+    mul!(z2, op.plan, z1)
     
     transpose!(z1t, z2)
     
@@ -281,14 +280,14 @@ function LinearAlgebra.ldiv!(r_out, op::BlockPreconditioner, r)
         mvps_total += mvps
 
         for i = 1:N
-            z2t[i, L-ω+1] =  conj(z2t[i, ω])
+            z2t[i, L-ω+1] = conj(z2t[i, ω])
         end
     end
     
     transpose!(z1, z2t)
     
     # transform basis ω → τ by applying F†
-    mul!(z2, op.plan, z1)
+     ldiv!(z2, op.plan, z1)
 
     # apply Θ† phase
     for i = 1:N
