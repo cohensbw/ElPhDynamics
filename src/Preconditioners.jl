@@ -386,18 +386,50 @@ mutable struct FourierPreconditioner
         z2 = zeros(ComplexF64, L*N)
         plan = plan_fft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
 
-        new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan)
+        ret = new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan)
+        compute_α!(ret, const_V=true)
+
+        return ret
     end
 end
 
 
+function compute_α!(op::FourierPreconditioner; const_V=false)
+    L = op.holstein.Lτ
+    N = op.holstein.nsites
+
+    # calculate φ0
+    expnΔτV = reshape(op.holstein.expnΔτV,(L, N))
+    if const_V
+        op.φ0 .= sum(expnΔτV) / (L*N)
+    else
+        for x = 1:N
+            op.φ0[x] = 0
+            for τ = 1:L
+                op.φ0[x] += expnΔτV[τ, x] / L
+            end
+        end
+    end
+
+    # calculate αk, which costs O(N^2) operations
+    @inbounds for k = 1:N
+        op.α[k] = ComplexF64(0)
+        for x = 1:N
+            op.α[k] += op.G[x, k] * op.φ0[k] * op.Hdag[x, k]
+        end
+    end
+
+    return nothing
+end
+
+
 function Base.eltype(::Type{FourierPreconditioner})
-    Float64
+    return Float64
 end
 
 
 function Base.size(op::FourierPreconditioner, d)
-    op.holstein.Lτ * op.holstein.nsites
+    return op.holstein.Lτ * op.holstein.nsites
 end
 
 
@@ -410,24 +442,6 @@ function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)
     z2 = reshape(op.z2, (L, N))
 
     @. op.z1 = complex(r)
-    
-    # calculate φ0
-    expnΔτV = reshape(op.holstein.expnΔτV,(L, N))
-    for x = 1:N
-        op.φ0[x] = 0
-        for τ = 1:L
-            op.φ0[x] += expnΔτV[τ, x]
-        end
-    end
-    op.φ0 ./= L
-
-    # calculate αk . this costs O(N^2) operations, but does not yet appear to be a bottleneck.
-    @inbounds for k = 1:N
-        op.α[k] = ComplexF64(0)
-        for x = 1:N
-            op.α[k] += op.G[x, k] * op.φ0[k] * op.Hdag[x, k]
-        end
-    end
 
     # apply Θ phase
     for i = 1:N
@@ -461,11 +475,12 @@ function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)
     # @assert norm(imag(z2)) < 1e-10 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
     
     @. r_out = real(op.z2)
+    return r_out
 end
 
 
 function LinearAlgebra.ldiv!(op::FourierPreconditioner, r)
-    ldiv!(r, op, r)
+    return ldiv!(r, op, r)
 end
 
 
