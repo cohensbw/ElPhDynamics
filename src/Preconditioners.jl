@@ -459,30 +459,29 @@ function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)
         
         # apply Fourier transforms F (taking τ → ω) and G (taking x → k)
         mul!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
-        copy!(z1, z2)
 
         # apply Mhat
         @fastmath @inbounds for k = 1:N
             for ω = 1:L
                 Mhat = 1 - op.ω_phases[ω] * op.α[k]
-                z1[ω, k] /= Mhat
+                z2[ω, k] /= Mhat
             end
         end
         
         # reverse Fourier transforms
-        mul!(reshape(z2, (L, N1, N2, N3)), op.iplan, reshape(z1, (L, N1, N2, N3)))
+        mul!(reshape(z1, (L, N1, N2, N3)), op.iplan, reshape(z2, (L, N1, N2, N3)))
 
         # apply Θ† phase
         @fastmath @inbounds for i = 1:N
             for τ = 1:L
-                z2[τ, i] *= conj(op.Θ[τ])
+                z1[τ, i] *= conj(op.Θ[τ])
             end
         end
 
-        # @assert norm(imag(z2)) < 1e-10 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
+        # @assert norm(imag(z1)) < 1e-10
     end
 
-    @. r_out = real(op.z2)
+    @. r_out = real(op.z1)
     return r_out
 end
 
