@@ -418,7 +418,7 @@ function compute_α!(op::FourierPreconditioner; const_V=false)
     @inbounds for k = 1:N
         op.α[k] = ComplexF64(0)
         for x = 1:N
-            op.α[k] += op.G[x, k] * op.φ0[k] * op.Hdag[x, k]
+            op.α[k] += op.G[x, k] * op.φ0[x] * op.Hdag[x, k]
         end
     end
 
