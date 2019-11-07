@@ -1,7 +1,8 @@
 module LocalMeasurements
 
 using Printf
-using ..HolsteinModels: HolsteinModel, get_index, get_site, get_τ
+using ..Utilities: get_index, get_site, get_τ
+using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
 

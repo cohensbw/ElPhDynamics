@@ -1,6 +1,7 @@
 module PhononAction
 
-using ..HolsteinModels: HolsteinModel, get_index
+using ..HolsteinModels: HolsteinModel
+using ..Utilities: get_index
 
 export calc_dSbosedϕ!
 

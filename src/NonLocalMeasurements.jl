@@ -1,7 +1,8 @@
 module NonLocalMeasurements
 
 using Printf
-using ..HolsteinModels: HolsteinModel, get_index, get_site, get_τ
+using ..Utilities: get_index, get_site, get_τ
+using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, estimate
 using ..FourierTransforms: fourier_transform!
@@ -39,8 +40,8 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
     normalization = npairs * holstein.Lτ
 
     # getting pointers to arrays containing measurements
-    greens = container["Greens"]
-    denden = container["DenDen"]
+    greens     = container["Greens"]
+    denden     = container["DenDen"]
     pairgreens = container["PairGreens"]
 
     # iterating over all possible parings of orbitals
@@ -51,16 +52,24 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
             for ΔL3 in 0:lattice.L3-1
                 for ΔL2 in 0:lattice.L2-1
                     for ΔL1 in 0:lattice.L1-1
+                        
                         # iterating over pairs of sites corresponding to current displacement vector
                         for pair in 1:npairs
+
                             # getting current pair of sites associated with specified
                             # displacement vector r=i-j
                             j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                             i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
-                            # iterate over possible time seperations
-                            for τ in 0:holstein.Lτ-1
-                                # iterating over time slices
-                                @simd for τ₁ in 1:holstein.Lτ
+
+                            # iterating over time slices
+                            for τ₁ in 1:holstein.Lτ
+
+                                # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
+                                Gⱼⱼτ₁τ₁1 = estimate(Gr1,j,j,τ₁,τ₁)
+                                Gⱼⱼτ₁τ₁2 = estimate(Gr2,j,j,τ₁,τ₁)
+
+                                # iterate over possible time seperations
+                                for τ in 0:holstein.Lτ-1
                                     
                                     # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
                                     τ₂ = (τ₁+τ-1)%Gr1.β+1
@@ -73,11 +82,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                                     Gⱼᵢτ₁τ₂1 = estimate(Gr1,j,i,τ₁,τ₂)
                                     Gⱼᵢτ₁τ₂2 = estimate(Gr2,j,i,τ₁,τ₂)
 
-                                    # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
-                                    Gⱼⱼτ₁τ₁1 = estimate(Gr1,j,j,τ₁,τ₁)
-                                    Gⱼⱼτ₁τ₁2 = estimate(Gr2,j,j,τ₁,τ₁)
-
-                                    # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
+                                    # estimate ⟨cᵢ(τ₂)c⁺ᵢ(τ₂⟩
                                     Gᵢᵢτ₂τ₂1 = estimate(Gr1,i,i,τ₂,τ₂)
                                     Gᵢᵢτ₂τ₂2 = estimate(Gr2,i,i,τ₂,τ₂)
 
@@ -287,29 +292,9 @@ where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
 """
 function measure_PairGreens(Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁τ₂1, Gⱼᵢτ₁τ₂2)
 
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
     # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
     return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
-end
-
-############################
-## USEFULE MATH FUNCTIONS ##
-############################
-
-"""
-Delta function.
-"""
-@inline function δ(i::T,j::T)::T where {T<:Number}
-
-    return i==j
-end
-
-"""
-Heavy-side step function.
-"""
-@inline function θ(i::T)::T where {T<:Number}
-
-    return i>0
 end
 
 end

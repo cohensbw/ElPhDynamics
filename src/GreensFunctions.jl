@@ -5,7 +5,7 @@ using Statistics
 using Random
 
 using ..HolsteinModels: HolsteinModel, mulMᵀ!
-using ..HolsteinModels: get_index, get_site, get_τ
+using ..Utilities: get_index, get_site, get_τ
 
 export EstimateGreensFunction
 export update!, estimate

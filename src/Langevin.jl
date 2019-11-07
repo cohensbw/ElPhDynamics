@@ -4,6 +4,8 @@ module Langevin
 ## INCLUDING MODULES ##
 #######################
 
+include("Utilities.jl")
+
 include("Geometries.jl")
 
 include("Lattices.jl")
@@ -24,6 +26,10 @@ include("GreensFunctions.jl")
 
 include("FourierTransforms.jl")
 
+include("LatticeFFTs.jl")
+
+include("TimeFreqFFTs.jl")
+
 include("LangevinSimulationParameters.jl")
 
 include("NonLocalMeasurements.jl")
@@ -36,7 +42,7 @@ include("ProcessInputFile.jl")
 
 include("SimulationSummary.jl")
 
-include("Preconditioners.jl")
+# include("Preconditioners.jl")
 
 ####################################
 ## DEFINING HIGHET LEVEL FUNCTION ##

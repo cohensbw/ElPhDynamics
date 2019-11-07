@@ -3,7 +3,7 @@ module FourierAcceleration
 using FFTW
 
 using ..HolsteinModels: HolsteinModel
-using ..HolsteinModels: get_index
+using ..Utilities: get_index
 
 export FourierAccelerator
 export update_Q!
@@ -51,8 +51,8 @@ struct FourierAccelerator{T<:AbstractFloat}
         Lτ = holstein.Lτ
 
         # constructing Q and √(2Q) matrices
-        Q = zeros(T2,length(holstein))
-        sqrt2Q = zeros(T2,length(holstein))
+        Q = zeros(T1,length(holstein))
+        sqrt2Q = zeros(T1,length(holstein))
         update_Q!(Q,sqrt2Q,holstein,mass,Δt,-Inf,Inf)
 
         # declaring two full-length vectors for constructing FFT plans
@@ -83,7 +83,7 @@ function forward_fft!(ν::AbstractVector,v::AbstractVector, fa::FourierAccelerat
     for i in 1:fa.nsites
         # copying data associated with current site
         for τ in 1:fa.Lτ
-            fa.vi[τ] = v[get_index(τ,i,fa.Lτ)]
+            fa.vi[τ] = real(v[get_index(τ,i,fa.Lτ)])
         end
         # performing FFT
         fa.νi .= fa.pfft * fa.vi

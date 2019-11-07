@@ -4,6 +4,7 @@ import LinearAlgebra: mul!
 using LinearAlgebra
 using SparseArrays
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
+using ..Utilities: get_index
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
 
@@ -45,7 +46,7 @@ end
 """
 Perform specified multiplicaiton by M matrix.
 """
-function mul!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mul!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     mulMᵀM!(y,holstein,v)
     # mulM!(y,holstein,v)
@@ -55,7 +56,7 @@ end
 """
 Perform the multiplication y = MᵀM⋅v
 """
-function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     # y' = M⋅v
     mulM!(holstein.y′, holstein, v)
@@ -65,7 +66,7 @@ function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::Abstr
 end
 
 
-function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     ####################################
     ## PERFORM MULTIPLICATION y = M⋅v ##
@@ -108,7 +109,7 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractV
 end
 
 
-function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     #####################################
     ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
@@ -153,7 +154,7 @@ end
 """
 Performs the multiplication y = (dM/dϕ)⋅v
 """ 
-function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number}
+function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     ########################################
     ## PERFORM MULTIPLICATION y = ∂M/∂ϕ⋅v ##

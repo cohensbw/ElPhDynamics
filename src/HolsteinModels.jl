@@ -6,6 +6,7 @@ using IterativeSolvers
 using ..Geometries: Geometry
 using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
 using ..Checkerboard: checkerboard_order, checkerboard_groups
+using ..Utilities: get_index
 
 export HolsteinModel
 export assign_μ!, assign_ω!, assign_λ!
@@ -333,7 +334,7 @@ for param in [ :tij , :ωij ]
 
     # defining functions when parameter value is real
     @eval begin
-        function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:AbstractFloat}
+        function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Number}
 
             # getting new neighbors
             newneighbors = holstein.trans_equiv_sets[:,:,displacement[1]+1,displacement[2]+1,displacement[3]+1,orbit2,orbit1]
@@ -377,24 +378,6 @@ end
 #######################################################
 ## MORE FUNCTIONS ASSOCIATED WITH HOLSTEINMODEL TYPE ##
 #######################################################
-
-# maps (τ,site) ==> index in vector
-@inline function get_index(τ::Int, site::Int, Lτ::Int)::Int
-
-    return (site-1)*Lτ + τ
-end
-
-# maps index in vector ==> site in lattice
-@inline function get_site(index::Int, Lτ::Int)::Int
-
-    return div(index-1,Lτ) + 1
-end
-
-# maps index in vector ==> τ imaginary time slice
-@inline function get_τ(index::Int, Lτ::Int)::Int
-
-    return (index-1)%Lτ + 1
-end
 
 """
     function setup_checkerboard!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
