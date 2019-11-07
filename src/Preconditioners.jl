@@ -4,6 +4,7 @@ module Preconditioners
 using FFTW
 using LinearAlgebra
 using IterativeSolvers
+using UnsafeArrays
 
 using ..HolsteinModels: HolsteinModel, mulM!
 using ..Checkerboard: checkerboard_mul!, checkerboard_matrix
@@ -338,7 +339,8 @@ mutable struct FourierPreconditioner
     z2 :: Array{ComplexF64, 1}
 
     "Plan for Fourier transform"
-    plan :: FFTW.cFFTWPlan{ComplexF64,-1,false,4} # one time dimension, three space dimensions
+    plan  :: FFTW.cFFTWPlan{ComplexF64,-1,false,4} # one time dimension, three space dimensions
+    iplan :: AbstractFFTs.ScaledPlan{ComplexF64,FFTW.cFFTWPlan{ComplexF64,1,false,4},Float64}
     
     
     function FourierPreconditioner(holstein)
@@ -385,8 +387,9 @@ mutable struct FourierPreconditioner
         z1 = zeros(ComplexF64, L*N)
         z2 = zeros(ComplexF64, L*N)
         plan = plan_fft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
+        iplan = plan_ifft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
 
-        ret = new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan)
+        ret = new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan, iplan)
         compute_α!(ret, const_V=true)
 
         return ret
@@ -433,48 +436,52 @@ function Base.size(op::FourierPreconditioner, d)
 end
 
 
-function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)    
+function LinearAlgebra.ldiv!(r_out, op::FourierPreconditioner, r)
     L = op.holstein.Lτ
     (N1, N2, N3) = op.holstein.lattice.dims
     N = N1*N2*N3
 
-    z1 = reshape(op.z1, (L, N))
-    z2 = reshape(op.z2, (L, N))
-
     @. op.z1 = complex(r)
 
-    # apply Θ phase
-    for i = 1:N
-        for τ = 1:L
-            z1[τ, i] = z1[τ, i] * op.Θ[τ]
-        end
-    end
-    
-    # apply Fourier transforms F (taking τ → ω) and G (taking x → k)
-    mul!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
-    copy!(z1, z2)
+    z1 = op.z1
+    z2 = op.z2
 
-    # apply Mhat
-    for k = 1:N
-        for ω = 1:L
-            Mhat = 1 - op.ω_phases[ω] * op.α[k]
-            z1[ω, k] /= Mhat
+    @uviews z1 z2 begin
+        z1 = reshape(z1, (L, N))
+        z2 = reshape(z2, (L, N))
+        
+        # apply Θ phase
+        @fastmath @inbounds for i = 1:N
+            for τ = 1:L
+                z1[τ, i] = z1[τ, i] * op.Θ[τ]
+            end
         end
-    end
-    
-    # reverse Fourier transforms
-    ldiv!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
+        
+        # apply Fourier transforms F (taking τ → ω) and G (taking x → k)
+        mul!(reshape(z2, (L, N1, N2, N3)), op.plan, reshape(z1, (L, N1, N2, N3)))
 
-    # apply Θ† phase
-    for i = 1:N
-        for τ = 1:L
-            z2[τ, i] *= conj(op.Θ[τ])
+        # apply Mhat
+        @fastmath @inbounds for k = 1:N
+            for ω = 1:L
+                Mhat = 1 - op.ω_phases[ω] * op.α[k]
+                z2[ω, k] /= Mhat
+            end
         end
+        
+        # reverse Fourier transforms
+        mul!(reshape(z1, (L, N1, N2, N3)), op.iplan, reshape(z2, (L, N1, N2, N3)))
+
+        # apply Θ† phase
+        @fastmath @inbounds for i = 1:N
+            for τ = 1:L
+                z1[τ, i] *= conj(op.Θ[τ])
+            end
+        end
+
+        # @assert norm(imag(z1)) < 1e-10
     end
 
-    # @assert norm(imag(z2)) < 1e-10 "Imaginary component imag(z2)=$(norm(imag(z2))) too large."
-    
-    @. r_out = real(op.z2)
+    @. r_out = real(op.z1)
     return r_out
 end
 
