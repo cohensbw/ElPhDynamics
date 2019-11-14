@@ -42,6 +42,8 @@ include("ProcessInputFile.jl")
 
 include("SimulationSummary.jl")
 
+include("RestartedGMRES.jl")
+
 # include("Preconditioners.jl")
 
 ####################################
