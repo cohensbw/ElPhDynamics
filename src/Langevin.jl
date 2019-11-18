@@ -44,7 +44,9 @@ include("SimulationSummary.jl")
 
 include("RestartedGMRES.jl")
 
-# include("Preconditioners.jl")
+include("BlockPreconditioners.jl")
+
+include("Preconditioners.jl")
 
 ####################################
 ## DEFINING HIGHET LEVEL FUNCTION ##

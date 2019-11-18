@@ -26,10 +26,10 @@ struct GMRES{T1<:Number,T2<:AbstractFloat}
         
         ndim = length(x)
         if maxiter<0
-            maxiter = 2*ndim
+            maxiter = ndim
         end
         if restart<0
-            restart = min(20,2*ndim)
+            restart = min(20,ndim)
         end
         H = zeros(T1,restart+1,restart)
         V = zeros(T1,ndim,restart+1)
@@ -44,7 +44,7 @@ struct GMRES{T1<:Number,T2<:AbstractFloat}
 end
 
 
-function solve!(x::AbstractVector{T1},A,b::AbstractVector{T1},gmres::GMRES{T1,T2},M=I) where {T1<:Number,T2<:AbstractFloat}
+function solve!(x::AbstractVector{T1},A,b::AbstractVector{T1},gmres::GMRES{T1,T2},M=I)::Tuple{Int,Int,T2} where {T1<:Number,T2<:AbstractFloat}
     
     ndim    = gmres.ndim::Int
     maxiter = gmres.maxiter::Int
@@ -135,6 +135,7 @@ end
 
 function update!(x::AbstractVector,k::Int,H::Matrix,s::AbstractVector,y::AbstractVector,V::AbstractMatrix)
     
+    # solving y = H \ s
     @. y = s
     @fastmath @inbounds for i in k:-1:1
         y[i] /= H[i,i]
@@ -142,8 +143,11 @@ function update!(x::AbstractVector,k::Int,H::Matrix,s::AbstractVector,y::Abstrac
             y[j] = y[j] - H[j,i] * y[i]
         end
     end
+    # calculating x = x + V*y
     @fastmath @inbounds for j in 1:k
-        @views @. x = x + V[:,j] * y[j]
+        for i in 1:length(x)
+            x[i] += y[j] * V[i,j]
+        end
     end
     return nothing
 end
