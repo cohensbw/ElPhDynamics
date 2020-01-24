@@ -48,6 +48,8 @@ include("SimulationSummary.jl")
 
 # include("Preconditioners.jl")
 
+include("Preconditioners.jl")
+
 ####################################
 ## DEFINING HIGHET LEVEL FUNCTION ##
 ##     TO RUN A SIMULATION        ##

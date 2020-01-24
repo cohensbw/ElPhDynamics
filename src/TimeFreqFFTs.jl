@@ -20,9 +20,6 @@ struct TimeFreqFFT{T<:AbstractFloat}
     "FFT plan."
     fftplan::FFTW.cFFTWPlan{Complex{T},-1,false,2}
 
-    "Inverse FFT plan."
-    ifftplan::AbstractFFTs.ScaledPlan{Complex{T},FFTW.cFFTWPlan{Complex{T},1,false,2},T}
-
     "Temporary storage vector."
     vtemp::Array{Complex{T},2}
 
