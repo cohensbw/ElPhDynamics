@@ -43,7 +43,7 @@ beta = 2.0
 
 # define hopping in lattice
 [[holstein.t]]
-val    = 1.0       # mean value
+val    = 1.0     # mean value
 stddev = 0.0       # (optional) standard deviation
 orbit  = [1, 1]    # orbital types being connected
 dL     = [1, 0, 0] # displacement vector in unit cells
@@ -85,11 +85,26 @@ omega_max = 1.0
 
 [simulation]
 
+# random number generator seed
+random_seed = 38923
+
 # langevin time step
 dt = 1e-3
 
 # tolerace of IterativeSolvers
 tol = 1e-4
+
+# flag to determine whether or not to use block preconditioner
+use_block_preconditioner = true
+
+# restart for GMRES solver
+restart = 5
+
+# tolerance for GMRES process inside block preconditioner
+block_tol = 1e-1
+
+# restart for GMRES process inside block preconditioner
+block_restart = 10
 
 # number of thermalization steps
 burnin = 100000
@@ -103,6 +118,9 @@ meas_freq = 1000
 # number of bins ie the number of times measurements will
 # be written to file.
 num_bins = 100
+
+# downsampling of non-local measurements in imaginary time direction
+downsample = 1
 
 # euler or runge-kutta updates
 euler = false

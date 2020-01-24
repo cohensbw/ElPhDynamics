@@ -6,6 +6,7 @@ using IterativeSolvers
 using ..Geometries: Geometry
 using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
 using ..Checkerboard: checkerboard_order, checkerboard_groups
+using ..RestartedGMRES: GMRES, solve!
 using ..Utilities: get_index
 
 export HolsteinModel
@@ -119,16 +120,28 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     "specifies the sign: ωij(ϕᵢ+ϕⱼ)² or ωij(ϕᵢ-ϕⱼ)²"
     sign_ωij::Vector{Int}
 
-    ##############################################################
-    ## TEMPORARY STORAGE VECTORS FOR MEMORY EFFICIENCY PURPOSES ##
-    ##############################################################
+    #################################################
+    ## VARIBALES FOR SOLVING M⋅x=g VIA ITERATIVELY ##
+    #################################################
+
+    "Tolerace when solve M⋅x=g iteratively."
+    tol::T1
 
     "A vector of length `ninidces` to temporarily store data."
-    y′::Vector{T2}
+    ytemp::Vector{T2}
+
+    "A vector for storing the temporary product Mᵀ⋅g needed for Conjugate Gradient method."
+    Mᵀg::Vector{T2}
 
     "Stores state vectors for Conjugate Gradient algorithm so as to avoid
     extra memory allocations."
     cg_state_vars::CGStateVariables{T2,Vector{T2}}
+
+    "Boolean to signify if GMRES should be used instead of Conjugate Gradient."
+    use_gmres::Bool
+
+    "GMRES type that preallocates memory for algorithm."
+    gmres::GMRES{T1,T2}
 
     #######################
     ## INNER CONSTRUCTOR ##
@@ -137,7 +150,8 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     """
     Constructor for Holstein type.
     """
-    function HolsteinModel(geom::Geometry{T},lattice::Lattice{T},β::T,Δτ::T,is_complex::Bool=false) where {T<:AbstractFloat}
+    function HolsteinModel(geom::Geometry{T}, lattice::Lattice{T}, β::T, Δτ::T;
+                           is_complex::Bool=false, tol::T=1e-4, use_gmres::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
 
         # calculating length of imaginary time axis
         Lτ = round(Int,β/Δτ)
@@ -188,25 +202,39 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         sign_ωij = Vector{Int}(undef,0)
 
         # temporary vectors
-        y′ = zeros(T,nindices)
+        ytemp = zeros(T,nindices)
 
         # constructing holstein model
         if is_complex
 
+            # temporary vectors
+            Mᵀg = zeros(Complex{T},nindices)
+
             # conjugate gradient state variables
             cg_state_vars = CGStateVariables(zeros(Complex{T},nindices),zeros(Complex{T},nindices),zeros(Complex{T},nindices))
 
+            # GMRES type
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart)
+
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                              ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, cg_state_vars)
+                              ω, λ, ωij, neighbor_table_ωij, sign_ωij,
+                              tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
         else
+
+            # temporary vectors
+            Mᵀg = zeros(T,nindices)
 
             # conjugate gradient state variables
             cg_state_vars = CGStateVariables(zeros(T,nindices),zeros(T,nindices),zeros(T,nindices))
 
+            # GMRES type
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart)
+
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                     ω, λ, ωij, neighbor_table_ωij, sign_ωij, y′, cg_state_vars)
+                     ω, λ, ωij, neighbor_table_ωij, sign_ωij,
+                     tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
         end
     end
 
@@ -428,16 +456,15 @@ function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:Abstrac
     Δτ       = holstein.Δτ::T1
     Lτ       = holstein.Lτ::Int
     nsites   = holstein.nsites::Int
-    idx      = 0
 
     # iterating over time slices
-    for site in 1:nsites
+    @inbounds @fastmath for site in 1:nsites
         # iterating over sites in lattice
         for τ in 1:Lτ
             # getting index in vector
-            idx = get_index(τ,site,Lτ)
+            i = get_index(τ,site,Lτ)
             # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅ϕᵢ(τ)-μᵢ)}
-            expnΔτV[idx] = exp( -Δτ * ( λ[site] * ϕ[idx] - μ[site] ) )
+            expnΔτV[i] = exp( -Δτ * ( λ[site] * ϕ[i] - μ[site] ) )
         end
     end
 

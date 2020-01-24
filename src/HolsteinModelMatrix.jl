@@ -1,9 +1,11 @@
 import Base: eltype, size, length, *
-import LinearAlgebra: mul!
+import LinearAlgebra: mul!, ldiv!
 
 using LinearAlgebra
 using SparseArrays
+using IterativeSolvers
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
+using ..RestartedGMRES: GMRES, solve!
 using ..Utilities: get_index
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdϕ!, construct_M
@@ -34,7 +36,38 @@ function size(holstein::HolsteinModel{T1,T2},dim::Int)::Int where {T1<:AbstractF
 end
 
 
-# overloading `*` operator from Base
+"""
+Iteratively solve the linear system M⋅x=g ==> x=M⁻¹⋅g.
+Note: P is a preconditioner, and is defaulted to the Identity as
+defined in the IterativeSolvers package unless otherwise specified.
+"""
+function ldiv!(x::AbstractVector{T2}, holstein::HolsteinModel{T1,T3}, g::AbstractVector{T2}, P=Identity())::Int where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+
+    # keeps track of number of iterations for iterative solver to execute.
+    iters = 0
+
+    # initialize vector to zero.
+    fill!(x,0)
+
+    # Solve M⋅x=g ==> x=M⁻¹⋅g using GMRES
+    if holstein.use_gmres
+        flag = 0
+        Δ = 0.0
+        flag, iters, Δ = solve!(x, holstein, g, holstein.gmres, P)
+    # Solve M⋅x=g ==> x=M⁻¹⋅g using Conjugate Gradient
+    else
+        mulMᵀ!(holstein.Mᵀg, holstein, g)
+        info = cg!(x, holstein , holstein.Mᵀg , tol=holstein.tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true, Pl=P )[2]
+        iters = info.iters
+    end
+
+    return iters
+end
+
+
+"""
+Overloading `*` operator from Base
+"""
 function *(holstein::HolsteinModel{T1,T2},v::AbstractVector{T2})::Vector{T2} where {T1<:AbstractFloat,T2<:Number}
 
     y = Vector{T2}(undef,holstein.nindices)
@@ -44,29 +77,35 @@ end
 
 
 """
-Perform specified multiplicaiton by M matrix.
+Default multiplication routine for HolsteinModel type.
 """
-function mul!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function mul!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
-    mulMᵀM!(y,holstein,v)
-    # mulM!(y,holstein,v)
+    if holstein.use_gmres
+        mulM!(y,holstein,v)
+    else
+        mulMᵀM!(y,holstein,v)
+    end
+    return nothing
 end
 
 
 """
 Perform the multiplication y = MᵀM⋅v
 """
-function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function mulMᵀM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     # y' = M⋅v
-    mulM!(holstein.y′, holstein, v)
+    mulM!(holstein.ytemp, holstein, v)
 
     # y  = Mᵀ⋅y' = MᵀM⋅v
-    mulMᵀ!(y, holstein, holstein.y′)
+    mulMᵀ!(y, holstein, holstein.ytemp)
+
+    return nothing
 end
 
 
-function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     ####################################
     ## PERFORM MULTIPLICATION y = M⋅v ##
@@ -106,10 +145,12 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
         # y(Lτ) = v(Lτ) + B(1)⋅v(1)
         y[idx_L] = yL_temp
     end
+
+    return nothing
 end
 
 
-function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     #####################################
     ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
@@ -148,13 +189,15 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # y(τ) = v(τ) - Bᵀ(τ)⋅v(τ-1) for τ > 1
     # y(τ) = v(τ) + Bᵀ(τ)⋅v(τ-1) for τ = 1
     y .+= v
+
+    return nothing
 end
 
 
 """
 Performs the multiplication y = (dM/dϕ)⋅v
 """ 
-function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2})  where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function muldMdϕ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     ########################################
     ## PERFORM MULTIPLICATION y = ∂M/∂ϕ⋅v ##

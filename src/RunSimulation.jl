@@ -6,6 +6,7 @@ using ..GreensFunctions: EstimateGreensFunction, update!
 using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
 using ..FourierAcceleration: FourierAccelerator
 using ..FourierTransforms: calc_fourier_transform_coefficients
+using ..BlockPreconditioners: BlockPreconditioner, setup!
 
 using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
 using ..NonLocalMeasurements: process_nonlocal_measurements!, construct_nonlocal_measurements_container
@@ -19,24 +20,23 @@ using ..LocalMeasurements: write_local_measurements
 
 export run_simulation!
 
-function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1}) where {T1<:AbstractFloat, T2<:Number}
+function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    dϕ     = zeros(Float64,          length(holstein))
+    dϕ     = zeros(Float64, length(holstein))
     fft_dϕ = zeros(Complex{Float64}, length(holstein))
 
-    dSdϕ     = zeros(Float64,          length(holstein))
+    dSdϕ     = zeros(Float64, length(holstein))
     fft_dSdϕ = zeros(Complex{Float64}, length(holstein))
-    dSdϕ2    = zeros(Float64,          length(holstein))
+    dSdϕ2    = zeros(Float64, length(holstein))
 
     g    = zeros(Float64, length(holstein))
-    Mᵀg  = zeros(Float64, length(holstein))
     M⁻¹g = zeros(Float64, length(holstein))
 
-    η     = zeros(Float64,          length(holstein))
+    η     = zeros(Float64, length(holstein))
     fft_η = zeros(Complex{Float64}, length(holstein))
 
     # declare two electron greens function estimators
@@ -69,32 +69,30 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # time taken writing data to file
     write_time = 0.0
 
-    # variables used in annealing process during thermalization process
-    annealing_init_temp  = sim_params.annealing_init_temp
-    annealing_exponent   = sim_params.annealing_exponent
-    annealing_coeff      = (annealing_init_temp-1.0)*(sim_params.burnin-1.0)^(-annealing_exponent)
-    annealing_temp       = 0.0
-
-    ########################
-    ## RUNNING SIMULATION ##
-    ########################
+    ##############################################
+    ## RUNNING SIMULATION: THERMALIZATION STEPS ##
+    ##############################################
 
     # thermalizing system
     for timestep in 1:sim_params.burnin
 
-        # calculating current temperature in annealing process
-        annealing_temp = annealing_init_temp-annealing_coeff*(timestep-1.0)^annealing_exponent
+        # set up block preconditioner if being used
+        if holstein.use_gmres
+            setup!(preconditioner)
+        end
 
         if sim_params.euler
-
             # using Euler method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol, annealing_temp)
+            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
         else
-
             # using Runge-Kutta method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol, annealing_temp)
+            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
         end
     end
+
+    ###########################################
+    ## RUNNING SIMULATION: MEASUREMENT STEPS ##
+    ###########################################
 
     # iterate over bins
     for bin in 1:sim_params.num_bins
@@ -110,19 +108,31 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             # iterate over number of langevin steps per measurement
             for timestep in 1:sim_params.meas_freq
 
+                # set up block preconditioner if being used
+                if holstein.use_gmres
+                    setup!(preconditioner)
+                end
+
                 if sim_params.euler
-
                     # using Euler method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
                 else
-
                     # using Runge-Kutta method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, Mᵀg, M⁻¹g, η, fft_η, sim_params.Δt, sim_params.tol)
+                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
                 end
             end
 
+            # set up block preconditioner if being used
+            if holstein.use_gmres
+                setup!(preconditioner)
+            end
+
+            # update stochastic estimates of the Green's functions
+            measurement_time += @elapsed update!(Gr1,holstein,preconditioner)
+            measurement_time += @elapsed update!(Gr2,holstein,preconditioner)
+
             # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr1, Gr2)
+            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr1, Gr2, sim_params.downsample)
 
             # make local measurements
             measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr1, Gr2)

@@ -1,6 +1,9 @@
 module ProcessInputFile
 
 using Pkg.TOML
+using Random
+using LinearAlgebra
+using IterativeSolvers
 
 using ..Geometries: Geometry
 using ..Lattices: Lattice
@@ -11,6 +14,7 @@ using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!
 using ..InitializePhonons: init_phonons_single_site!
 using ..FourierAcceleration: FourierAccelerator, update_Q!
 using ..LangevinSimulationParameters: SimulationParameters
+using ..BlockPreconditioners: BlockPreconditioner, solve!, setup!
 
 export process_input_file
 
@@ -24,7 +28,25 @@ function process_input_file(filename::String)
 
     # checking correct version for input file is specified
     @assert input["input_format_version"] == "0.1.0"
-    
+
+    ##################################
+    ## DEFINE SIMULATION PARAMETERS ##
+    ##################################
+
+    # construct simulation parameters object.
+    sim_params = SimulationParameters(input["simulation"]["dt"],
+                                      input["simulation"]["euler"],
+                                      input["simulation"]["burnin"],
+                                      input["simulation"]["nsteps"],
+                                      input["simulation"]["meas_freq"],
+                                      input["simulation"]["num_bins"],
+                                      input["simulation"]["downsample"],
+                                      input["simulation"]["filepath"],
+                                      input["simulation"]["foldername"])
+
+    # initialize random number generator with seed
+    Random.seed!(input["simulation"]["random_seed"])
+
     ##############################
     ## CONSTRUCT HOLSTEIN MODEL ##
     ##############################
@@ -41,7 +63,11 @@ function process_input_file(filename::String)
     # initialize holstein model
     holstein = HolsteinModel(geom,lattice,
                              input["holstein"]["beta"],
-                             input["holstein"]["dtau"])
+                             input["holstein"]["dtau"],
+                             is_complex=false,
+                             tol=input["simulation"]["tol"],
+                             use_gmres=input["simulation"]["use_block_preconditioner"],
+                             restart=input["simulation"]["restart"])
     
     # adding phonon frequencies
     for d in input["holstein"]["omega"]
@@ -96,6 +122,19 @@ function process_input_file(filename::String)
 
     # construct exponentiated interaction matrix
     construct_expnΔτV!(holstein)
+
+    ###########################
+    ## DEFINE PRECONDITIONER ##
+    ###########################
+
+    # default Identity preconditioner
+    preconditioner = Identity()
+
+    if input["simulation"]["use_block_preconditioner"]
+        preconditioner = BlockPreconditioner(holstein,
+                                             tol=input["simulation"]["block_tol"],
+                                             restart=input["simulation"]["block_restart"])
+    end
     
     #################################
     ## DEFINE FOURIER ACCELERATION ##
@@ -109,38 +148,7 @@ function process_input_file(filename::String)
         update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
     end
     
-    ##################################
-    ## DEFINE SIMULATION PARAMETERS ##
-    ##################################
-
-    # define initial annealing temperature
-    annealing_init_temp = 1.0
-    if "annealing_init_temp" in keys(input["simulation"])
-        annealing_init_temp = input["simulation"]["annealing_init_temp"]
-    end
-    @assert annealing_init_temp >= 1.0
-
-    # define annealing exponent
-    annealing_exponent = 1.0
-    if "annealing_exponent" in keys(input["simulation"])
-        annealing_exponent = input["simulation"]["annealing_exponent"]
-    end
-
-    # construct simulation parameters object.
-    sim_params = SimulationParameters(input["simulation"]["dt"],
-                                      input["simulation"]["euler"],
-                                      input["simulation"]["tol"],
-                                      input["simulation"]["burnin"],
-                                      input["simulation"]["nsteps"],
-                                      input["simulation"]["meas_freq"],
-                                      input["simulation"]["num_bins"],
-                                      input["simulation"]["filepath"],
-                                      input["simulation"]["foldername"],
-                                      annealing_init_temp,
-                                      annealing_exponent)
-    
-    
-    return holstein, sim_params, fa, input
+    return holstein, sim_params, fa, preconditioner, input
 end
 
 end

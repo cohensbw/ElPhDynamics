@@ -29,10 +29,10 @@ function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2
         # doing matrix vector multiply
         if transposed==true
             # multiply unit vector by Mᵀ matrix
-            checkerboard_transpose_mul!(colvector,neighbor_table,vals,Δτ)
+            checkerboard_transpose_mul!(colvector,neighbor_table,vals,Δτ,1)
         else
             # multiply unit vector by M matrix
-            checkerboard_mul!(colvector,neighbor_table,vals,Δτ)
+            checkerboard_mul!(colvector,neighbor_table,vals,Δτ,1)
         end
         # iterate of column vecto
         for row in 1:N
@@ -54,7 +54,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `vals` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_mul!(v::AbstractVector{T2},neighbor_table::Matrix{Int},vals::Vector{T2},Δτ::T1, Lτ::Int=1) where {T1<:AbstractFloat,T2<:Number}
+function checkerboard_mul!(v::AbstractVector{T2},neighbor_table::Matrix{Int},vals::Vector{T2},Δτ::T1, Lτ::Int) where {T1<:AbstractFloat,T2<:Number}
 
     coshs = cosh.(Δτ*vals)
     sinhs = sinh.(Δτ*vals)
@@ -67,7 +67,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}, Lτ::Int=1) where {T1<:Number,T2<:Number}
+function checkerboard_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}, Lτ::Int) where {T1<:Number,T2<:Number}
 
     # iterating over pairs of neighboring sites
     @fastmath @inbounds for n in 1:length(coshtij)
@@ -98,10 +98,36 @@ end
 
 """
 In-place multiplication of vector with checkerboard matrix.
+This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
+for the checkerboard decomposition.
+"""
+function checkerboard_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}) where {T1<:Number,T2<:Number}
+
+    # iterating over pairs of neighboring sites
+    @fastmath @inbounds for n in 1:length(coshtij)
+
+        c = coshtij[n]
+        s = sinhtij[n]
+        i = neighbor_table_tij[1, n]
+        j = neighbor_table_tij[2, n]
+
+        t1 = y[i]
+        t2 = y[j]
+
+        y[i] = c*t1 + s*t2
+        y[j] = c*t2 + conj(s)*t1
+    end
+
+    return nothing
+end
+
+
+"""
+In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `vals` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_transpose_mul!(v::AbstractVector{T}, neighbor_table::Matrix{Int}, vals::Vector{T}, Δτ::T, Lτ::Int=1) where {T<:Number}
+function checkerboard_transpose_mul!(v::AbstractVector{T}, neighbor_table::Matrix{Int}, vals::Vector{T}, Δτ::T, Lτ::Int) where {T<:Number}
 
     coshs = cosh.(Δτ*vals)
     sinhs = sinh.(Δτ*vals)
@@ -115,7 +141,7 @@ In-place multiplication of vector with checkerboard matrix.
 This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
 for the checkerboard decomposition.
 """
-function checkerboard_transpose_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}, Lτ::Int=1)  where {T1<:Number,T2<:Number}
+function checkerboard_transpose_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}, Lτ::Int)  where {T1<:Number,T2<:Number}
 
     # iterating over pairs of neighboring sites
     @fastmath @inbounds for n in length(coshtij):-1:1
@@ -138,6 +164,32 @@ function checkerboard_transpose_mul!(y::AbstractVector{T1}, neighbor_table_tij::
             y[idx_i] = c*t1 + s*t2
             y[idx_j] = c*t2 + conj(s)*t1
         end
+    end
+
+    return nothing
+end
+
+
+"""
+In-place multiplication of vector with checkerboard matrix.
+This method assumes the `neighbor_table` and associated `coshs` and `sinhs` are already ordered correctly
+for the checkerboard decomposition.
+"""
+function checkerboard_transpose_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2})  where {T1<:Number,T2<:Number}
+
+    # iterating over pairs of neighboring sites
+    @fastmath @inbounds for n in length(coshtij):-1:1
+
+        c = coshtij[n]
+        s = sinhtij[n]
+        i = neighbor_table_tij[1, n]
+        j = neighbor_table_tij[2, n]
+
+        t1 = y[i]
+        t2 = y[j]
+
+        y[i] = c*t1 + s*t2
+        y[j] = c*t2 + conj(s)*t1
     end
 
     return nothing

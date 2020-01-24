@@ -1,7 +1,7 @@
 module NonLocalMeasurements
 
 using Printf
-using ..Utilities: get_index, get_site, get_τ
+using ..Utilities: get_index, get_site, get_τ, θ, δ
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, estimate
@@ -21,11 +21,7 @@ Measurements will be stored in arrays with 6 indices where the indices correspon
 `measurement[ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1]`, where ΔLi is a displacement
 in unit cells in the direction of the i'th lattice vector.
 """
-function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}) where {T1<:AbstractFloat,T2<:Number}
-    
-    # update the stochastic estimates of the green's functions
-    update!(Gr1,holstein)
-    update!(Gr2,holstein)
+function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
 
     # lattice object
     lattice = holstein.lattice
@@ -37,7 +33,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
     npairs = div(lattice.nsites,lattice.norbits)
 
     # normalization factor
-    normalization = npairs * holstein.Lτ
+    normalization = npairs * length(1:downsample:holstein.Lτ)
 
     # getting pointers to arrays containing measurements
     greens     = container["Greens"]
@@ -62,7 +58,7 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
                             i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
 
                             # iterating over time slices
-                            for τ₁ in 1:holstein.Lτ
+                            for τ₁ in 1:downsample:holstein.Lτ
 
                                 # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
                                 Gⱼⱼτ₁τ₁1 = estimate(Gr1,j,j,τ₁,τ₁)

@@ -10,9 +10,6 @@ struct SimulationParameters{T<:AbstractFloat}
     "Whether to use Euler or Runge-Kutta update method."
     euler::Bool
 
-    "Tolerance used when solving linear systems"
-    tol::T
-
     "Number of thermalization steps time steps."
     burnin::Int
 
@@ -34,23 +31,19 @@ struct SimulationParameters{T<:AbstractFloat}
     "Number of langevin steps per bin."
     bin_steps::Int
 
+    "Down sampling in imaginary time direction when making measurement."
+    downsample::Int
+
     "path to where the data should be written"
     filepath::String
 
     "name of folder data will be dumped into"
     foldername::String
 
-    "data folder"
+    "filepath + foldername"
     datafolder::String
 
-    "max temperature of annealing during simulation"
-    annealing_init_temp::T
-
-    "exponent used in annealing protocol."
-    annealing_exponent::T
-
-    function SimulationParameters(Δt::T, euler::Bool, tol::T, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int,
-                                  filepath::String, foldername::String, annealing_init_temp::T=1.0, annealing_exponent::T=1.0) where {T<:AbstractFloat}
+    function SimulationParameters(Δt::T, euler::Bool, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String) where {T<:AbstractFloat}
 
         # sanity check
         @assert nsteps>=meas_freq*num_bins
@@ -65,6 +58,8 @@ struct SimulationParameters{T<:AbstractFloat}
         
         # calculating the number of langevin time steps per bin
         bin_steps = meas_freq*bin_size
+
+        @assert downsample > 0
 
         # formatting filepath
         if !endswith(filepath,"/")
@@ -84,7 +79,7 @@ struct SimulationParameters{T<:AbstractFloat}
             mkdir(datafolder)
         end
 
-        new{T}(Δt,euler,tol,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername,datafolder,annealing_init_temp,annealing_exponent)
+        new{T}(Δt,euler,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
     end
 end
 

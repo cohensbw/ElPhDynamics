@@ -2,7 +2,8 @@ module LangevinDynamics
 
 using IterativeSolvers
 using Random
-using LinearAlgebra: mul!
+import LinearAlgebra: mul!, ldiv!
+
 using ..Utilities: get_index
 using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdϕ!
 using ..PhononAction: calc_dSbosedϕ!
@@ -16,18 +17,15 @@ Update phonon fields using Runge-Kutta/Heun's equation and fourier acceleration.
 function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
                        dϕ::AbstractVector{T1}, fft_dϕ::AbstractVector{Complex{T1}},
                        dSdϕ2::AbstractVector{T2}, dSdϕ1::AbstractVector{T2}, fft_dSdϕ::AbstractVector{Complex{T1}},
-                       g::AbstractVector{T2}, Mᵀg::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
+                       g::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
                        η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
-                       Δt::T1, tol::T1, T::T1=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
+                       Δt::T1, preconditioner=Identity())::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # apply langevin dynmaics temperatures
-    η .*= sqrt(T)
-
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
-    iters = calc_dSdϕ!(dSdϕ1, g, Mᵀg, M⁻¹g, holstein, tol)
+    iters = calc_dSdϕ!(dSdϕ1, g, M⁻¹g, holstein, preconditioner)
 
     # get the update for the fields using euler method
     @. dϕ = sqrt(2*Δt)*η - Δt*real(dSdϕ1)
@@ -40,7 +38,7 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     construct_expnΔτV!(holstein)
 
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
-    iters = calc_dSdϕ!(dSdϕ2, g, Mᵀg, M⁻¹g, holstein, tol)
+    iters = calc_dSdϕ!(dSdϕ2, g, M⁻¹g, holstein, preconditioner)
 
     # revert back to original phonon fields
     @. holstein.ϕ -= dϕ
@@ -87,18 +85,15 @@ Update phonon fields using Euler equation and fourier acceleration.
 function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
                           dϕ::AbstractVector{T1}, fft_dϕ::AbstractVector{Complex{T1}},
                           dSdϕ::AbstractVector{T2}, fft_dSdϕ::AbstractVector{Complex{T1}},
-                          g::AbstractVector{T2}, Mᵀg::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
+                          g::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
                           η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
-                          Δt::T1, tol::T1, T::T1=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
+                          Δt::T1, preconditioner=Identity())::Int where {T1<:AbstractFloat,T2<:Number}
     
     # itialize η as vector of gaussian random number
     randn!(η)
 
-    # apply langevin dynmaics temperatures
-    η .*= sqrt(T)
-
     # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
-    iters = calc_dSdϕ!(dSdϕ, g, Mᵀg, M⁻¹g, holstein, tol)
+    iters = calc_dSdϕ!(dSdϕ, g, M⁻¹g, holstein, preconditioner)
 
     # fourier transform dSdϕ
     forward_fft!( fft_dSdϕ , dSdϕ , fa)
@@ -128,30 +123,6 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     return iters
 end
 
-
-"""
-Update phonon fields using Euler equation.
-"""
-function update_euler!(holstein::HolsteinModel{T1,T2}, dSdϕ::AbstractVector{T2},
-                       g::AbstractVector{T2}, Mᵀg::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
-                       η::AbstractVector{T1}, Δt::T1, tol::T1, T::T1=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
-    
-    # itialize η as vector of gaussian random number
-    randn!(η)
-
-    # calculate dSdϕ = [∂S/∂ϕ₁(1),...,∂S/∂ϕₙ(1),...,∂S/∂ϕ₁(τ),...,∂S/∂ϕₙ(τ),...,∂S/∂ϕ₁(Lτ),...,∂S/∂ϕₙ(Lτ)]
-    iters = calc_dSdϕ!(dSdϕ, g, Mᵀg, M⁻¹g, holstein, tol)
-
-    # update phonon fields without fourier acceleration
-    @. holstein.ϕ += sqrt(2.0*Δt)*η - Δt*real(dSdϕ)
-
-    # update the exponentiated interaction matrix so that it reflects the current
-    # phonon field configuration.
-    construct_expnΔτV!(holstein)
-
-    return iters
-end
-
 ################################################
 ## PRIVATE FUNCTIONS JUST USED IN THIS SCRIPT ##
 ################################################
@@ -171,30 +142,21 @@ The expression we are evaluating is `∂S/∂ϕᵢ(τ) = ∂Sbose/∂ϕᵢ(τ) -
 # Returns
 - `iters::Int`: Number of iterations used to solve for M⁻¹g.
 """
-function calc_dSdϕ!(dSdϕ::AbstractVector{T2},g::AbstractVector{T2},Mᵀg::AbstractVector{T2},M⁻¹g::AbstractVector{T2},
-                    holstein::HolsteinModel{T1,T2},tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
+function calc_dSdϕ!(dSdϕ::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::AbstractVector{T2},
+                    holstein::HolsteinModel{T1,T2}, preconditioner=Identity())::Int where {T1<:AbstractFloat,T2<:Number}
 
     # NOTE: The method I use below for calculating all of the partial derivatives {∂S/∂ϕᵢ(τ)} works only
     # because I am assuming a strictly local form of the electron-phonon interaction given by ∑(λᵢ⋅ϕᵢ⋅nᵢ).
     # If a longer-range electron-phonon interaction were added of the form ∑(λᵢⱼ⋅ϕᵢ⋅nⱼ), then this way of doing
     # things would no longer work, and a loop over each individual phonon field ϕᵢ(τ) would need to be added.
 
-    # intialize relevant vectors to zero.
-    Mᵀg  .= 0.0
-    M⁻¹g .= 0.0
-    dSdϕ .= 0.0
-
     # intialize random vector g.
     @inbounds @fastmath for i in 1:length(g)
         g[i] = randn()
     end
 
-    # getting Mᵀg.
-    mulMᵀ!( Mᵀg , holstein , g )
-
     # solve MᵀM⋅v = Mᵀg ==> v = M⁻¹g.
-    info = cg!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true )[2]
-    # info = minres!( M⁻¹g , holstein , Mᵀg , tol=tol , log=true , initially_zero=true )[2]
+    iters = ldiv!(M⁻¹g,holstein,g,preconditioner)
 
     # ∂S/∂ϕᵢ(τ) = ∂M/∂ϕᵢ(τ)⋅M⁻¹g
     muldMdϕ!( dSdϕ , holstein , M⁻¹g )
@@ -202,7 +164,7 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T2},g::AbstractVector{T2},Mᵀg::Abst
     # ∂S/∂ϕᵢ(τ) = -2gᵀ⋅∂M/∂ϕᵢ(τ)⋅M⁻¹g
     @. g *= -2.0 * dSdϕ
     # iterate over sites
-    for site in 1:holstein.nsites
+    @inbounds @fastmath for site in 1:holstein.nsites
         # iterate over time slices
         for τ in 1:holstein.Lτ
             idx_τ   = get_index(τ,               site, holstein.Lτ)
@@ -213,14 +175,16 @@ function calc_dSdϕ!(dSdϕ::AbstractVector{T2},g::AbstractVector{T2},Mᵀg::Abst
     end
     # In the lines of code above there is a subtle detail that is addressed.
     # After doing the element-wise multiplication, the expectation value for the partial
-    # derivatives corresponding to a τ time slice live in the array indices corresponding to τ-1.
-    # Therefore, the values need to be shifted one time slice forward.
+    # derivatives corresponding to the τ time slice live in the array indices corresponding to τ-1.
+    # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
+    # the and storing the ∂S/∂ϕᵢ(τ) derivative values in the vector g, and then copying a proper shifted
+    # version into the vector dSdϕ.
 
     # ∂S/∂ϕᵢ(τ) = ∂Sbose/∂ϕᵢ(τ) - 2gᵀ⋅[∂M/∂ϕᵢ(τ)]⋅M⁻¹g ==> All Done!
     calc_dSbosedϕ!( dSdϕ , holstein )
 
     # returning number of iterations in solving for M⁻¹g
-    return info.iters
+    return iters
 end
 
 end

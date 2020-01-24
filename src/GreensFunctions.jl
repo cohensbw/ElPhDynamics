@@ -3,8 +3,9 @@ module GreensFunctions
 using IterativeSolvers
 using Statistics
 using Random
+import LinearAlgebra: mul!, ldiv!
 
-using ..HolsteinModels: HolsteinModel, mulMᵀ!
+using ..HolsteinModels: HolsteinModel
 using ..Utilities: get_index, get_site, get_τ
 
 export EstimateGreensFunction
@@ -30,21 +31,6 @@ struct EstimateGreensFunction{T<:Number}
     N::Int
 
     """
-    Number of unit cells in direction of first lattice vector.
-    """
-    L1::Int
-
-    """
-    Number of unit cells in direction of second lattice vector.
-    """
-    L2::Int
-
-    """
-    Number of unit cells in direction of third lattice vector.
-    """
-    L3::Int
-
-    """
     Length of imaginary time axis.
     """
     β::Int
@@ -53,11 +39,6 @@ struct EstimateGreensFunction{T<:Number}
     Random vector of length βN.
     """
     g::Vector{T}
-
-    """
-    Represents matrix-vector product Mᵀ⋅g.
-    """
-    Mᵀg::Vector{T}
 
     """
     Solution to Linear System M⋅v=g ==> v = M⁻¹⋅g.
@@ -72,18 +53,14 @@ struct EstimateGreensFunction{T<:Number}
         βN  = holstein.nindices
         N   = holstein.nsites
         β   = holstein.Lτ
-        L1  = holstein.lattice.L1
-        L2  = holstein.lattice.L2
-        L3  = holstein.lattice.L3
 
         g    = zeros(T1,βN)
-        Mᵀg  = zeros(T1,βN)
         M⁻¹g = zeros(T1,βN)
 
         if is_complex
-            new{Complex{T1}}(βN,N,L1,L2,L3,β,g,Mᵀg,M⁻¹g)
+            new{Complex{T1}}(βN,N,β,g,M⁻¹g)
         else
-            new{T1}(βN,N,L1,L2,L3,β,g,Mᵀg,M⁻¹g)
+            new{T1}(βN,N,β,g,M⁻¹g)
         end
     end
 end
@@ -91,19 +68,13 @@ end
 """
 Updates the estimate of the Green's Function based on current phonon field configuration.
 """
-function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2}, tol::T1=1e-4) where {T1<:AbstractFloat,T2<:Number}
+function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=Identity()) where {T1<:AbstractFloat,T2<:Number}
 
     # initialize random vector
     rand!(Gr.g,-1:2:1)
 
-    # calculate Mᵀ⋅g
-    mulMᵀ!(Gr.Mᵀg,holstein,Gr.g)
-
-    # initialize to zero
-    Gr.M⁻¹g .= 0.0
-
     # solve linear system to get M⁻¹⋅g
-    cg!( Gr.M⁻¹g , holstein , Gr.Mᵀg , tol=tol , log=false , statevars=holstein.cg_state_vars , initially_zero=true )
+    iters = ldiv!(Gr.M⁻¹g,holstein,Gr.g,preconditioner)
 
     return nothing
 end

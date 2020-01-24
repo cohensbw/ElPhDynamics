@@ -32,7 +32,7 @@ struct Bond{T<:Number}
     function Bond(t::T,orbit1::Int,orbit2::Int,displacement::Vector{Int}) where {T<:Number}
         
         @assert length(displacement)==3
-        new{T}(t,orbit1,orbit2,displacement)
+        return new{T}(t,orbit1,orbit2,displacement)
     end
 end
 
@@ -101,13 +101,13 @@ struct LatticeFFT{T<:AbstractFloat}
     "Inverse FFT plan."
     ifftplan::AbstractFFTs.ScaledPlan{Complex{T},FFTW.cFFTWPlan{Complex{T},1,false,5},T}
     
-    function LatticeFFT(geom::Geometry{T}, lattice::Lattice{T}, bonds::Vector{Bond{Tb}}, Lτ::Int, Δτ::T) where {T<:AbstractFloat, Tb<:Number}
+    function LatticeFFT(lattice::Lattice{T}, bonds::Vector{Bond{Tb}}, Lτ::Int, Δτ::T) where {T<:AbstractFloat, Tb<:Number}
         
         L1      = lattice.L1::Int
         L2      = lattice.L2::Int
         L3      = lattice.L3::Int
-        ndim    = geom.ndim::Int
-        norbits = geom.norbits::Int
+        ndim    = lattice.ndim::Int
+        norbits = lattice.norbits::Int
         N       = lattice.nsites::Int
         
         λk    = zeros(Complex{T},L1,L2,L3,norbits)
@@ -134,6 +134,11 @@ struct LatticeFFT{T<:AbstractFloat}
                         r1 = bond.displacement[1]
                         r2 = bond.displacement[2]
                         r3 = bond.displacement[3]
+                        # if the bond corresponds to an on-site chemical potential,
+                        # you need to cut t in half so the correct chemical potential is applied.
+                        if orbit1==orbit2 && iszero(displacement)
+                            t /= 2.0
+                        end
                         # modify the corresponding matrix element of Mₖ
                         Δ = -t * exp(im*2*π*(k1*r1/L1+k2*r2/L2+k3*r3/L3))
                         Mk[o1,o2] += Δ
@@ -162,7 +167,7 @@ struct LatticeFFT{T<:AbstractFloat}
         # array to represent diagonal matrix exp(-Δτ⋅λₖ)
         expnΔτλk = exp.(-Δτ*λk)
         
-        new{T}(ndim,norbits,N,L1,L2,L3,Lτ,Δτ,λk,expnΔτλk,Uk,invUk,vk,vr,vin,vout,fftplan,ifftplan)
+        return new{T}(ndim,norbits,N,L1,L2,L3,Lτ,Δτ,λk,expnΔτλk,Uk,invUk,vk,vr,vin,vout,fftplan,ifftplan)
     end
 end
 
@@ -205,7 +210,7 @@ function r_to_k!(vout::AbstractArray{Complex{T},5}, latticefft::LatticeFFT{T}, v
             end
         end
     else
-        @. vout = vk
+        copyto!(vout,vk)
     end
 
     return nothing
@@ -259,7 +264,7 @@ function k_to_r!(vout::AbstractArray{Complex{T},5}, latticefft::LatticeFFT{T}, v
             end
         end
     else
-        @. vk = vin
+        copyto!(vk,vin)
     end
     
     # perform the inverse fourier transform
@@ -348,9 +353,7 @@ and copies it contents into the 5-index array `vout`, where the indices correspo
 """
 function reordered_copy!(vout::AbstractArray{Complex{T1},5},vin::AbstractVector{T2},latticefft::LatticeFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
 
-    N  = latticefft.N::Int
     norbits = latticefft.norbits::Int
-    ncells  = div(N,norbits)
     L1 = latticefft.L1::Int
     L2 = latticefft.L2::Int
     L3 = latticefft.L3::Int
