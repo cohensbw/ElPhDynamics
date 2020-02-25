@@ -10,8 +10,8 @@ using ..Lattices: Lattice
 using ..HolsteinModels: HolsteinModel
 using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!
 using ..HolsteinModels: assign_tij!, assign_ωij!
-using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!
-using ..InitializePhonons: init_phonons_single_site!
+using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
+using ..InitializePhonons: init_phonons_half_filled!
 using ..FourierAcceleration: FourierAccelerator, update_Q!
 using ..LangevinSimulationParameters: SimulationParameters
 using ..BlockPreconditioners: BlockPreconditioner, solve!, setup!
@@ -80,17 +80,6 @@ function process_input_file(filename::String)
         end
     end
     
-    # adding electron-phonon coupling
-    for d in input["holstein"]["lambda"]
-        stddev = 0.0
-        if "stddev" in keys(d)
-            stddev = d["stddev"]
-        end
-        for orbit in d["orbit"]
-            assign_λ!(holstein,d["val"],stddev,orbit)
-        end
-    end
-    
     # adding chemical potential
     for d in input["holstein"]["mu"]
         stddev = 0.0
@@ -117,8 +106,23 @@ function process_input_file(filename::String)
     # organize electron hoppings for checkerboard decomposition
     setup_checkerboard!(holstein)
 
+    # adding electron-phonon coupling
+    for d in input["holstein"]["lambda"]
+        stddev = 0.0
+        if "stddev" in keys(d)
+            stddev = d["stddev"]
+        end
+        for orbit in d["orbit"]
+            assign_λ!(holstein,d["val"],stddev,orbit)
+        end
+    end
+
     # intialize phonon field
-    init_phonons_single_site!(holstein)
+    if input["holstein"]["read_phonon_config"]
+        read_phonons(holstein, input["holstein"]["phonon_config_file"])
+    else
+        init_phonons_half_filled!(holstein)
+    end
 
     # construct exponentiated interaction matrix
     construct_expnΔτV!(holstein)

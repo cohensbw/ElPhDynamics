@@ -3,17 +3,17 @@ module PhononAction
 using ..HolsteinModels: HolsteinModel
 using ..Utilities: get_index
 
-export calc_dSbosedϕ!
+export calc_dSbosedx!
 
 """
 Calculates the dervative phonon action with respect to each phonon field and adds that value in place
 to the vector dSbose.
 """
-function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
+function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
 
     @assert length(dSbose)==holstein.nindices
 
-    ϕ          = holstein.ϕ::Vector{T1}
+    x          = holstein.x::Vector{T1}
     nsites     = holstein.nsites::Int
     Lτ         = holstein.Lτ::Int
     Δτ         = holstein.Δτ::T1
@@ -46,7 +46,7 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
             # indexing offset into vectors associated with τ-1 time slice
             indx_τm1 = get_index(τm1,site,Lτ)
             # updating partial derivative
-            dSbose[indx_τ] += Δτω²*ϕ[indx_τ] - ( ϕ[indx_τp1] + ϕ[indx_τm1] - 2.0*ϕ[indx_τ] )/Δτ
+            dSbose[indx_τ] += Δτω²*x[indx_τ] - ( x[indx_τp1] + x[indx_τm1] - 2.0*x[indx_τ] )/Δτ
         end
     end
 
@@ -78,7 +78,7 @@ function calc_dSbosedϕ!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  wh
                 indx_i = get_index(τ,i,Lτ)
                 indx_j = get_index(τ,j,Lτ)
                 # updating partial derivative
-                Δ = Δτωij² * ( ϕ[indx_i] + sgn*ϕ[indx_j] )
+                Δ = Δτωij² * ( x[indx_i] + sgn*x[indx_j] )
                 dSbose[offset_τ+i] += Δ
                 dSbose[offset_τ+j] += sgn*Δ
             end

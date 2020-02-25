@@ -1,11 +1,12 @@
 module RunSimulation
 
+using FFTW
+
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
 using ..FourierAcceleration: FourierAccelerator
-using ..FourierTransforms: calc_fourier_transform_coefficients
 using ..BlockPreconditioners: BlockPreconditioner, setup!
 
 using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
@@ -26,12 +27,12 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    dϕ     = zeros(Float64, length(holstein))
-    fft_dϕ = zeros(Complex{Float64}, length(holstein))
+    dx     = zeros(Float64, length(holstein))
+    fft_dx = zeros(Complex{Float64}, length(holstein))
 
-    dSdϕ     = zeros(Float64, length(holstein))
-    fft_dSdϕ = zeros(Complex{Float64}, length(holstein))
-    dSdϕ2    = zeros(Float64, length(holstein))
+    dSdx     = zeros(Float64, length(holstein))
+    fft_dSdx = zeros(Complex{Float64}, length(holstein))
+    dSdx2    = zeros(Float64, length(holstein))
 
     g    = zeros(Float64, length(holstein))
     M⁻¹g = zeros(Float64, length(holstein))
@@ -45,13 +46,10 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space
-    container_rspace, container_kspace = construct_nonlocal_measurements_container(holstein)
+    container_rspace, container_kspace, fftplan = construct_nonlocal_measurements_container(holstein)
 
     # constructing container to hold local measurements
     local_meas_container = construct_local_measurements_container(holstein)
-
-    # caluclating Fourier Transform coefficients
-    ft_coeff = calc_fourier_transform_coefficients(holstein.lattice)
 
     # Creating files that data will be written to.
     initialize_nonlocal_measurement_files(container_rspace, container_kspace, sim_params)
@@ -83,10 +81,10 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
         if sim_params.euler
             # using Euler method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
         else
             # using Runge-Kutta method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
         end
     end
 
@@ -115,10 +113,10 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
                 if sim_params.euler
                     # using Euler method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
                 else
                     # using Runge-Kutta method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dϕ, fft_dϕ, dSdϕ2, dSdϕ, fft_dSdϕ, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
                 end
             end
 
@@ -138,13 +136,13 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr1, Gr2)
         end
 
-        # process non-local measurements. This include normalizing the real-space measurements
+        # process non-local measurements. This includes normalizing the real-space measurements
         # by the number of measurements made per bin, and also taking the Fourier Transform in order
         # to get the momentum-space measurements.
-        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, ft_coeff)
+        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, fftplan)
 
-        # process local measurements
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein)
+        # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
+        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein, container_rspace, container_kspace)
 
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
         write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,holstein,real_space=true)

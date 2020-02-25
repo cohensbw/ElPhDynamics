@@ -7,7 +7,7 @@ using Printf
 using Pkg.TOML
 
 using ..LangevinSimulationParameters: SimulationParameters
-using ..HolsteinModels: HolsteinModel
+using ..HolsteinModels: HolsteinModel, write_phonons, write_M_matrix
 
 export write_simulation_summary
 
@@ -31,6 +31,12 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
     L2 = holstein.lattice.L2
     L3 = holstein.lattice.L3
     norbits = holstein.lattice.norbits
+
+    # write final phonon field configuration to file
+    write_phonons(holstein,sim_params.foldername*"phonon_config.out")
+
+    # write M matrix to file
+    write_M_matrix(holstein,sim_params.foldername*"matrix.out")
 
     ########################
     ## WRITE SUMMARY FILE ##

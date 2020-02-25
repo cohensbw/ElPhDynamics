@@ -348,7 +348,7 @@ end
 
 
 """
-Takes a vector `vin` where the assumed ordering is `[ϕ₁(1),...,ϕ₁(L),...,ϕₙ(1),...,ϕ₁ₙ(L)]`
+Takes a vector `vin` where the assumed ordering is `[x₁(1),...,x₁(L),...,xₙ(1),...,x₁ₙ(L)]`
 and copies it contents into the 5-index array `vout`, where the indices correspond to `[L1,L2,L3,norbits,Lτ]`.
 """
 function reordered_copy!(vout::AbstractArray{Complex{T1},5},vin::AbstractVector{T2},latticefft::LatticeFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
@@ -371,7 +371,7 @@ end
 
 """
 Takes the 5-index array `vin`, where the indices correspond to `[L1,L2,L3,norbits,Lτ]`, and copies
-it into an the the vector `vout` where the assumed ordering is `[ϕ₁(1),...,ϕ₁(L),...,ϕₙ(1),...,ϕ₁ₙ(L)]`.
+it into an the the vector `vout` where the assumed ordering is `[x₁(1),...,x₁(L),...,xₙ(1),...,x₁ₙ(L)]`.
 """
 function reordered_copy!(vout::AbstractVector{T},vin::AbstractArray{Complex{T},5},latticefft::LatticeFFT{T}) where {T<:AbstractFloat}
 

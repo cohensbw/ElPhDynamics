@@ -92,7 +92,7 @@ mutable struct MtildeBlockOp
     "Holstein model"
     holstein :: HolsteinModel{Float64, Float64}
     
-    "τ-averaged matrix exp(-Δτ⋅V[ϕ])"
+    "τ-averaged matrix exp(-Δτ⋅V[x])"
     expnΔτV_bar :: Vector{Float64}
     
     "Array of complex phases for each ω"
@@ -328,8 +328,8 @@ mutable struct FourierPreconditioner
     "H† = exp(-dτ K) G†"
     Hdag :: Array{ComplexF64, 2}
 
-    "Storage for φ0 = <exp(-dτ V)>, averaged over τ"
-    φ0 :: Array{Float64, 1}
+    "Storage for x0 = <exp(-dτ V)>, averaged over τ"
+    x0 :: Array{Float64, 1}
     
     "Storage for α_k = <k| B_0 |k>. These are complex because B_0 is not Hermitian."
     α :: Array{ComplexF64, 1}
@@ -382,14 +382,14 @@ mutable struct FourierPreconditioner
         expnΔτK = checkerboard_matrix(holstein.neighbor_table_tij, holstein.tij, holstein.Δτ)
         Hdag = Array(expnΔτK) * conj(G)
 
-        φ0 = zeros(Float64, N)
+        x0 = zeros(Float64, N)
         α  = zeros(ComplexF64, N)
         z1 = zeros(ComplexF64, L*N)
         z2 = zeros(ComplexF64, L*N)
         plan = plan_fft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
         iplan = plan_ifft(reshape(z1, (L, N1, N2, N3)), flags=FFTW.PATIENT)
 
-        ret = new(holstein, Θ, ω_phases, G, Hdag, φ0, α, z1, z2, plan, iplan)
+        ret = new(holstein, Θ, ω_phases, G, Hdag, x0, α, z1, z2, plan, iplan)
         compute_α!(ret, const_V=true)
 
         return ret
@@ -401,15 +401,15 @@ function compute_α!(op::FourierPreconditioner; const_V=false)
     L = op.holstein.Lτ
     N = op.holstein.nsites
 
-    # calculate φ0
+    # calculate x0
     expnΔτV = reshape(op.holstein.expnΔτV,(L, N))
     if const_V
-        op.φ0 .= sum(expnΔτV) / (L*N)
+        op.x0 .= sum(expnΔτV) / (L*N)
     else
         for x = 1:N
-            op.φ0[x] = 0
+            op.x0[x] = 0
             for τ = 1:L
-                op.φ0[x] += expnΔτV[τ, x] / L
+                op.x0[x] += expnΔτV[τ, x] / L
             end
         end
     end
@@ -418,7 +418,7 @@ function compute_α!(op::FourierPreconditioner; const_V=false)
     @inbounds for k = 1:N
         op.α[k] = ComplexF64(0)
         for x = 1:N
-            op.α[k] += op.G[x, k] * op.φ0[x] * op.Hdag[x, k]
+            op.α[k] += op.G[x, k] * op.x0[x] * op.Hdag[x, k]
         end
     end
 

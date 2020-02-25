@@ -23,7 +23,7 @@ mutable struct BlockPreconditioner{T1<:AbstractFloat,T2<:Number}
     "GMRES type."
     gmres::GMRES{T1,Complex{T1}}
 
-    "Represents (1/L)⋅∑[exp(-Δτ⋅ϕ(τ))]"
+    "Represents (1/L)⋅∑[exp(-Δτ⋅x(τ))]"
     expnΔτV_bar::Vector{T1}
 
     "Array of complex phase factor need to multiply by M[ω,ω] matrices."

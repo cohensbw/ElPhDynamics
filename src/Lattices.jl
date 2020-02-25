@@ -1,6 +1,7 @@
 module Lattices
 
 using LinearAlgebra
+
 using ..Geometries: Geometry, monkhorst_pack_mesh, calc_site_pos!
 
 export Lattice
@@ -185,25 +186,31 @@ end
 
 
 """
-    loc_to_cell(lattice::Lattice,loc::AbstractVector{Int})::Int
-
 Given a location of a cell in a lattice, return the corresponding cell.
 """
 function loc_to_cell(lattice::Lattice,loc::AbstractVector{Int})::Int
 
-    _pbc!(loc,lattice)
-    return loc[1] + loc[2]*lattice.L1 + loc[3]*lattice.L1*lattice.L2 + 1
+    return loc_to_cell(lattice,loc[1],loc[2],loc[3])
+end
+
+function loc_to_cell(lattice::Lattice,l1::Int,l2::Int,l3::Int)::Int
+
+    l1p, l2p, l3p = _pbc!(l1,l2,l3,lattice)
+    return l1p + l2p*lattice.L1 + l3p*lattice.L1*lattice.L2 + 1
 end
 
 
 """
-    loc_to_site(lattice::Lattice,loc::AbstractVector{Int},orbit::Int)::Int
-
 Given the location of a site in the lattice, return the correpsonding site.
 """
-function loc_to_site(lattice::Lattice,loc::AbstractVector{Int},orbit::Int)::Int
+function loc_to_site(lattice::Lattice, orbit::Int, loc::AbstractVector{Int})::Int
 
-    return lattice.norbits * (loc_to_cell(lattice,loc)-1) + orbit
+    return loc_to_site(lattice, orbit, loc[1], loc[2], loc[3])
+end
+
+function loc_to_site(lattice::Lattice, orbit::Int, l1::Int, l2::Int=0, l3::Int=0)::Int
+
+    return lattice.norbits * ( loc_to_cell(lattice,l1,l2,l3) - 1 ) + orbit
 end
 
 
@@ -215,13 +222,20 @@ Get the new site following a displacement from an initial site.
 function site_to_site(lattice::Lattice,isite::Int,displacement::AbstractVector{Int},orbit::Int)::Int
 
     @assert length(displacement)==3
+    # get unit cell
+    cell = lattice.site_to_cell[isite]
     # getting location of the unit cell that the initial site lives in
-    loc = lattice.cell_loc[ : , lattice.site_to_cell[isite] ]
+    l1 = lattice.cell_loc[ 1 , cell ]
+    l2 = lattice.cell_loc[ 2 , cell ]
+    l3 = lattice.cell_loc[ 3 , cell ]
     # displacing the location of the unit cell
-    loc += displacement
+    l1 += displacement[1]
+    l2 += displacement[2]
+    l3 += displacement[3]
     # calculating the final site location after the displacement
-    return loc_to_site(lattice, loc, orbit)
+    return loc_to_site(lattice, orbit, l1, l2, l3)
 end
+
 
 """
 Constructs translationally equivalent sets of sites in lattice.
@@ -396,8 +410,6 @@ end
 ############################################################
 
 """
-    _pbc!(loc::AbstractVector{Int},lattice::Lattice)
-
 Applies periodic boundary conditions.
 """
 function _pbc!(loc::AbstractVector{Int},lattice::Lattice)
@@ -406,6 +418,15 @@ function _pbc!(loc::AbstractVector{Int},lattice::Lattice)
     return nothing
 end
 
+
+function _pbc!(l1::Int,l2::Int,l3::Int,lattice::Lattice)::Tuple{Int,Int,Int}
+
+    l1new = (l1+lattice.L1)%lattice.L1
+    l2new = (l2+lattice.L2)%lattice.L2
+    l3new = (l3+lattice.L3)%lattice.L3
+
+    return l1new, l2new, l3new
+end
 
 """
     _cell_displacement(lattice::Lattice,site1::Int,site2::Int,direction::Int)::Int

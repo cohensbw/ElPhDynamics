@@ -35,6 +35,12 @@ L = 4
 
 [holstein]
 
+# whether to initialize phonons from file
+read_phonon_config = false
+
+# filename to read phonon config from
+phonon_config_file = "phonon_config.out"
+
 # discretization
 dtau = 0.1
 

@@ -1,11 +1,13 @@
 module NonLocalMeasurements
 
 using Printf
+using FFTW
+using LinearAlgebra
+
 using ..Utilities: get_index, get_site, get_τ, θ, δ
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, estimate
-using ..FourierTransforms: fourier_transform!
 
 export make_nonlocal_measurements!
 export reset_nonlocal_measurements!
@@ -21,7 +23,7 @@ Measurements will be stored in arrays with 6 indices where the indices correspon
 `measurement[ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1]`, where ΔLi is a displacement
 in unit cells in the direction of the i'th lattice vector.
 """
-function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
+function make_nonlocal_measurements!(container::Dict{String,Array{Complex{T1},6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
 
     # lattice object
     lattice = holstein.lattice
@@ -101,6 +103,8 @@ function make_nonlocal_measurements!(container::Dict{String,Array{T1,6}}, holste
             end
         end
     end
+
+    return nothing
 end
 
 
@@ -109,17 +113,23 @@ Construct a dictionary for the real space and momentum space measurements,
 where each measurement is a key in the dictionary and points to an array
 where the measured values will be stored.
 """
-function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2})::Tuple{ Dict{String,Array{T1,6}} , Dict{String,Array{Complex{T1},6}} } where {T1<:AbstractFloat,T2<:Number}
+function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2})::Tuple{ Dict{String,Array{Complex{T1},6}} , Dict{String,Array{Complex{T1},6}} , FFTW.cFFTWPlan{Complex{T1},-1,false,6} } where {T1<:AbstractFloat,T2<:Number}
 
     lattice = holstein.lattice
     container_rspace = Dict()
     container_kspace = Dict()
-    # ierate over all measurements to be made
+
+    # iterate over all measurements to be made
     for meas in ("Greens","DenDen","PairGreens")
-        container_rspace[meas] = zeros(T1,(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
+        # declare containers
+        container_rspace[meas] = zeros(Complex{T1},(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
         container_kspace[meas] = zeros(Complex{T1},(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
     end
-    return container_rspace, container_kspace
+
+    # planning fft to go from real space to momentum space
+    fftplan = plan_fft(container_rspace["Greens"],[2,3,4])
+
+    return container_rspace, container_kspace, fftplan
 end
 
 
@@ -129,8 +139,10 @@ Reset the arrays that contain the measurements to all zeros.
 function reset_nonlocal_measurements!(container::Dict{String,Array{T,6}}) where {T<:Number}
 
     for key in keys(container)
-        container[key] .= 0.0
+        fill!(container[key],0.0)
     end
+
+    return nothing
 end
 
 
@@ -139,28 +151,27 @@ Process the real-space and momentum-space measurements.
 This includes first performing the fourier transform and
 the normalzing by the number of measurement per bin.
 """
-function process_nonlocal_measurements!(container_rspace::Dict{String,Array{T,6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}, ft_coeff::Array{Complex{T},6}) where {T<:AbstractFloat}
+function process_nonlocal_measurements!(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}, fftplan) where {T<:AbstractFloat}
 
-    # compute the fourier transform of the position-space measurements
+    # iterate over measurements
     for key in keys(container_kspace)
-        fourier_transform!(container_kspace[key], container_rspace[key], ft_coeff)
-    end
 
-    # normalize the values by the number of measurements per bin
-    for key in keys(container_rspace)
+        # fft from r to k space
+        mul!(container_kspace[key], fftplan, container_rspace[key])
+
+        # normalize measurements
         container_rspace[key] ./= sim_params.bin_size
         container_kspace[key] ./= sim_params.bin_size
     end
+
+    return nothing
 end
 
 
 """
 Initializes files (including header) that each measurement will be written to.
 """
-function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Array{T,6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T})  where {T<:AbstractFloat}
-
-    # data filename
-    filename = "" 
+function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T})  where {T<:AbstractFloat}
 
     # iterating over real space measurements
     for key in keys(container_rspace)
@@ -179,6 +190,8 @@ function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Arr
             write(file, "orbit1", ",", "orbit2", ",", "dL1",  ",", "dL2",  ",", "dL3",  ",", "tau", ",", key*"_k", "\n")
         end
     end
+
+    return nothing
 end
 
 
@@ -239,6 +252,8 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
             end
         end
     end
+
+    return nothing
 end
 
 #########################################
@@ -288,8 +303,8 @@ where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
 """
 function measure_PairGreens(Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁τ₂1, Gⱼᵢτ₁τ₂2)
 
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
     return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
 end
 

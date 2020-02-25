@@ -2,9 +2,10 @@ module HolsteinModels
 
 using Statistics
 using IterativeSolvers
+using Printf
 
 using ..Geometries: Geometry
-using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!
+using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!, loc_to_site
 using ..Checkerboard: checkerboard_order, checkerboard_groups
 using ..RestartedGMRES: GMRES, solve!
 using ..Utilities: get_index
@@ -14,6 +15,7 @@ export assign_μ!, assign_ω!, assign_λ!
 export assign_tij!, assign_ωij!
 export get_index, get_site, get_τ
 export setup_checkerboard!, construct_expnΔτV!
+export write_phonons, read_phonons
 
 mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Complex{Float32},Complex{Float64}} }
 
@@ -21,9 +23,9 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ## COMPLETE MODEL HAMILTONIAN ##
     ################################
 
-    # H =  ∑ Pᵢ²/2 + ∑ (ωᵢ²/2) ϕᵢ² [Einstein Phonons]
-    #   +  ∑ λᵢ ϕᵢ nᵢ              [El-Ph Coupling]
-    #   +  ∑ ωᵢⱼ(ϕᵢ ± ϕⱼ)²         [Phonon Dispersion]
+    # H =  ∑ Pᵢ²/2 + ∑ (ωᵢ²/2) xᵢ² [Einstein Phonons]
+    #   +  ∑ λᵢ xᵢ nᵢ              [El-Ph Coupling]
+    #   +  ∑ ωᵢⱼ(xᵢ ± xⱼ)²         [Phonon Dispersion]
     #   -  ∑ μᵢ nᵢ                 [Chemical Potential]
     #   -  ∑ tᵢⱼ(c⁺ᵢcⱼ + h.c.)     [Electron Kinetic Energy]
 
@@ -63,15 +65,15 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ## HOLSTEIN PHONON FIELDS ##
     ############################
 
-    "phonon fields stored in the order `[ϕ₁(1),...,ϕ₁(Lτ),...,ϕₙ(1),...,ϕₙ(Lτ)]`
+    "phonon fields stored in the order `[x₁(1),...,x₁(Lτ),...,xₙ(1),...,xₙ(Lτ)]`
     where `n` is the number of sites in the lattice and `Lτ` is the length of the imaginary time axis."
-    ϕ::Vector{T1}
+    x::Vector{T1}
 
     ##############################################################
     ## VECTORS REPRESENTING MATRICE NEEDED TO LANGEVIN DYNAMICS ##
     ##############################################################
 
-    "a vector representing the diagonal matrix exp(-Δτ⋅V[ϕ])"
+    "a vector representing the diagonal matrix exp(-Δτ⋅V[x])"
     expnΔτV::Vector{T2}
 
     #####################################################
@@ -111,13 +113,13 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ## SPECIFIES HOLSTEIN DISPERSION ##
     ###################################
 
-    "extended holstein frequency of the form ωij(ϕᵢ±ϕⱼ)²"
+    "extended holstein frequency of the form ωij(xᵢ±xⱼ)²"
     ωij::Vector{T2}
 
-    "specifies which two sites i,j that are coupled in ωij(ϕᵢ±ϕⱼ)²"
+    "specifies which two sites i,j that are coupled in ωij(xᵢ±xⱼ)²"
     neighbor_table_ωij::Matrix{Int}
 
-    "specifies the sign: ωij(ϕᵢ+ϕⱼ)² or ωij(ϕᵢ-ϕⱼ)²"
+    "specifies the sign: ωij(xᵢ+xⱼ)² or ωij(xᵢ-xⱼ)²"
     sign_ωij::Vector{Int}
 
     #################################################
@@ -169,7 +171,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         expnΔτV = zeros(T,nindices)
 
         # intializing phonon fields to zero
-        ϕ = zeros(T,nindices)
+        x = zeros(T,nindices)
 
         # initializing all on-site energies to zero
         μ = zeros(T,nsites)
@@ -216,7 +218,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             # GMRES type
             gmres = GMRES(Mᵀg,tol=tol,restart=restart)
 
-            new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
+            new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
                               ω, λ, ωij, neighbor_table_ωij, sign_ωij,
                               tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
@@ -231,7 +233,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             # GMRES type
             gmres = GMRES(Mᵀg,tol=tol,restart=restart)
 
-            new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, ϕ, expnΔτV,
+            new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
                      ω, λ, ωij, neighbor_table_ωij, sign_ωij,
                      tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
@@ -328,7 +330,7 @@ for param in [ :μ , :ω , :λ ]
 end
 
 
-# GENERATE THE FOLLOWING FUNCTIONS: assign_tij!, assign_ωij!, assign_λij!
+# GENERATE THE FOLLOWING FUNCTIONS: assign_tij!, assign_ωij!
 for param in [ :tij , :ωij ]
 
     # defining symbol for function name
@@ -444,15 +446,15 @@ end
     function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
 Constructs the exponentiated interaction matrix for the Holstein Model
-exp(-Δτ⋅V[ϕ]) based on the current phonon fields ϕ. Note that the matrix
-exp(-Δτ⋅V[ϕ]) is stored as a vector as it is a diagonal matrix.
+exp(-Δτ⋅V[x]) based on the current phonon fields x. Note that the matrix
+exp(-Δτ⋅V[x]) is stored as a vector as it is a diagonal matrix.
 """
 function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
     expnΔτV  = holstein.expnΔτV::Vector{T2}
     λ        = holstein.λ::Vector{T1}
     μ        = holstein.μ::Vector{T1}
-    ϕ        = holstein.ϕ::Vector{T1}
+    x        = holstein.x::Vector{T1}
     Δτ       = holstein.Δτ::T1
     Lτ       = holstein.Lτ::Int
     nsites   = holstein.nsites::Int
@@ -463,9 +465,104 @@ function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:Abstrac
         for τ in 1:Lτ
             # getting index in vector
             i = get_index(τ,site,Lτ)
-            # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅ϕᵢ(τ)-μᵢ)}
-            expnΔτV[i] = exp( -Δτ * ( λ[site] * ϕ[i] - μ[site] ) )
+            # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅xᵢ(τ)-μᵢ)}
+            expnΔτV[i] = exp( -Δτ * ( λ[site] * x[i] - μ[site] ) )
         end
+    end
+
+    return nothing
+end
+
+##################################################
+## Functionality for Phonon Field Read/Write IO ##
+##################################################
+
+"""
+Writes the current phonon field configuration for a HolsteinModel to file.
+"""
+function write_phonons(holstein::HolsteinModel,filename::String)
+
+    # get lattice associated with holstein model
+    lattice = holstein.lattice
+
+    # get phonon fields
+    x = holstein.x
+
+    # open file
+    open(filename,"w") do file
+
+        # write header to file
+        write(file, "tau orbit L1 L2 L3 x\n")
+
+        # iterate over unit cells
+        for l3 in 0:lattice.L3-1
+            for l2 in 0:lattice.L2-1
+                for l1 in 0:lattice.L1-1
+
+                    # iterate over orbitals/sites in each unit cell
+                    for orbit in 1:lattice.norbits
+
+                        # get site in lattice
+                        site = loc_to_site(lattice,orbit,l1,l2,l3)
+
+                        # iterate of time slice
+                        for τ in 1:holstein.Lτ
+
+                            # get index
+                            i = get_index(τ, site, holstein.Lτ)
+                            
+                            # get phonon field for site
+                            xi = x[i]
+
+                            # write to file
+                            write(file, @sprintf("%d %d %d %d %d %.6f\n",τ-1,orbit,l1,l2,l3,xi))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
+Read phonon config from file.
+"""
+function read_phonons(holstein::HolsteinModel{T1,T2},filename::String) where {T1<:AbstractFloat,T2<:Number}
+
+    # open file
+    open(filename,"r") do file
+
+        # read in header
+        header = readline(file)
+
+        # iterate over lines in file
+        for line in eachline(file)
+
+            # split line at white space
+            atoms = split(line," ")
+
+            # extract info about location
+            τ     = parse(Int,atoms[1]) + 1
+            orbit = parse(Int,atoms[2])
+            l1    = parse(Int,atoms[3])
+            l2    = parse(Int,atoms[4])
+            l3    = parse(Int,atoms[5])
+
+            # get phonon field value
+            xi = parse(T1,atoms[6])
+
+            # map location on site
+            site = loc_to_site(holstein.lattice, orbit, l1, l2, l3)
+
+            # map site and τ onto index
+            i = get_index(τ, site, holstein.Lτ)
+
+            # assign phonon value
+            holstein.x[i] = xi
+        end
+
     end
 
     return nothing

@@ -3,7 +3,43 @@ module InitializePhonons
 using ..HolsteinModels: HolsteinModel, construct_expnΔτV!
 using ..Utilities: get_index
 
-export init_phonons_single_site!
+export init_phonons_single_site!, init_phonons_half_filled!
+
+
+"""
+Initialize phonones assuming every site has one electron on it.
+Uses levy construction to sample phonon path in imaginary time direction on each site.
+"""
+function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+
+    # info about temperature of system
+    β  = holstein.β::T1
+    Δτ = holstein.Δτ::T1
+    Lτ = holstein.Lτ::Int
+
+    # iterate over sites in lattice
+    for site in 1:holstein.nsites
+
+        # get parameters for site in lattice
+        ω = holstein.ω[site]
+        λ = holstein.λ[site]
+
+        # get all phonon fields corresponding to current
+        # site in lattice.
+        i_start = get_index(1,site,Lτ)
+        i_end   = get_index(Lτ,site,Lτ)
+        path    = @view holstein.x[i_start:i_end]
+
+        # construct levy path
+        levy_path!(path,ω,β,Δτ,Lτ)
+
+        # shift levy path by ammount corresponding to an
+        # electron density of 1 on the site
+        @. path += -λ/(ω*ω)
+    end
+
+    return nothing
+end
 
 
 """
@@ -51,7 +87,7 @@ function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
         if abs(ω)>0.0
             
             # constructing levy harmonic path for site along τ-axis
-            path = @view holstein.ϕ[(site-1)*Lτ+1:site*Lτ]
+            path = @view holstein.x[(site-1)*Lτ+1:site*Lτ]
             levy_path!(path,ω,β,Δτ,Lτ)
         
             # if non-zero el-phonon coupling
