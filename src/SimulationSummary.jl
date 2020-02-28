@@ -1,7 +1,5 @@
 module SimulationSummary
 
-using DataFrames
-using CSV
 using Statistics
 using Printf
 using Pkg.TOML
@@ -36,7 +34,9 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
     write_phonons(holstein,sim_params.foldername*"phonon_config.out")
 
     # write M matrix to file
-    write_M_matrix(holstein,sim_params.foldername*"matrix.out")
+    if input["simulation"]["write_M_matrix"]
+        write_M_matrix(holstein,sim_params.foldername*"matrix.out")
+    end
 
     ########################
     ## WRITE SUMMARY FILE ##
@@ -77,38 +77,7 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile,  "## LOCAL MEASUREMENTS ##\n")
         write(outfile,  "########################\n\n")
 
-        # declared array for calculating binned statistics
-        bins = zeros(T,nbins)
-
-        # read local measurements data into dataframe
-        df_local = CSV.read(sim_params.datafolder*"local_measurements.out",delim=",")
-
-        # check if there is data do analyze
-        if !isempty(df_local)
-        
-            # write header associated with local data
-            write(outfile,"measurement","  ","orbit","  ","avg","  ","std","\n")
-            
-            # getting names of measurements
-            cols = names(df_local)
-            
-            # iterate of orbitals
-            for orbit in 1:norbits
-                
-                # select portion of dataframe corresponding to current orbital
-                df_sel = df_local[df_local.orbit.==orbit,:]
-                
-                # iterate over measurements
-                for col in cols[2:end]
-                    
-                    # calculating average and standard deviation of measurement
-                    avg, sd = binned_statistics(df_sel[:,col],bins)
-                    
-                    # writing measurement to file
-                    write( outfile, string(col), "  ", @sprintf("%d  %.6f  %.6f",orbit,avg,sd), "\n" )
-                end
-            end
-        end
+        write_local_data(outfile, sim_params, holstein.lattice.norbits, nbins)
         
         ######################################
         ## WRITE NON-LOCAL MEASUREMENT DATA ##
@@ -147,6 +116,88 @@ end
 ####################
 
 """
+Write local measurements to file.
+"""
+function write_local_data(outfile, sim_params::SimulationParameters{T}, norbits::Int, nbins::Int) where {T<:Number}
+
+    # data filename
+    datafile = sim_params.datafolder*"local_measurements.out"
+
+    # open data file for local measurements
+    open(datafile,"r") do fin
+
+        # write header associated with local data
+        write(outfile,"measurement orbit avg std\n")
+
+        # declared array for calculating binned statistics
+        bins = zeros(T,nbins)
+
+        # get header line
+        header = readline(fin)
+
+        # get columns
+        columns = split(header,",")
+
+        # get measurements
+        measurements = [String(columns[i]) for i in 2:length(columns)]
+
+        # get number of unique measurements
+        nmeasurements = length(measurements)
+
+        # dictionary for containing data
+        container = Dict( m => zeros(T,nbins,norbits) for m in measurements )
+
+        # number of measurements per bin
+        bin_size = div( sim_params.num_bins , nbins )
+
+        # line counter
+        line_count = 0
+
+        # iterate over lines
+        for line in eachline(fin)
+
+            # split line apart
+            atoms = split(line,",")
+
+            # get orbit
+            orbit = parse(Int,atoms[1])
+
+            # getting current bin
+            bin = div( line_count , norbits * bin_size ) + 1
+
+            # iterate over measurements
+            for i in 1:nmeasurements
+
+                # incrementing value in container
+                container[measurements[i]][bin,orbit] += parse(T,atoms[i+1]) / bin_size
+            end
+
+            # increment line count
+            line_count += 1
+        end
+
+        # iterate over measurements
+        for measurement in measurements
+
+            # iterate over orbits
+            for orbit in 1:norbits
+
+                # get data
+                data = @view container[measurement][:,orbit]
+
+                # calcualte average and standard deviation measreument
+                avg, sd = binned_statistics(data,bins)
+
+                # writing measurement to file
+                write( outfile, measurement, "  ", @sprintf("%d  %.6f  %.6f",orbit,avg,sd), "\n" )
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
 Writes non-local measurement data to summary stats file.
 """
 function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7}) where {T<:Number}
@@ -180,11 +231,14 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
 
         # iterate over lines of data
         for line in eachline(fp)
+
             # getting current bin
             bin = div( line_count , nvectors * bin_size ) + 1
+
             # split line into an array of strings where each index
             # corresponds to: [ orbit1 , orbit2 , dL1 , dL2 , dL3 , tau , data ]
             atoms = split(line,",")
+
             # extracting data
             o1   = parse(Int,atoms[1])
             o2   = parse(Int,atoms[2])
@@ -193,8 +247,10 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
             dL3  = parse(Int,atoms[5])
             τ    = parse(Int,atoms[6])
             meas = parse(T,atoms[7])
+
             # record data
             container[bin,τ+1,dL1+1,dL2+1,dL3+1,o2,o1] += meas/bin_size
+
             # increment line_count
             line_count += 1
         end
@@ -210,9 +266,11 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
                 for dL2 in 0:L2-1
                     for dL1 in 0:L1-1
                         for τ in 0:Lτ-1
+                            
                             data   = @view container[:,τ+1,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
                             avg    = mean(data)
                             stddev = std(data)/sqrt(nbins)
+
                             # write displacement info to file
                             write(outfile,@sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",
                                                    orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev))

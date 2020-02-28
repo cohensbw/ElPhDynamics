@@ -91,6 +91,9 @@ omega_max = 1.0
 
 [simulation]
 
+# whether to write final M matrix to file or not
+write_M_matrix = false
+
 # random number generator seed
 random_seed = 38923
 
@@ -101,7 +104,7 @@ dt = 1e-3
 tol = 1e-4
 
 # flag to determine whether or not to use block preconditioner
-use_block_preconditioner = true
+use_block_preconditioner = false
 
 # restart for GMRES solver
 restart = 5

@@ -38,7 +38,8 @@ mutable struct BlockPreconditioner{T1<:AbstractFloat,T2<:Number}
     "Temporary storage vector of length NL."
     z2::Vector{Complex{T1}}
 
-    function BlockPreconditioner(holstein::HolsteinModel{T1,T2}; tol::T1=1e-1, maxiter::Int=-1, restart::Int=-1) where {T1<:AbstractFloat,T2<:Number}
+    function BlockPreconditioner(holstein::HolsteinModel{T1,T2};
+                                 tol::T1=1e-1, maxiter::Int=-1, restart::Int=-1) where {T1<:AbstractFloat,T2<:Number}
 
         N           = holstein.nsites
         L           = holstein.Lτ
