@@ -11,7 +11,7 @@ using ..RestartedGMRES: GMRES, solve!
 using ..Utilities: get_index
 
 export HolsteinModel
-export assign_μ!, assign_ω!, assign_λ!
+export assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 export assign_tij!, assign_ωij!
 export get_index, get_site, get_τ
 export setup_checkerboard!, construct_expnΔτV!
@@ -109,6 +109,9 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     "local electron-phonon coupling"
     λ::Vector{T1}
 
+    "coefficient for anharmonic term X^4"
+    ω4::Vector{T1}
+
     ###################################
     ## SPECIFIES HOLSTEIN DISPERSION ##
     ###################################
@@ -194,6 +197,9 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         # initialize electron-phonon coupling to zero
         λ = zeros(T,nsites)
 
+        # initialize anharmonic X^4 term coefficient
+        ω4 = zeros(T,nsites)
+
         # initizlize empty vector for inter-site phonon frequencies
         ωij = Vector{T}(undef,0)
 
@@ -220,7 +226,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
 
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                              ω, λ, ωij, neighbor_table_ωij, sign_ωij,
+                              ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
                               tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
         else
 
@@ -235,7 +241,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
 
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                     ω, λ, ωij, neighbor_table_ωij, sign_ωij,
+                     ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
                      tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
         end
     end
@@ -303,8 +309,8 @@ end
 ## DEFINING METHODS TO INCREMENTALLY SPECIFY THE HOLSTEIN MODEL PARAMETERS ##
 #############################################################################
 
-# GENERATE THE FOLLOWING FUNCTIONS: assign_μ!, assign_ω!, assign_λ!
-for param in [ :μ , :ω , :λ ]
+# GENERATE THE FOLLOWING FUNCTIONS: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
+for param in [ :μ , :ω , :λ, :ω4 ]
 
     # constructing symbol for function name
     op = Symbol(:assign_,param,:!)

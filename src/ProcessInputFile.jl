@@ -8,7 +8,7 @@ using IterativeSolvers
 using ..Geometries: Geometry
 using ..Lattices: Lattice
 using ..HolsteinModels: HolsteinModel
-using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!
+using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..HolsteinModels: assign_tij!, assign_ωij!
 using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
 using ..InitializePhonons: init_phonons_half_filled!
@@ -88,6 +88,20 @@ function process_input_file(filename::String)
         end
         for orbit in d["orbit"]
             assign_μ!(holstein,d["val"],stddev,orbit)
+        end
+    end
+
+    # check in anharmic term defined
+    if "omega4" in keys(input["holstein"])
+        # adding anharmoic term to holstein model
+        for d in input["holstein"]["omega4"]
+            stddev = 0.0
+            if "stddev" in keys(d)
+                stddev = d["stddev"]
+            end
+            for orbit in d["orbit"]
+                assign_ω4!(holstein,d["val"],stddev,orbit)
+            end
         end
     end
     

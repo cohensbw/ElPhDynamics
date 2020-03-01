@@ -177,7 +177,7 @@ function calc_dSdx!(dSdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Abst
     # After doing the element-wise multiplication, the expectation value for the partial
     # derivatives corresponding to the τ time slice live in the array indices corresponding to τ-1.
     # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
-    # the and storing the ∂S/∂xᵢ(τ) derivative values in the vector g, and then copying a proper shifted
+    # and storing the ∂S/∂xᵢ(τ) derivative values in the vector g, and then copying a proper shifted
     # version into the vector dSdx.
 
     # ∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ⋅[∂M/∂xᵢ(τ)]⋅M⁻¹g ==> All Done!

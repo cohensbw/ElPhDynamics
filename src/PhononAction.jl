@@ -18,6 +18,7 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
     Lτ         = holstein.Lτ::Int
     Δτ         = holstein.Δτ::T1
     ω          = holstein.ω::Vector{T1}
+    ω4         = holstein.ω4::Vector{T1}
     τp1        = 0
     τm1        = 0
     indx_τ     = 0
@@ -31,8 +32,9 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
     #####################################################]
 
     # iterating over site
-    for site in 1:nsites
+    @fastmath @inbounds for site in 1:nsites
         Δτω² = Δτ * ω[site] * ω[site]
+        Δτ3ω4 = Δτ * 3 * ω4[site]
         # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
@@ -45,8 +47,12 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
             indx_τp1 = get_index(τp1,site,Lτ)
             # indexing offset into vectors associated with τ-1 time slice
             indx_τm1 = get_index(τm1,site,Lτ)
+            # phonon field at current time slice
+            xτ = x[indx_τm1]
             # updating partial derivative
-            dSbose[indx_τ] += Δτω²*x[indx_τ] - ( x[indx_τp1] + x[indx_τm1] - 2.0*x[indx_τ] )/Δτ
+            dSbose[indx_τ] += Δτω² * xτ
+            dSbose[indx_τ] += Δτ3ω4 * xτ * xτ * xτ
+            dSbose[indx_τ] -= ( x[indx_τp1] + xτ - 2.0*x[indx_τ] )/Δτ
         end
     end
 
