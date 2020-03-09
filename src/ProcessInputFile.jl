@@ -35,7 +35,7 @@ function process_input_file(filename::String)
 
     # construct simulation parameters object.
     sim_params = SimulationParameters(input["simulation"]["dt"],
-                                      input["simulation"]["euler"],
+                                      input["simulation"]["update_method"],
                                       input["simulation"]["burnin"],
                                       input["simulation"]["nsteps"],
                                       input["simulation"]["meas_freq"],

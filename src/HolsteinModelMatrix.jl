@@ -5,6 +5,7 @@ using LinearAlgebra
 using SparseArrays
 using IterativeSolvers
 using Printf
+using Random
 
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..RestartedGMRES: GMRES, solve!

@@ -21,7 +21,7 @@ struct FourierAccelerator{T<:AbstractFloat}
     Q::Vector{T}
 
     "Vector representing sqaure root of the diagonal acceleration matrix."
-    sqrt2Q::Vector{T}
+    sqrtQ::Vector{T}
 
     "Performs forward fourier transformation"
     pfft::FFTW.cFFTWPlan{Complex{T},-1,false,1}
@@ -52,8 +52,8 @@ struct FourierAccelerator{T<:AbstractFloat}
 
         # constructing Q and √(2Q) matrices
         Q = zeros(T1,length(holstein))
-        sqrt2Q = zeros(T1,length(holstein))
-        update_Q!(Q,sqrt2Q,holstein,mass,Δt,-Inf,Inf)
+        sqrtQ = zeros(T1,length(holstein))
+        update_Q!(Q,sqrtQ,holstein,mass,Δt,-Inf,Inf)
 
         # declaring two full-length vectors for constructing FFT plans
         vi = zeros(T1,Lτ)
@@ -65,7 +65,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         # planning inverse FFT
         pifft = plan_ifft( νi )
 
-        new{T1}(vi,νi,Q,sqrt2Q,pfft,pifft,nsites,Lτ)
+        new{T1}(vi,νi,Q,sqrtQ,pfft,pifft,nsites,Lτ)
     end
 
 end
@@ -132,7 +132,7 @@ Accelerate noise vector multiplying with √Q matrix.
 """
 function accelerate_noise!(η::AbstractVector{Complex{T}},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
-    η .*= fa.sqrt2Q
+    η .*= fa.sqrtQ
     return nothing
 end
 
@@ -143,7 +143,7 @@ Updates the fourier acceleration matrix for sites with phonon frequencies within
 function update_Q!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
 
     # updating the acceleration matrix for sites with a phonon frequency withing the specified range
-    update_Q!(fa.Q,fa.sqrt2Q,holstein,mass,Δt,ω_min,ω_max)
+    update_Q!(fa.Q,fa.sqrtQ,holstein,mass,Δt,ω_min,ω_max)
 
     return nothing
 end
@@ -155,7 +155,7 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(Q::Vector{T1},sqrt2Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(Q::Vector{T1},sqrtQ::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
 
     nsites = holstein.nsites::Int
     Δτ     = holstein.Δτ::T1
@@ -174,7 +174,7 @@ function update_Q!(Q::Vector{T1},sqrt2Q::Vector{T1},holstein::HolsteinModel{T1,T
         end
     end
     # udpating the square root of the acceleration matriz
-    @. sqrt2Q = sqrt(2.0*Q)
+    @. sqrtQ = sqrt(Q)
     return nothing
 end
 
@@ -186,14 +186,8 @@ Obeys the FFTW convention for the ordering of the momentum values.
 function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,mass::T,Δt::T) where {T<:AbstractFloat}
 
     Lτ = length(Qi)
-    k = 0 # momentum value
-    for i in 1:div(Lτ,2)+1
-        k = i-1 # converting index to momentum using FFTW convention
-        Qi[i] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
-    end
-    for i in div(Lτ,2)+2:Lτ
-        k = i-Lτ-1 # converting index to momentum using FFTW convention
-        Qi[i] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
+    for k in 0:Lτ-1
+        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
     end
     return nothing
 end
@@ -204,7 +198,7 @@ Calculates a specified matrix element of the acceleration matrix for a given mom
 """
 function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,mass::T,Lτ::Int,Δt::T)::T where {T<:Number}
 
-    val = Δt*(mass*mass + Δτ*ω*ω + 4.0/Δτ)/(mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ )
+    val = ( mass*mass + Δτ*ω*ω + 4.0/Δτ)/(mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ )
     return val
 end
 

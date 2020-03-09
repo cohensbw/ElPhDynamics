@@ -141,8 +141,11 @@ num_bins = 100
 # downsampling of non-local measurements in imaginary time direction
 downsample = 1
 
-# euler or runge-kutta updates
-euler = false
+# what type of update method to use.
+# 1: Euler Upate + Fourier Acceleration
+# 2: Runge-Kutta Update + Fourier Acceleration
+# 3: Leap-Frog with Momentum Refresh + Fouier Acceleration
+update_method = 2
 
 # filepath to where to write data
 filepath = "."

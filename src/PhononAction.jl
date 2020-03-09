@@ -19,12 +19,6 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
     Δτ         = holstein.Δτ::T1
     ω          = holstein.ω::Vector{T1}
     ω4         = holstein.ω4::Vector{T1}
-    τp1        = 0
-    τm1        = 0
-    indx_τ     = 0
-    indx_τp1   = 0
-    indx_τm1   = 0
-    Δτω²::T1   = 0.0
 
     #####################################################
     ## Calculating Derivative Phonon Action Associated ##
@@ -48,11 +42,11 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
             # indexing offset into vectors associated with τ-1 time slice
             indx_τm1 = get_index(τm1,site,Lτ)
             # phonon field at current time slice
-            xτ = x[indx_τm1]
+            xτ = x[indx_τ]
             # updating partial derivative
             dSbose[indx_τ] += Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
             dSbose[indx_τ] += Δτ4ω4 * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
-            dSbose[indx_τ] -= ( x[indx_τp1] + xτ - 2.0*x[indx_τ] )/Δτ
+            dSbose[indx_τ] -= ( x[indx_τp1] + x[indx_τm1] - 2.0*xτ )/Δτ
         end
     end
 
@@ -65,12 +59,6 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
         ωij                = holstein.ωij::Vector{T2}
         sign_ωij           = holstein.sign_ωij::Vector{Int}
         neighbor_table_ωij = holstein.neighbor_table_ωij::Matrix{Int}
-        Δτωij²::T2         = 0.0
-        i                  = 0
-        j                  = 0
-        sgn                = 1
-        indx_i             = 0
-        indx_j             = 0
         # iterate over dispersive phonon modes
         for m in 1:length(ωij)
             Δτωij² = Δτ * ωij[m] * ωij[m]

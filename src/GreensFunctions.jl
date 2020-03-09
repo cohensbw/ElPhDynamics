@@ -71,7 +71,8 @@ Updates the estimate of the Green's Function based on current phonon field confi
 function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=Identity()) where {T1<:AbstractFloat,T2<:Number}
 
     # initialize random vector
-    rand!(Gr.g,-1:2:1)
+    # rand!(Gr.g,-1:2:1)
+    randn!(Gr.g)
 
     # solve linear system to get M⁻¹⋅g
     iters = ldiv!(Gr.M⁻¹g,holstein,Gr.g,preconditioner)

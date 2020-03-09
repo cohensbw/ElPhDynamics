@@ -5,7 +5,7 @@ using FFTW
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!
-using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
+using ..LangevinDynamics: update_euler_fa!, update_rk_fa!, update_leapfrog_fa!
 using ..FourierAcceleration: FourierAccelerator
 using ..BlockPreconditioners: BlockPreconditioner, setup!
 
@@ -39,6 +39,9 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
     η     = zeros(Float64, length(holstein))
     fft_η = zeros(Complex{Float64}, length(holstein))
+
+    p     = η
+    fft_p = fft_η
 
     # declare two electron greens function estimators
     Gr1 = EstimateGreensFunction(holstein)
@@ -79,12 +82,17 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             setup!(preconditioner)
         end
 
-        if sim_params.euler
+        if sim_params.update_method==1
             # using Euler method with Fourier Acceleration
             simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-        else
+        elseif sim_params.update_method==2
             # using Runge-Kutta method with Fourier Acceleration
             simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+        elseif sim_params.update_method==3
+            # using leapfrog update with momentum refreshes and Fouier Acceleration
+            simulation_time += @elapsed iters += update_leapfrog_fa!(timestep, holstein, fa, dx, dSdx, fft_dSdx, g, M⁻¹g, p, fft_p, sim_params.Δt, preconditioner)
+        else
+            error("update_method not valid.")
         end
     end
 
@@ -111,12 +119,17 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
                     setup!(preconditioner)
                 end
 
-                if sim_params.euler
+                if sim_params.update_method==1
                     # using Euler method with Fourier Acceleration
                     simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-                else
+                elseif sim_params.update_method==2
                     # using Runge-Kutta method with Fourier Acceleration
                     simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
+                elseif sim_params.update_method==3
+                    # using leapfrog update with momentum refreshes and Fouier Acceleration
+                    simulation_time += @elapsed iters += update_leapfrog_fa!(timestep, holstein, fa, dx, dSdx, fft_dSdx, g, M⁻¹g, p, fft_p, sim_params.Δt, preconditioner)
+                else
+                    error("update_method not valid.")
                 end
             end
 
