@@ -152,6 +152,7 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
                           η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
                           Δt::T1, preconditioner=Identity())::Int where {T1<:AbstractFloat,T2<:Number}
     
+    
     # itialize η as vector of gaussian random number
     randn!(η)
 
