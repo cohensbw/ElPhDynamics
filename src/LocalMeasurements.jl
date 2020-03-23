@@ -57,7 +57,7 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
                 # measure double occupancy
                 container["double_occ"][orbit] += (1.0-G1)*(1.0-G2) / normalization
                 # measuring phonon kinetic energy such that
-                # ⟨KE⟩ = 1/(2Δτ) - ⟨[xᵢ(τ+1)-xᵢ(τ)]²/Δτ²⟩
+                # ⟨KE⟩ = 1/(2Δτ) - ⟨(1/2)[xᵢ(τ+1)-xᵢ(τ)]²/Δτ²⟩
                 Δx = x[get_index(τ%Lτ+1,site,Lτ)]-x[index]
                 container["phonon_kin"][orbit] += (0.5/Δτ-(Δx*Δx)/Δτ²/2) / normalization
                 # measuring phonon potential energy

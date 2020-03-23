@@ -1,6 +1,7 @@
 module FourierAcceleration
 
 using FFTW
+using LinearAlgebra
 
 using ..HolsteinModels: HolsteinModel
 using ..Utilities: get_index
@@ -12,7 +13,7 @@ export forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
 struct FourierAccelerator{T<:AbstractFloat}
 
     "Vector to store data associated with single time slice"
-    vi::Vector{T}
+    vi::Vector{Complex{T}}
 
     "Vector to store data associated with FFT of single time slice"
     νi::Vector{Complex{T}}
@@ -56,7 +57,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         update_Q!(Q,sqrtQ,holstein,mass,Δt,-Inf,Inf)
 
         # declaring two full-length vectors for constructing FFT plans
-        vi = zeros(T1,Lτ)
+        vi = zeros(Complex{T1},Lτ)
         νi = zeros(Complex{T1},Lτ)
 
         # planning forward FFT
@@ -86,7 +87,7 @@ function forward_fft!(ν::AbstractVector,v::AbstractVector, fa::FourierAccelerat
             fa.vi[τ] = real(v[get_index(τ,i,fa.Lτ)])
         end
         # performing FFT
-        fa.νi .= fa.pfft * fa.vi
+        mul!( fa.νi , fa.pfft , fa.vi )
         # copying result for current site into destination vector
         for τ in 1:fa.Lτ
             ν[get_index(τ,i,fa.Lτ)] = fa.νi[τ]
@@ -107,10 +108,10 @@ function inverse_fft!(v::AbstractVector,ν::AbstractVector,fa::FourierAccelerato
             fa.νi[τ] = ν[get_index(τ,i,fa.Lτ)]
         end
         # performing iFFT
-        fa.vi .= real.(fa.pifft * fa.νi)
+        mul!(fa.vi,fa.pifft,fa.νi)
         # copying result for current site into destination vector
         for τ in 1:fa.Lτ
-            v[get_index(τ,i,fa.Lτ)] = fa.vi[τ]
+            v[get_index(τ,i,fa.Lτ)] = real(fa.vi[τ])
         end
     end
     return nothing
@@ -187,7 +188,7 @@ function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,mass::T,�
 
     Lτ = length(Qi)
     for k in 0:Lτ-1
-        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)/Lτ
+        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,mass,Lτ,Δt)
     end
     return nothing
 end
@@ -198,7 +199,7 @@ Calculates a specified matrix element of the acceleration matrix for a given mom
 """
 function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,mass::T,Lτ::Int,Δt::T)::T where {T<:Number}
 
-    val = ( mass*mass + Δτ*ω*ω + 4.0/Δτ)/(mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ )
+    val = (mass*mass + Δτ*ω*ω + 4.0/Δτ) / (mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/Lτ))/Δτ)
     return val
 end
 

@@ -239,7 +239,7 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
                                 # iterating over time slice
                                 for τ in 0:Lτ-1
                                     # Getting value of measurement. 
-                                    # Note that this averages over the two possible ordering for the orbitals
+                                    # Note that this averages over the two possible orderings for the orbitals
                                     meas  = real( vals[τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1] )
                                     meas += real( vals[τ+1,ΔL1+1,ΔL2+1,ΔL3+1,orbit1,orbit2] )
                                     meas /= 2.0

@@ -1,6 +1,7 @@
 module RunSimulation
 
 using FFTW
+using Random
 
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
@@ -34,10 +35,10 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     fft_dSdx = zeros(Complex{Float64}, length(holstein))
     dSdx2    = zeros(Float64, length(holstein))
 
-    g    = zeros(Float64, length(holstein))
+    g    = randn(Float64, length(holstein))
     M⁻¹g = zeros(Float64, length(holstein))
 
-    η     = zeros(Float64, length(holstein))
+    η     = randn(Float64, length(holstein))
     fft_η = zeros(Complex{Float64}, length(holstein))
 
     p     = η
@@ -90,7 +91,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
         elseif sim_params.update_method==3
             # using leapfrog update with momentum refreshes and Fouier Acceleration
-            simulation_time += @elapsed iters += update_leapfrog_fa!(timestep, holstein, fa, dx, dSdx, fft_dSdx, g, M⁻¹g, p, fft_p, sim_params.Δt, preconditioner)
+            simulation_time += @elapsed iters += update_leapfrog_fa!(holstein, fa, dSdx, fft_dSdx, g, M⁻¹g, fft_η, p, fft_p, sim_params.Δt, preconditioner)
         else
             error("update_method not valid.")
         end
@@ -127,7 +128,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
                     simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
                 elseif sim_params.update_method==3
                     # using leapfrog update with momentum refreshes and Fouier Acceleration
-                    simulation_time += @elapsed iters += update_leapfrog_fa!(timestep, holstein, fa, dx, dSdx, fft_dSdx, g, M⁻¹g, p, fft_p, sim_params.Δt, preconditioner)
+                    simulation_time += @elapsed iters += update_leapfrog_fa!(holstein, fa, dSdx, fft_dSdx, g, M⁻¹g, fft_η, p, fft_p, sim_params.Δt, preconditioner)
                 else
                     error("update_method not valid.")
                 end

@@ -60,7 +60,7 @@ function ldiv!(x::AbstractVector{T2}, holstein::HolsteinModel{T1,T3}, g::Abstrac
     # Solve M⋅x=g ==> x=M⁻¹⋅g using Conjugate Gradient
     else
         mulMᵀ!(holstein.Mᵀg, holstein, g)
-        info = cg!(x, holstein , holstein.Mᵀg , tol=holstein.tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true, Pl=P )[2]
+        trash, info = cg!(x, holstein , holstein.Mᵀg , tol=holstein.tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true, Pl=P )
         iters = info.iters
     end
 

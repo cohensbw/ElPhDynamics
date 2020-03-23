@@ -2,6 +2,7 @@ module LangevinDynamics
 
 using IterativeSolvers
 using Random
+using UnsafeArrays
 import LinearAlgebra: mul!, ldiv!, dot
 
 using ..Utilities: get_index
@@ -13,60 +14,36 @@ export update_leapfrog_fa!, update_euler_fa!, update_rk_fa!, calc_dSdx!, calc_dS
 
 """
 Update phonon field using the symplectic Leapfrog integrator with fourier acceleration applied.
-This method introduces a conjugate momentum `p` that is refreshed every 1/Δt time steps.
+This method introduces a conjugate momentum `p` that that gets canonically rescaled at each timestep.
 """
-function update_leapfrog_fa!(timestep::Int, holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
-                             dx::AbstractVector{T1}, dSdx::AbstractVector{T2}, fft_dSdx::AbstractVector{Complex{T1}},
-                             g::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
+function update_leapfrog_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
+                             dSdx::AbstractVector{T2}, fft_dSdx::AbstractVector{Complex{T1}},
+                             R::AbstractVector{T2}, M⁻¹R::AbstractVector{T2}, fft_R::AbstractVector{Complex{T1}},
                              p::AbstractVector{T1}, fft_p::AbstractVector{Complex{T1}},
-                             Δt::T1, preconditioner)::Int where {T1<:AbstractFloat,T2<:Number}
+                             Δt::T1, preconditioner, τ::T1=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
 
-    # frequency with which to refresh the momentum
-    refresh_freq = Int(1/Δt)
-
-    iters = update_leapfrog_fa!(timestep, holstein, fa, dx, dSdx, fft_dSdx, g, M⁻¹g, p, fft_p, Δt, preconditioner, refresh_freq)
-
-    return iters
-end
-
-function update_leapfrog_fa!(timestep::Int, holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
-                             dx::AbstractVector{T1}, dSdx::AbstractVector{T2}, fft_dSdx::AbstractVector{Complex{T1}},
-                             g::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
-                             p::AbstractVector{T1}, fft_p::AbstractVector{Complex{T1}},
-                             Δt::T1, preconditioner, refresh_freq::Int)::Int where {T1<:AbstractFloat,T2<:Number}
+    # p[t+Δt/2] = p[t] - (Δt/2)⋅∂S/∂x[t]
+    @. p -= dSdx * Δt/2
     
-    # refresh noise vector
-    randn!(g)
+    # x[t+Δt] = x[t] + Δt⋅p[t+Δt/2]
+    @. holstein.x += p * Δt
     
     # update the exponentiated interaction matrix for current phonon config
     construct_expnΔτV!(holstein)
     
-    # calculate force
-    iters = calc_dSdx!(dSdx, g, M⁻¹g, holstein, preconditioner)
-        
-    # fourier accelerate the force.
-    forward_fft!(fft_dSdx, dSdx, fa)
-    accelerate_noise!(fft_dSdx, fa )
-    inverse_fft!(dSdx, fft_dSdx, fa)
+    # calculate the derivative of the action ∂S/∂x[t+Δt]
+    randn!(R)
+    iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
     
-    if (timestep%refresh_freq-1)==0
-        # refresh the momentum from a gaussian
-        randn!(p)
-        # update momentum a half-time step
-        @. p -= 0.5 * dSdx * Δt
-    else
-        # update the momentum a full time step
-        @. p -= dSdx * Δt
-    end
+    # p[t+Δt] = p[t+Δt/2] - (Δt/2)⋅∂S/∂x[t+Δt]
+    @. p -= dSdx * Δt/2
 
-    # fourier accelerate the momentum
-    # note that the fourier acceleration carries with it a factor of Δt.
-    forward_fft!(fft_p, p, fa)
-    accelerate_noise!(fft_p, fa )
-    inverse_fft!(dx, fft_p, fa)
-    
-    # udpate the phonon field
-    holstein.x += dx * Δt
+    # rescale the momentum
+    randn!(R)
+    K   = dot(p,p)/2
+    c   = exp(-Δt/τ)
+    α2  = c + (1-c)/(2*K)*dot(R,R) + 2*sqrt(c*(1-c)/(2*K))*R[1]
+    p .*= sqrt(α2)
     
     return iters
 end
