@@ -59,6 +59,9 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         ###########################
         ## WRITE SIMULATION INFO ##
         ###########################
+
+        # total simulation time
+        total_time = simulation_time + measurement_time + write_time
         
         write(outfile,"\n#####################\n")
         write(outfile,  "## SIMULATION INFO ##\n")
@@ -67,6 +70,7 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile, "Simulation Time (min) = ",  @sprintf("%.4f",simulation_time), "\n")
         write(outfile, "Measurement Time (min) = ", @sprintf("%.4f",measurement_time), "\n")
         write(outfile, "Write Time (min) = ",       @sprintf("%.4f",write_time), "\n")
+        write(outfile, "Total Time (min) = ",       @sprintf("%.4f",total_time), "\n")
         write(outfile, "Iterative Solver Steps = ", @sprintf("%.4f",iters), "\n")
         
         ##################################
