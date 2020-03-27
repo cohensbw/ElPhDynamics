@@ -8,7 +8,7 @@ using ..Utilities: get_index
 
 export FourierAccelerator
 export update_Q!
-export forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
+export forward_fft!, inverse_fft!, accelerate!
 
 struct FourierAccelerator{T<:AbstractFloat}
 
@@ -20,9 +20,6 @@ struct FourierAccelerator{T<:AbstractFloat}
 
     "Vector representing diagonal acceleration matrix."
     Q::Vector{T}
-
-    "Vector representing sqaure root of the diagonal acceleration matrix."
-    sqrtQ::Vector{T}
 
     "Performs forward fourier transformation"
     pfft::FFTW.cFFTWPlan{Complex{T},-1,false,1}
@@ -53,8 +50,7 @@ struct FourierAccelerator{T<:AbstractFloat}
 
         # constructing Q and √(2Q) matrices
         Q = zeros(T1,length(holstein))
-        sqrtQ = zeros(T1,length(holstein))
-        update_Q!(Q,sqrtQ,holstein,mass,Δt,-Inf,Inf)
+        update_Q!(Q,holstein,mass,Δt,-Inf,Inf)
 
         # declaring two full-length vectors for constructing FFT plans
         vi = zeros(Complex{T1},Lτ)
@@ -66,7 +62,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         # planning inverse FFT
         pifft = plan_ifft( νi )
 
-        new{T1}(vi,νi,Q,sqrtQ,pfft,pifft,nsites,Lτ)
+        new{T1}(vi,νi,Q,pfft,pifft,nsites,Lτ)
     end
 
 end
@@ -121,19 +117,9 @@ end
 """
 Accelerate vector by multiplying with Q matrix.
 """
-function accelerate!(ν::AbstractVector{Complex{T}},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
+function accelerate!(ν::AbstractVector{Complex{T}},fa::FourierAccelerator{T}, power::T=1.0) where {T<:AbstractFloat}
 
-    ν .*= fa.Q
-    return nothing
-end
-
-
-"""
-Accelerate noise vector multiplying with √Q matrix.
-"""
-function accelerate_noise!(η::AbstractVector{Complex{T}},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
-
-    η .*= fa.sqrtQ
+    @. ν *= fa.Q^power
     return nothing
 end
 
@@ -144,7 +130,7 @@ Updates the fourier acceleration matrix for sites with phonon frequencies within
 function update_Q!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
 
     # updating the acceleration matrix for sites with a phonon frequency withing the specified range
-    update_Q!(fa.Q,fa.sqrtQ,holstein,mass,Δt,ω_min,ω_max)
+    update_Q!(fa.Q,holstein,mass,Δt,ω_min,ω_max)
 
     return nothing
 end
@@ -156,7 +142,7 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(Q::Vector{T1},sqrtQ::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
 
     nsites = holstein.nsites::Int
     Δτ     = holstein.Δτ::T1
@@ -174,8 +160,6 @@ function update_Q!(Q::Vector{T1},sqrtQ::Vector{T1},holstein::HolsteinModel{T1,T2
             construct_Qi!( Qi , ω[site] , λ[site] , μ[site] , Δτ , mass , Δt )
         end
     end
-    # udpating the square root of the acceleration matriz
-    @. sqrtQ = sqrt(Q)
     return nothing
 end
 

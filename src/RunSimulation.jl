@@ -6,7 +6,7 @@ using Random
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!
-using ..LangevinDynamics: update_euler_fa!, update_rk_fa!, update_leapfrog_fa!
+using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
 using ..FourierAcceleration: FourierAccelerator
 using ..BlockPreconditioners: BlockPreconditioner, setup!
 
@@ -22,7 +22,8 @@ using ..LocalMeasurements: write_local_measurements
 
 export run_simulation!
 
-function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
+function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1},
+                         unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
@@ -50,10 +51,10 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space
-    container_rspace, container_kspace, fftplan = construct_nonlocal_measurements_container(holstein)
+    container_rspace, container_kspace = construct_nonlocal_measurements_container(holstein, equaltime_meas, unequaltime_meas)
 
     # constructing container to hold local measurements
-    local_meas_container = construct_local_measurements_container(holstein)
+    local_meas_container = construct_local_measurements_container(holstein, unequaltime_meas)
 
     # Creating files that data will be written to.
     initialize_nonlocal_measurement_files(container_rspace, container_kspace, sim_params)
@@ -89,9 +90,6 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         elseif sim_params.update_method==2
             # using Runge-Kutta method with Fourier Acceleration
             simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-        elseif sim_params.update_method==3
-            # using leapfrog update with momentum refreshes and Fouier Acceleration
-            simulation_time += @elapsed iters += update_leapfrog_fa!(holstein, fa, dSdx, fft_dSdx, g, M⁻¹g, fft_η, p, fft_p, sim_params.Δt, preconditioner)
         else
             error("update_method not valid.")
         end
@@ -126,9 +124,6 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
                 elseif sim_params.update_method==2
                     # using Runge-Kutta method with Fourier Acceleration
                     simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-                elseif sim_params.update_method==3
-                    # using leapfrog update with momentum refreshes and Fouier Acceleration
-                    simulation_time += @elapsed iters += update_leapfrog_fa!(holstein, fa, dSdx, fft_dSdx, g, M⁻¹g, fft_η, p, fft_p, sim_params.Δt, preconditioner)
                 else
                     error("update_method not valid.")
                 end
@@ -153,7 +148,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         # process non-local measurements. This includes normalizing the real-space measurements
         # by the number of measurements made per bin, and also taking the Fourier Transform in order
         # to get the momentum-space measurements.
-        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params, fftplan)
+        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params)
 
         # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
         measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein, container_rspace, container_kspace)

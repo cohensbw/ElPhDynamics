@@ -16,6 +16,162 @@ export construct_nonlocal_measurements_container
 export initialize_nonlocal_measurement_files
 export write_nonlocal_measurements
 
+
+#########################################
+## METHODS DEFINING MEASUREMENTS BELOW ##
+#########################################
+
+"""
+Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
+"""
+@inline function measure_Greens(i,j,τ₂,τ₁,Gr1,Gr2)
+
+    # estimate ⟨cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
+    Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
+    Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
+
+    # takes care of time-ordering heavey-side step function
+    return (1-2*θ(τ₁-τ₂))*(Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
+end
+
+
+"""
+Measure the density-density correlation function ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ where
+nᵢ(τ₂) = nᵢ₊(τ₂) + nᵢ₋(τ₂).
+"""
+function measure_DenDen(i,j,τ₂,τ₁,Gr1,Gr2)
+
+    # estimate ⟨cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
+    Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
+    Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
+
+    # estimate ⟨cⱼ(τ₁)c⁺ᵢ(τ₂)⟩
+    Gⱼᵢτ₁τ₂1 = estimate(Gr1,j,i,τ₁,τ₂)
+    Gⱼᵢτ₁τ₂2 = estimate(Gr2,j,i,τ₁,τ₂)
+
+    # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
+    Gⱼⱼτ₁τ₁1 = estimate(Gr1,j,j,τ₁,τ₁)
+    Gⱼⱼτ₁τ₁2 = estimate(Gr2,j,j,τ₁,τ₁)
+
+    # estimate ⟨cᵢ(τ₂)c⁺ᵢ(τ₂⟩
+    Gᵢᵢτ₂τ₂1 = estimate(Gr1,i,i,τ₂,τ₂)
+    Gᵢᵢτ₂τ₂2 = estimate(Gr2,i,i,τ₂,τ₂)
+
+    # ⟨nᵢ₊(τ₂)nⱼ₊(τ₁)⟩ = [1-⟨cᵢ₊(τ₂)c⁺ᵢ₊(τ₂)⟩]⋅[1-⟨cⱼ₊(τ₁)c⁺ⱼ₊(τ₁)⟩]
+    #                  + ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅[δ(τ₂,τ₁)δ(i,j)-⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩]
+    nᵢ₊τ₂_nⱼ₊τ₁ = (1-Gᵢᵢτ₂τ₂1)*(1-Gⱼⱼτ₁τ₁2) + Gᵢⱼτ₂τ₁1*(δ(τ₂,τ₁)*δ(i,j)-Gⱼᵢτ₁τ₂2)
+
+    # ⟨nᵢ₋(τ₂)nⱼ₋(τ₁)⟩ = (same as above but with the spin flipped)
+    nᵢ₋τ₂_nⱼ₋τ₁ = (1-Gᵢᵢτ₂τ₂2)*(1-Gⱼⱼτ₁τ₁1) + Gᵢⱼτ₂τ₁2*(δ(τ₂,τ₁)*δ(i,j)-Gⱼᵢτ₁τ₂1)
+
+    # ⟨nᵢ₊(τ₂)nⱼ₋(τ₁)⟩ = [1-⟨cᵢ₊(τ₂)c⁺ᵢ₊(τ₂)⟩]⋅[1-⟨cⱼ₋(τ₁)c⁺ⱼ₋(τ₁)⟩]
+    nᵢ₊τ₂_nⱼ₋τ₁ = (1-Gᵢᵢτ₂τ₂1)*(1-Gⱼⱼτ₁τ₁2)
+
+    # ⟨nᵢ₋(τ₂)nⱼ₊(τ₁)⟩ = (same as above but with the spin flipped)
+    nᵢ₋τ₂_nⱼ₊τ₁ = (1-Gᵢᵢτ₂τ₂2)*(1-Gⱼⱼτ₁τ₁1)
+
+    # ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ = ⟨[nᵢ₊(τ₂)+nᵢ₋(τ₂)]⋅[nⱼ₊(τ₁)+nⱼ₋(τ₁)]⟩
+    # ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ = ⟨nᵢ₊(τ₂)nⱼ₊(τ₁)⟩ + ⟨nᵢ₋(τ₂)nⱼ₋(τ₁)⟩ + ⟨nᵢ₊(τ₂)nⱼ₋(τ₁)⟩ + ⟨nᵢ₋(τ₂)nⱼ₊(τ₁)⟩
+    nᵢτ₂_nⱼτ₁ = nᵢ₊τ₂_nⱼ₊τ₁ + nᵢ₋τ₂_nⱼ₋τ₁ + nᵢ₊τ₂_nⱼ₋τ₁ + nᵢ₋τ₂_nⱼ₊τ₁
+
+    return nᵢτ₂_nⱼτ₁
+end
+
+
+"""
+Measure pair Green's function ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+h.c.⟩=⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩
+where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
+"""
+function measure_PairGreens(i,j,τ₂,τ₁,Gr1,Gr2)
+
+    # estimate ⟨cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
+    Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
+    Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
+
+    # estimate ⟨cⱼ(τ₁)c⁺ᵢ(τ₂)⟩
+    Gⱼᵢτ₁τ₂1 = estimate(Gr1,j,i,τ₁,τ₂)
+    Gⱼᵢτ₁τ₂2 = estimate(Gr2,j,i,τ₁,τ₂)
+
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
+    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
+    return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
+end
+
+
+####################################################
+## GENERATE FUNCTIONS TO MAKE MEASUREMENTS INSIDE ##
+## LOOPS OVER SPACE AND TIME DISPLACEMENT VECTORE ##
+####################################################
+
+for measurement in [ :Greens , :DenDen , :PairGreens ]
+
+    # constructing symbol for function name
+    op = Symbol(:measure_,measurement,:!)
+
+    # function to make measurement
+    measure = Symbol(:measure_,measurement)
+
+    @eval begin
+        function $op(container::Array{Complex{T1},6}, trans_equiv_sets::Array{Int,7},
+                     Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2},
+                     downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
+
+            # getting size of system
+            Lτ, L1, L2, L3, norbits, ignore = size(container)
+
+            # number of unit cells in lattice
+            ncells = L1*L2*L3
+
+            # normalization factor
+            normalization = ncells * length(1:downsample:Lτ)
+
+            # iterating over all possible parings of orbitals
+            @fastmath @inbounds for orbit1 in 1:norbits
+                for orbit2 in 1:norbits
+                    # iterating over all displacements vectors defined in terms
+                    # of unit cells in the direction of each lattice vector.
+                    for ΔL3 in 0:L3-1
+                        for ΔL2 in 0:L2-1
+                            for ΔL1 in 0:L1-1
+                                
+                                # iterating over pairs of sites corresponding to current displacement vector
+                                for pair in 1:ncells
+
+                                    # getting current pair of sites associated with specified
+                                    # displacement vector r=i-j
+                                    j = trans_equiv_sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
+                                    i = trans_equiv_sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
+
+                                    # iterating over time slices
+                                    for τ₁ in 1:downsample:Lτ
+
+                                        # iterate over possible time seperations
+                                        for τ in 0:Lτ-1
+                                            
+                                            # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
+                                            τ₂ = (τ₁+τ-1)%Gr1.β+1
+
+                                            # making measurement
+                                            container[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] += $measure(i,j,τ₂,τ₁,Gr1,Gr2) / normalization
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return nothing
+        end
+    end
+end
+
+
+#######################################
+## FUNCTIONS TO BE CALLED OUTSIDE OF ##
+## THIS SCRIPT TO MAKE MEASUREMENTS  ##
+#######################################
+
 """
 Makes non-local measurements in real-space.
 Each type of measurement is made for all possible imaginary time seperations and displacement vectors.
@@ -25,82 +181,22 @@ in unit cells in the direction of the i'th lattice vector.
 """
 function make_nonlocal_measurements!(container::Dict{String,Array{Complex{T1},6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
 
-    # lattice object
-    lattice = holstein.lattice
+    # get translationally equivalent sets of points
+    trans_equiv_sets = holstein.trans_equiv_sets
 
-    # array containing sets of translationally equivalent pairs of sites in lattice
-    sets = holstein.trans_equiv_sets
-
-    # getting the number of paired sites assoicated with each displacement vector
-    npairs = div(lattice.nsites,lattice.norbits)
-
-    # normalization factor
-    normalization = npairs * length(1:downsample:holstein.Lτ)
-
-    # getting pointers to arrays containing measurements
-    greens     = container["Greens"]
-    denden     = container["DenDen"]
-    pairgreens = container["PairGreens"]
-
-    # iterating over all possible parings of orbitals
-    @fastmath @inbounds for orbit1 in 1:lattice.norbits
-        for orbit2 in 1:lattice.norbits
-            # iterating over all displacements vectors defined in terms
-            # of unit cells in the direction of each lattice vector.
-            for ΔL3 in 0:lattice.L3-1
-                for ΔL2 in 0:lattice.L2-1
-                    for ΔL1 in 0:lattice.L1-1
-                        
-                        # iterating over pairs of sites corresponding to current displacement vector
-                        for pair in 1:npairs
-
-                            # getting current pair of sites associated with specified
-                            # displacement vector r=i-j
-                            j = sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
-                            i = sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
-
-                            # iterating over time slices
-                            for τ₁ in 1:downsample:holstein.Lτ
-
-                                # estimate ⟨cⱼ(τ₁)c⁺ⱼ(τ₁)⟩
-                                Gⱼⱼτ₁τ₁1 = estimate(Gr1,j,j,τ₁,τ₁)
-                                Gⱼⱼτ₁τ₁2 = estimate(Gr2,j,j,τ₁,τ₁)
-
-                                # iterate over possible time seperations
-                                for τ in 0:holstein.Lτ-1
-                                    
-                                    # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
-                                    τ₂ = (τ₁+τ-1)%Gr1.β+1
-
-                                    # estimate ⟨cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
-                                    Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
-                                    Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
-
-                                    # estimate ⟨cⱼ(τ₁)c⁺ᵢ(τ₂)⟩
-                                    Gⱼᵢτ₁τ₂1 = estimate(Gr1,j,i,τ₁,τ₂)
-                                    Gⱼᵢτ₁τ₂2 = estimate(Gr2,j,i,τ₁,τ₂)
-
-                                    # estimate ⟨cᵢ(τ₂)c⁺ᵢ(τ₂⟩
-                                    Gᵢᵢτ₂τ₂1 = estimate(Gr1,i,i,τ₂,τ₂)
-                                    Gᵢᵢτ₂τ₂2 = estimate(Gr2,i,i,τ₂,τ₂)
-
-                                    # measuring electron green's function ⟨cᵢ(τ)c⁺ⱼ(0)⟩ where β>τ≥0.
-                                    greens[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
-                                        measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2) / normalization
-
-                                    # measuring density-density correlation ⟨nᵢ(τ)nⱼ(0)⟩
-                                    denden[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
-                                        measure_DenDen(i,j,τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2,Gⱼᵢτ₁τ₂1,Gⱼᵢτ₁τ₂2,Gⱼⱼτ₁τ₁1,Gⱼⱼτ₁τ₁2,Gᵢᵢτ₂τ₂1,Gᵢᵢτ₂τ₂2) / normalization
-
-                                    # measuring Pair Green's Function ⟨Δᵢ(τ)Δ⁺ⱼ(0)+Δⱼ(0)Δ⁺ᵢ(τ)⟩
-                                    pairgreens[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] +=
-                                        measure_PairGreens(Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2,Gⱼᵢτ₁τ₂1,Gⱼᵢτ₁τ₂2) / normalization
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+    # iterate over measurements
+    for key in keys(container)
+        if key=="Greens"
+            # Measure Electron Greens Function
+            measure_Greens!(container["Greens"],trans_equiv_sets,Gr1,Gr2,downsample)
+        elseif key=="DenDen"
+            # Measure Density-Density Correlation Function
+            measure_DenDen!(container["DenDen"],trans_equiv_sets,Gr1,Gr2,downsample)
+        elseif key=="PairGreens"
+            # Measure Pair Greens Function
+            measure_PairGreens!(container["PairGreens"],trans_equiv_sets,Gr1,Gr2,downsample)
+        else
+            error("The following key is not a valid measurment: ",key)
         end
     end
 
@@ -113,23 +209,33 @@ Construct a dictionary for the real space and momentum space measurements,
 where each measurement is a key in the dictionary and points to an array
 where the measured values will be stored.
 """
-function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2})::Tuple{ Dict{String,Array{Complex{T1},6}} , Dict{String,Array{Complex{T1},6}} , FFTW.cFFTWPlan{Complex{T1},-1,false,6} } where {T1<:AbstractFloat,T2<:Number}
+function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2}, equaltime_meas::AbstractVector{String}, unequaltime_meas::AbstractVector{String})::Tuple{ Dict{String,Array{Complex{T1},6}} , Dict{String,Array{Complex{T1},6}} } where {T1<:AbstractFloat,T2<:Number}
 
-    lattice = holstein.lattice
+    # get size of lattice
+    Lτ = holstein.Lτ
+    L1 = holstein.lattice.L1
+    L2 = holstein.lattice.L2
+    L3 = holstein.lattice.L3
+    norbits = holstein.lattice.norbits
+
     container_rspace = Dict()
     container_kspace = Dict()
 
-    # iterate over all measurements to be made
-    for meas in ("Greens","DenDen","PairGreens")
+    # iterate over all unequal time measurements
+    for measurement in unequaltime_meas
         # declare containers
-        container_rspace[meas] = zeros(Complex{T1},(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
-        container_kspace[meas] = zeros(Complex{T1},(holstein.Lτ,lattice.L1,lattice.L2,lattice.L3,lattice.norbits,lattice.norbits))
+        container_rspace[measurement] = zeros(Complex{T1},(Lτ,L1,L2,L3,norbits,norbits))
+        container_kspace[measurement] = zeros(Complex{T1},(Lτ,L1,L2,L3,norbits,norbits))
     end
 
-    # planning fft to go from real space to momentum space
-    fftplan = plan_fft(container_rspace["Greens"],[2,3,4])
+    # iterate over all equal time measurements
+    for measurement in equaltime_meas
+        # declare containers
+        container_rspace[measurement] = zeros(Complex{T1},(1,L1,L2,L3,norbits,norbits))
+        container_kspace[measurement] = zeros(Complex{T1},(1,L1,L2,L3,norbits,norbits))
+    end
 
-    return container_rspace, container_kspace, fftplan
+    return container_rspace, container_kspace
 end
 
 
@@ -148,16 +254,20 @@ end
 
 """
 Process the real-space and momentum-space measurements.
-This includes first performing the fourier transform and
-the normalzing by the number of measurement per bin.
+This includes first performing the fourier transform to get the momentum space
+values and then normalzing the measured values by the number of measurement made per bin.
 """
-function process_nonlocal_measurements!(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}, fftplan) where {T<:AbstractFloat}
+function process_nonlocal_measurements!(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}) where {T<:AbstractFloat}
 
     # iterate over measurements
     for key in keys(container_kspace)
 
-        # fft from r to k space
-        mul!(container_kspace[key], fftplan, container_rspace[key])
+        vals_r = container_rspace[key]
+        vals_k = container_kspace[key]
+
+        # do fft from r to k space
+        copyto!(vals_k,vals_r)
+        fft!(vals_k, (2,3,4))
 
         # normalize measurements
         container_rspace[key] ./= sim_params.bin_size
@@ -200,16 +310,6 @@ Write non-local measurements to file. Each measurement gets its own file.
 """
 function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_params::SimulationParameters, holstein::HolsteinModel; real_space::Bool)  where {T<:Number}
 
-    # getting size of lattice
-    Lτ = holstein.Lτ::Int
-    L1 = holstein.lattice.L1::Int
-    L2 = holstein.lattice.L2::Int
-    L3 = holstein.lattice.L3::Int
-    norbits = holstein.lattice.norbits::Int
-
-    # measurement value to be written to file
-    meas = 0.0
-
     # string to hold filename
     filename = ""
 
@@ -218,6 +318,9 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
 
         # getting a pointer to the array containing the measurements
         vals = container[measurement]
+
+        # getting size of system
+        Lτ, L1, L2, L3, norbits, ignore = size(vals)
 
         # constructing filename that measurements should be written to.
         # filename is adjusted according to whether the measurement is being
@@ -254,58 +357,6 @@ function write_nonlocal_measurements(container::Dict{String,Array{T,6}}, sim_par
     end
 
     return nothing
-end
-
-#########################################
-## METHODS DEFINING MEASUREMENTS BELOW ##
-#########################################
-
-"""
-Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂)c⁺ⱼ(τ₁)⟩
-"""
-@inline function measure_Greens(τ₂,τ₁,Gᵢⱼτ₂τ₁1,Gᵢⱼτ₂τ₁2)
-
-    # takes care of time-ordering heavey-side step function
-    return (1-2*θ(τ₁-τ₂))*(Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
-end
-
-
-"""
-Measure the density-density correlation function ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ where
-nᵢ(τ₂) = nᵢ₊(τ₂) + nᵢ₋(τ₂).
-"""
-function measure_DenDen(i, j, τ₂, τ₁, Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁τ₂1, Gⱼᵢτ₁τ₂2, Gⱼⱼτ₁τ₁1, Gⱼⱼτ₁τ₁2, Gᵢᵢτ₂τ₂1, Gᵢᵢτ₂τ₂2)
-
-    # ⟨nᵢ₊(τ₂)nⱼ₊(τ₁)⟩ = [1-⟨cᵢ₊(τ₂)c⁺ᵢ₊(τ₂)⟩]⋅[1-⟨cⱼ₊(τ₁)c⁺ⱼ₊(τ₁)⟩]
-    #                  + ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅[δ(τ₂,τ₁)δ(i,j)-⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩]
-    nᵢ₊τ₂_nⱼ₊τ₁ = (1-Gᵢᵢτ₂τ₂1)*(1-Gⱼⱼτ₁τ₁2) + Gᵢⱼτ₂τ₁1*(δ(τ₂,τ₁)*δ(i,j)-Gⱼᵢτ₁τ₂2)
-
-    # ⟨nᵢ₋(τ₂)nⱼ₋(τ₁)⟩ = (same as above but with the spin flipped)
-    nᵢ₋τ₂_nⱼ₋τ₁ = (1-Gᵢᵢτ₂τ₂2)*(1-Gⱼⱼτ₁τ₁1) + Gᵢⱼτ₂τ₁2*(δ(τ₂,τ₁)*δ(i,j)-Gⱼᵢτ₁τ₂1)
-
-    # ⟨nᵢ₊(τ₂)nⱼ₋(τ₁)⟩ = [1-⟨cᵢ₊(τ₂)c⁺ᵢ₊(τ₂)⟩]⋅[1-⟨cⱼ₋(τ₁)c⁺ⱼ₋(τ₁)⟩]
-    nᵢ₊τ₂_nⱼ₋τ₁ = (1-Gᵢᵢτ₂τ₂1)*(1-Gⱼⱼτ₁τ₁2)
-
-    # ⟨nᵢ₋(τ₂)nⱼ₊(τ₁)⟩ = (same as above but with the spin flipped)
-    nᵢ₋τ₂_nⱼ₊τ₁ = (1-Gᵢᵢτ₂τ₂2)*(1-Gⱼⱼτ₁τ₁1)
-
-    # ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ = ⟨[nᵢ₊(τ₂)+nᵢ₋(τ₂)]⋅[nⱼ₊(τ₁)+nⱼ₋(τ₁)]⟩
-    # ⟨nᵢ(τ₂)nⱼ(τ₁)⟩ = ⟨nᵢ₊(τ₂)nⱼ₊(τ₁)⟩ + ⟨nᵢ₋(τ₂)nⱼ₋(τ₁)⟩ + ⟨nᵢ₊(τ₂)nⱼ₋(τ₁)⟩ + ⟨nᵢ₋(τ₂)nⱼ₊(τ₁)⟩
-    nᵢτ₂_nⱼτ₁ = nᵢ₊τ₂_nⱼ₊τ₁ + nᵢ₋τ₂_nⱼ₋τ₁ + nᵢ₊τ₂_nⱼ₋τ₁ + nᵢ₋τ₂_nⱼ₊τ₁
-
-    return nᵢτ₂_nⱼτ₁
-end
-
-
-"""
-Measure pair Green's function ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+h.c.⟩=⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩
-where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
-"""
-function measure_PairGreens(Gᵢⱼτ₂τ₁1, Gᵢⱼτ₂τ₁2, Gⱼᵢτ₁τ₂1, Gⱼᵢτ₁τ₂2)
-
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
-    return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
 end
 
 end

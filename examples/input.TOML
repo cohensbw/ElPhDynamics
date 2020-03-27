@@ -144,7 +144,6 @@ downsample = 1
 # what type of update method to use.
 # 1: Euler Upate + Fourier Acceleration
 # 2: Runge-Kutta Update + Fourier Acceleration
-# 3: Leap-Frog with Momentum Refresh + Fouier Acceleration
 update_method = 2
 
 # filepath to where to write data
@@ -152,3 +151,28 @@ filepath = "."
 
 # name of folder for data to get dumped into
 foldername = "test"
+
+##################
+## MEASUREMENTS ##
+##################
+
+[measurements]
+
+# Electron Green's Function Measurement
+[measurements.Greens]
+measure        = true # whether or not to measure the quantity
+time_dependent = true # if measured, whether as equal time or unequal time measurement
+
+# Density-Desnity Correlation Function Measurement
+[measurements.DenDen]
+measure        = true
+time_dependent = false
+
+# Pair Green's Function Measurement
+# Note 1: If the time depedent pair green's function is being
+# measured than the S-Wave Susceptibility is also calcualted.
+# Note 2: As a side note, it is probably only ever worth
+# measuring the time depedent Pair Green's function.
+[measurements.PairGreens]
+measure        = false
+time_dependent = false

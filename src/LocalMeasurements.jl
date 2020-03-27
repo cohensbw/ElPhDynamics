@@ -79,11 +79,16 @@ end
 """
 Construct a dictionary to hold local measurement data.
 """
-function construct_local_measurements_container(holstein::HolsteinModel{T1,T2})::Dict{String,Vector{T1}} where {T1<:AbstractFloat,T2<:Number}
+function construct_local_measurements_container(holstein::HolsteinModel{T1,T2}, unequaltime_meas::AbstractVector{String})::Dict{String,Vector{T1}} where {T1<:AbstractFloat,T2<:Number}
 
     local_meas_container = Dict()
-    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi", "swave_susc")
+    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi")
         local_meas_container[meas] = zeros(T1,holstein.lattice.norbits)
+    end
+
+    # only measure S-Wave Susceptibility if Unequal Time Pair Green's Function is being measured
+    if "PairGreens" in unequaltime_meas
+        local_meas_container["swave_susc"] = zeros(T1,holstein.lattice.norbits)
     end
 
     return local_meas_container
@@ -101,12 +106,14 @@ function process_local_measurements!(container::Dict{String,Vector{T}}, sim_para
         container[key] ./= sim_params.bin_size
     end
 
-    # calculating s-wave susceptibility
-    for orbit in 1:holstein.lattice.norbits
-        # getting pair greens function correspond to the k=0 k-point in momentum space
-        pair_greens = @view container_kspace["PairGreens"][:,1,1,1,orbit,orbit]
-        # integrating from 0 to β to get the susceptibility
-        container["swave_susc"][orbit] = real( simpson(pair_greens, holstein.Δτ, true) )/2
+    if "swave_susc" in keys(container)
+        # calculating s-wave susceptibility
+        for orbit in 1:holstein.lattice.norbits
+            # getting pair greens function correspond to the k=0 k-point in momentum space
+            pair_greens = @view container_kspace["PairGreens"][:,1,1,1,orbit,orbit]
+            # integrating from 0 to β to get the susceptibility
+            container["swave_susc"][orbit] = real( simpson(pair_greens, holstein.Δτ, true) )/2
+        end
     end
 
     return nothing

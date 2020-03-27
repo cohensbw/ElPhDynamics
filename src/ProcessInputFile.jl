@@ -165,8 +165,18 @@ function process_input_file(filename::String)
     for d in input["fourier_acceleration"]
         update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
     end
+
+    #########################
+    ## DEFINE MEASUREMENTS ##
+    #########################
+
+    # get time depedent measurements
+    unequaltime_meas = [k for k in keys(input["measurements"]) if input["measurements"][k]["time_dependent"]==true]
+
+    # get time indepedent measurements
+    equaltime_meas = [k for k in keys(input["measurements"]) if input["measurements"][k]["time_dependent"]==false]
     
-    return holstein, sim_params, fa, preconditioner, input
+    return holstein, sim_params, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
 
 end

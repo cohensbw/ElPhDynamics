@@ -266,14 +266,14 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
                 for dL2 in 0:L2-1
                     for dL1 in 0:L1-1
                         for τ in 0:Lτ-1
-                            
                             data   = @view container[:,τ+1,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
                             avg    = mean(data)
                             stddev = std(data)/sqrt(nbins)
-
-                            # write displacement info to file
-                            write(outfile,@sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",
-                                                   orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev))
+                            if !iszero(avg)
+                                # write displacement info to file
+                                write(outfile,@sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",
+                                                       orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev))
+                            end
                         end
                     end
                 end

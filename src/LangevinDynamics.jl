@@ -8,46 +8,9 @@ import LinearAlgebra: mul!, ldiv!, dot
 using ..Utilities: get_index
 using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
 using ..PhononAction: calc_dSbosedx!
-using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!, accelerate_noise!
+using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!
 
-export update_leapfrog_fa!, update_euler_fa!, update_rk_fa!, calc_dSdx!, calc_dSfdx!
-
-"""
-Update phonon field using the symplectic Leapfrog integrator with fourier acceleration applied.
-This method introduces a conjugate momentum `p` that that gets canonically rescaled at each timestep.
-"""
-function update_leapfrog_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1},
-                             dSdx::AbstractVector{T2}, fft_dSdx::AbstractVector{Complex{T1}},
-                             R::AbstractVector{T2}, M⁻¹R::AbstractVector{T2}, fft_R::AbstractVector{Complex{T1}},
-                             p::AbstractVector{T1}, fft_p::AbstractVector{Complex{T1}},
-                             Δt::T1, preconditioner, τ::T1=1.0)::Int where {T1<:AbstractFloat,T2<:Number}
-
-    # p[t+Δt/2] = p[t] - (Δt/2)⋅∂S/∂x[t]
-    @. p -= dSdx * Δt/2
-    
-    # x[t+Δt] = x[t] + Δt⋅p[t+Δt/2]
-    @. holstein.x += p * Δt
-    
-    # update the exponentiated interaction matrix for current phonon config
-    construct_expnΔτV!(holstein)
-    
-    # calculate the derivative of the action ∂S/∂x[t+Δt]
-    randn!(R)
-    iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
-    
-    # p[t+Δt] = p[t+Δt/2] - (Δt/2)⋅∂S/∂x[t+Δt]
-    @. p -= dSdx * Δt/2
-
-    # rescale the momentum
-    randn!(R)
-    K   = dot(p,p)/2
-    c   = exp(-Δt/τ)
-    α2  = c + (1-c)/(2*K)*dot(R,R) + 2*sqrt(c*(1-c)/(2*K))*R[1]
-    p .*= sqrt(α2)
-    
-    return iters
-end
-
+export update_euler_fa!, update_rk_fa!, calc_dSdx!, calc_dSfdx!
 
 """
 Update phonon fields using Runge-Kutta/Heun's equation and fourier acceleration.
@@ -58,7 +21,7 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
                        g::AbstractVector{T2}, M⁻¹g::AbstractVector{T2},
                        η::AbstractVector{T1}, fft_η::AbstractVector{Complex{T1}},
                        Δt::T1, preconditioner=Identity())::Int where {T1<:AbstractFloat,T2<:Number}
-    
+
     # itialize η as vector of gaussian random number
     randn!(η)
 
@@ -94,13 +57,13 @@ function update_rk_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1
     forward_fft!( fft_dSdx , dSdx2 , fa)
 
     # accelerate fft_dSdx ==> Q⋅fft_dSdx
-    accelerate!( fft_dSdx , fa )
+    accelerate!( fft_dSdx , fa , 1.0 )
 
     # fourier transform η
     forward_fft!( fft_η , η , fa )
 
     # accelerate noise vector fft_η ==> √(Q)⋅fft_η
-    accelerate_noise!( fft_η , fa )
+    accelerate!( fft_η , fa , 0.5 )
 
     # calculate fft_dx
     @. fft_dx = sqrt(2*Δt)*fft_η - Δt*fft_dSdx
@@ -141,13 +104,13 @@ function update_euler_fa!(holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator
     forward_fft!( fft_dSdx , dSdx , fa)
 
     # accelerate fft_dSdx ==> Q⋅fft_dSdx
-    accelerate!( fft_dSdx , fa )
+    accelerate!( fft_dSdx , fa , 1.0 )
 
     # fourier transform η
     forward_fft!( fft_η , η , fa )
 
     # accelerate fft_η ==> √(Q)⋅fft_η
-    accelerate_noise!( fft_η , fa )
+    accelerate!( fft_η , fa , 0.5 )
 
     # calculate fft_dx
     @. fft_dx = sqrt(2.0*Δt)*fft_η - Δt*fft_dSdx
