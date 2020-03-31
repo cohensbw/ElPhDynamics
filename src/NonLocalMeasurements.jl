@@ -123,7 +123,7 @@ for measurement in [ :Greens , :DenDen , :PairGreens ]
             ncells = L1*L2*L3
 
             # normalization factor
-            normalization = ncells * length(1:downsample:holstein.Lτ)
+            normalization = ncells * length(1:downsample:Gr1.β)
 
             # iterating over all possible parings of orbitals
             @fastmath @inbounds for orbit1 in 1:norbits
@@ -143,7 +143,7 @@ for measurement in [ :Greens , :DenDen , :PairGreens ]
                                     i = trans_equiv_sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
 
                                     # iterating over time slices
-                                    for τ₁ in 1:downsample:holstein.Lτ
+                                    for τ₁ in 1:downsample:Gr1.β
 
                                         # iterate over possible time seperations
                                         for τ in 0:Lτ-1
