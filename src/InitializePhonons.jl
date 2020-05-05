@@ -31,7 +31,9 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
         path    = @view holstein.x[i_start:i_end]
 
         # construct levy path
-        levy_path!(path,ω,β,Δτ,Lτ)
+        for τ in 1:Lτ
+            path[τ] = sample_qho(ω,β)
+        end
 
         # shift levy path by ammount corresponding to an
         # electron density of 1 on the site
@@ -147,12 +149,11 @@ end
 
 
 """
-Samples the position distribution of a QHO with frequency `ω`
-at inverse temperature `β`.
+Samples the position distribution of a QHO with frequency `ω` at inverse temperature `β`.
 """
 function sample_qho(ω::T,β::AbstractFloat)::T where {T<:Number}
     
-    σ = sqrt( 1.0/(2.0*ω*tanh(ω*β/2.0)) )
+    σ = sqrt( tanh(β*ω/2) / (2*ω) )
     return σ*randn()
 end
 

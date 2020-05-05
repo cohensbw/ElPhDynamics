@@ -80,26 +80,26 @@ function solve!(x::AbstractVector{T2},A,b::AbstractVector{T2},gmres::GMRES{T1,T2
         @fastmath @inbounds while iter < gmres.maxiter        
             @. V[:,1] = r/β
             fill!(s,0.0)
-            s[1] = β
+            s[1]  = β
             for i in 1:gmres.restart
                 iter += 1
-                vi = @view V[:,i]
+                vi    = @view V[:,i]
                 mul!(w,A,vi)
                 ldiv!(M,w)
                 for k in 1:i
-                    vk = @view V[:,k]
+                    vk     = @view V[:,k]
                     H[k,i] = dot(vk,w)
-                    @. w -= H[k,i] * vk
+                    @. w  -= H[k,i] * vk
                 end
-                H[i+1,i] = norm(w)
+                H[i+1,i]    = norm(w)
                 @. V[:,i+1] = w / H[i+1,i]
                 for k in 1:i-1
                     H[k,i], H[k+1,i] = apply_plane_rotation(H[k,i], H[k+1,i], cs[k], sn[k])
                 end
-                cs[i], sn[i] = generate_plane_rotation(H[i,i], H[i+1,i])
+                cs[i], sn[i]     = generate_plane_rotation(H[i,i], H[i+1,i])
                 H[i,i], H[i+1,i] = apply_plane_rotation(H[i,i], H[i+1,i], cs[i], sn[i])
-                s[i], s[i+1] = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
-                Δ = abs(s[i+1])/normb
+                s[i], s[i+1]     = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
+                Δ                = abs(s[i+1])/normb
                 if Δ < gmres.tol
                     update!(x,i,H,s,y,V)
                     return 2, iter, Δ
@@ -112,8 +112,8 @@ function solve!(x::AbstractVector{T2},A,b::AbstractVector{T2},gmres::GMRES{T1,T2
             mul!(r,A,x)  # r = A⋅x
             @. r = b - r # r = b - A⋅x
             ldiv!(M,r)   # r = M \ (b - A⋅x)
-            β = norm(r)
-            Δ = β/normb
+            β    = norm(r)
+            Δ    = β/normb
             if Δ<gmres.tol
                 return 1, iter, Δ
             end

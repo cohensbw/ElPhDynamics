@@ -1,12 +1,15 @@
 module GreensFunctions
 
-using IterativeSolvers
 using Statistics
 using Random
-import LinearAlgebra: mul!, ldiv!
+using LinearAlgebra
 
-using ..HolsteinModels: HolsteinModel
+using ..HolsteinModels: HolsteinModel, mulMᵀ!
 using ..Utilities: get_index, get_site, get_τ
+
+using ..BlockPreconditioners: setup!
+# using ..SingleSitePreconditioners: setup!
+# using ..DiagonalPreconditioners: setup!
 
 export EstimateGreensFunction
 export update!, estimate
@@ -68,14 +71,23 @@ end
 """
 Updates the estimate of the Green's Function based on current phonon field configuration.
 """
-function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=Identity()) where {T1<:AbstractFloat,T2<:Number}
+function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=I) where {T1<:AbstractFloat,T2<:Number}
 
     # initialize random vector
-    # rand!(Gr.g,-1:2:1)
     randn!(Gr.g)
 
     # solve linear system to get M⁻¹⋅g
-    iters = ldiv!(Gr.M⁻¹g,holstein,Gr.g,preconditioner)
+    iters = 0
+    fill!(Gr.M⁻¹g,0.0)
+    setup!(preconditioner) # setup block preconditioner
+    if holstein.mul_by_M
+        # solve M⋅x=g ==> x=M⁻¹⋅g
+        iters = ldiv!(Gr.M⁻¹g,holstein,Gr.g,preconditioner)
+    else
+        # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g
+        mulMᵀ!(holstein.Mᵀg,holstein,Gr.g)
+        iters = ldiv!(Gr.M⁻¹g,holstein,holstein.Mᵀg,preconditioner)
+    end
 
     return nothing
 end

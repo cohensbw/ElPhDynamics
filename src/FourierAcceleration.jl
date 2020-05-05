@@ -72,6 +72,15 @@ end
 #######################################################
 
 """
+Accelerate vector by multiplying with Q matrix.
+"""
+function accelerate!(ν::AbstractVector{Complex{T}},fa::FourierAccelerator{T}, power::T=1.0) where {T<:AbstractFloat}
+
+    @. ν *= fa.Q^power
+    return nothing
+end
+
+"""
 FFT a vector.
 """
 function forward_fft!(ν::AbstractVector,v::AbstractVector, fa::FourierAccelerator)
@@ -110,16 +119,6 @@ function inverse_fft!(v::AbstractVector,ν::AbstractVector,fa::FourierAccelerato
             v[get_index(τ,i,fa.Lτ)] = real(fa.vi[τ])
         end
     end
-    return nothing
-end
-
-
-"""
-Accelerate vector by multiplying with Q matrix.
-"""
-function accelerate!(ν::AbstractVector{Complex{T}},fa::FourierAccelerator{T}, power::T=1.0) where {T<:AbstractFloat}
-
-    @. ν *= fa.Q^power
     return nothing
 end
 

@@ -3,7 +3,6 @@ module ProcessInputFile
 using Pkg.TOML
 using Random
 using LinearAlgebra
-using IterativeSolvers
 
 using ..Geometries: Geometry
 using ..Lattices: Lattice
@@ -12,9 +11,13 @@ using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..HolsteinModels: assign_tij!, assign_ωij!
 using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
 using ..InitializePhonons: init_phonons_half_filled!
+using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..FourierAcceleration: FourierAccelerator, update_Q!
 using ..LangevinSimulationParameters: SimulationParameters
-using ..BlockPreconditioners: BlockPreconditioner, solve!, setup!
+
+using ..BlockPreconditioners: LeftBlockPreconditioner
+# using ..SingleSitePreconditioners: LeftSingleSitePreconditioner
+# using ..DiagonalPreconditioners: LeftDiagonalPreconditioner
 
 export process_input_file
 
@@ -66,7 +69,7 @@ function process_input_file(filename::String)
                              input["holstein"]["dtau"],
                              is_complex=false,
                              tol=input["simulation"]["tol"],
-                             use_gmres=input["simulation"]["use_block_preconditioner"],
+                             mul_by_M=input["simulation"]["use_preconditioner"],
                              restart=input["simulation"]["restart"])
     
     # adding phonon frequencies
@@ -146,12 +149,12 @@ function process_input_file(filename::String)
     ###########################
 
     # default Identity preconditioner
-    preconditioner = Identity()
+    preconditioner = I
 
-    if input["simulation"]["use_block_preconditioner"]
-        preconditioner = BlockPreconditioner(holstein,
-                                             tol=input["simulation"]["block_tol"],
-                                             restart=input["simulation"]["block_restart"])
+    if input["simulation"]["use_preconditioner"]
+        preconditioner = LeftBlockPreconditioner(holstein,tol=input["simulation"]["tol"],restart=input["simulation"]["restart"])
+        # preconditioner = LeftSingleSitePreconditioner(holstein)
+        # preconditioner = LeftDiagonalPreconditioner(holstein)
     end
     
     #################################
@@ -166,17 +169,39 @@ function process_input_file(filename::String)
         update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
     end
 
+    ################################
+    ## DEFINE DYNAMICS TO BE USED ##
+    ################################
+
+    Δt = input["simulation"]["dt"]
+    NL = length(holstein)
+
+    dynamics = nothing
+    if input["simulation"]["update_method"]==1
+        dynamics = EulerDynamics(NL,Δt)
+    elseif input["simulation"]["update_method"]==2
+        dynamics = RungeKuttaDynamics(NL,Δt)
+    elseif input["simulation"]["update_method"]==3
+        dynamics = HeunsDynamics(NL,Δt)
+    else
+        error("Did not specify a valid dynamics option.")
+    end
+
     #########################
     ## DEFINE MEASUREMENTS ##
     #########################
 
+    measurements = input["measurements"]
+
     # get time depedent measurements
-    unequaltime_meas = [k for k in keys(input["measurements"]) if input["measurements"][k]["time_dependent"]==true]
+    unequaltime_meas = [k for k in keys(measurements)
+                        if measurements[k]["time_dependent"]==true & measurements[k]["measure"]==true]
 
     # get time indepedent measurements
-    equaltime_meas = [k for k in keys(input["measurements"]) if input["measurements"][k]["time_dependent"]==false]
+    equaltime_meas = [k for k in keys(measurements)
+                      if measurements[k]["time_dependent"]==false & measurements[k]["measure"]==true]
     
-    return holstein, sim_params, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return holstein, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
 
 end

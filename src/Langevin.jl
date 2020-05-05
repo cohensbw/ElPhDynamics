@@ -14,6 +14,8 @@ include("Checkerboard.jl")
 
 include("RestartedGMRES.jl")
 
+include("ConjugateGradients.jl")
+
 # include("LatticeFFTs.jl")
 
 include("TimeFreqFFTs.jl")
@@ -21,6 +23,12 @@ include("TimeFreqFFTs.jl")
 include("HolsteinModels.jl")
 
 include("BlockPreconditioners.jl")
+
+# include("DiagonalPreconditioners.jl")
+
+# include("SymmetricPreconditioners.jl")
+
+# include("SingleSitePreconditioners.jl")
 
 include("InitializePhonons.jl")
 
@@ -74,13 +82,13 @@ function simulate(args)
     input_file = args[1]
 
     # precoessing input file
-    holstein, sim_params, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
+    holstein, sim_params, dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
 
     ########################
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters = run_simulation!(holstein, sim_params, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
+    simulation_time, measurement_time, write_time, iters = run_simulation!(holstein, sim_params, dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##

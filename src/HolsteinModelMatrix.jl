@@ -1,17 +1,21 @@
 import Base: eltype, size, length, *
-import LinearAlgebra: mul!, ldiv!
+import LinearAlgebra: mul!, ldiv!, transpose!
 
 using LinearAlgebra
 using SparseArrays
-using IterativeSolvers
 using Printf
 using Random
 
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
-using ..RestartedGMRES: GMRES, solve!
 using ..Utilities: get_index
 
-export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix
+import ..ConjugateGradients
+using  ..ConjugateGradients: ConjugateGradient
+
+import ..RestartedGMRES
+using  ..RestartedGMRES: GMRES
+
+export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, muldMᵀdx!, construct_M, write_M_matrix
 
 
 # overload `eltype` from Base
@@ -40,31 +44,33 @@ end
 
 
 """
-Iteratively solve the linear system M⋅x=g ==> x=M⁻¹⋅g.
-Note: P is a preconditioner, and is defaulted to the Identity as
-defined in the IterativeSolvers package unless otherwise specified.
+Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b
 """
-function ldiv!(x::AbstractVector{T2}, holstein::HolsteinModel{T1,T3}, g::AbstractVector{T2}, P=Identity())::Int where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function ldiv!(x::AbstractVector{T2}, holstein::HolsteinModel{T1,T3}, b::AbstractVector{T2}, P=I)::Int where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
     # keeps track of number of iterations for iterative solver to execute.
     iters = 0
 
-    # initialize vector to zero.
-    fill!(x,0)
-
-    # Solve M⋅x=g ==> x=M⁻¹⋅g using GMRES
-    if holstein.use_gmres
-        flag = 0
-        Δ = 0.0
-        flag, iters, Δ = solve!(x, holstein, g, holstein.gmres, P)
-    # Solve M⋅x=g ==> x=M⁻¹⋅g using Conjugate Gradient
+    if holstein.mul_by_M
+        # Solve M⋅x=b  ==> x=M⁻¹⋅b using GMRES + Preconditioning (transposed=false) OR
+        # Solve Mᵀ⋅x=b ==> x=M⁻ᵀ⋅b using GMRES + Preconditioning (transposed=true)
+        flag, iters, Δ = RestartedGMRES.solve!(x, holstein, b, holstein.gmres, P)
     else
-        mulMᵀ!(holstein.Mᵀg, holstein, g)
-        trash, info = cg!(x, holstein , holstein.Mᵀg , tol=holstein.tol , log=true , statevars=holstein.cg_state_vars , initially_zero=true, Pl=P )
-        iters = info.iters
+        # Solve MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b using Conjugate Gradient
+        iters = ConjugateGradients.solve!(x, holstein, b, holstein.cg)
     end
 
     return iters
+end
+
+
+"""
+Tranpose M ⇆ Mᵀ with regards to application of mul! routine.
+"""
+function transpose!(holstein::HolsteinModel)
+
+    holstein.transposed = !holstein.transposed
+    return nothing
 end
 
 
@@ -84,10 +90,12 @@ Default multiplication routine for HolsteinModel type.
 """
 function mul!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
 
-    if holstein.use_gmres
+    if !holstein.mul_by_M
+        mulMᵀM!(y,holstein,v)
+    elseif !holstein.transposed
         mulM!(y,holstein,v)
     else
-        mulMᵀM!(y,holstein,v)
+        mulMᵀ!(y,holstein,v)
     end
     return nothing
 end
@@ -212,7 +220,7 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # • yᵢ(τ-1) = -∂B/∂xᵢ(τ)⋅vᵢ(τ) for τ > 1
     # • yᵢ(Lτ)  = +∂B/∂xᵢ(1)⋅vᵢ(1) for τ = 1
     #
-    # • B(τ) = exp{-Δτ⋅V[x(τ)]} exp{-Δτ⋅K}
+    # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     #
@@ -250,6 +258,58 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
         # y(Lτ) = -Δτ⋅λ⋅B(1)⋅v(1) for τ=1
         y[idx_L] = yL_temp
     end
+
+    return nothing
+end
+
+
+"""
+Performs the multiplication y = (dMᵀ/dx)⋅v
+""" 
+function muldMᵀdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+
+    #########################################
+    ## PERFORM MULTIPLICATION y = ∂Mᵀ/∂x⋅v ##
+    #########################################
+
+    # Notes:
+    # • Consider y = ∂Mᵀ/∂xᵢ(τ)⋅v ==>
+    #
+    # • yᵢ(1) = +∂Bᵀ/∂xᵢ(1)⋅vᵢ(Lτ)  for τ = 1
+    # • yᵢ(τ) = -∂Bᵀ/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
+    #
+    # • Bᵀ(τ) = exp{-Δτ⋅V[x(τ)]}ᵀ⋅exp{-Δτ⋅K}ᵀ
+    # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}ᵀ
+    # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}ᵀ
+    #
+    # • Therefore the final expression is:
+    # • yᵢ(1) = -[exp{-Δτ⋅K}]ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅vᵢ(Lτ)  for τ = 1
+    # • yᵢ(τ) = +[exp{-Δτ⋅K}]ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅vᵢ(τ-1) for τ > 1
+    #
+    # • Simplifying a little bit:
+    # • yᵢ(1) = -Δτ⋅λᵢ⋅Bᵀ(1)⋅vᵢ(Lτ)  for τ = 1
+    # • yᵢ(τ) = +Δτ⋅λᵢ⋅Bᵀ(τ)⋅vᵢ(τ-1) for τ > 1
+
+    # iterating over sites in lattice
+    @fastmath @inbounds for i in 1:holstein.nsites
+
+        # iterating over imaginary time slices
+        for τ in 2:holstein.Lτ
+
+            # y(τ) = Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅v(τ-1) for τ > 1
+            idx_τm = get_index(τ-1, i, holstein.Lτ)
+            idx_τ  = get_index(τ,   i, holstein.Lτ)
+            y[idx_τ] = holstein.Δτ * holstein.λ[i]conj(holstein.expnΔτV[idx_τ]) * v[idx_τm]
+        end
+
+        # y(1) = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅v(Lτ) for τ=1
+        idx_L = get_index(holstein.Lτ, i, holstein.Lτ)
+        idx_1 = get_index(1,           i, holstein.Lτ)
+        y[idx_1] = -holstein.Δτ * holstein.λ[i] * conj(holstein.expnΔτV[idx_1]) * v[idx_L]
+    end
+
+    # y(τ) = [exp{-Δτ⋅K}]ᵀ⋅y(τ)
+    checkerboard_transpose_mul!(y, holstein.neighbor_table_tij, holstein.coshtij, holstein.sinhtij, holstein.Lτ)
 
     return nothing
 end

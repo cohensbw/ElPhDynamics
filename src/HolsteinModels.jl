@@ -1,13 +1,13 @@
 module HolsteinModels
 
 using Statistics
-using IterativeSolvers
 using Printf
 
 using ..Geometries: Geometry
 using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!, loc_to_site
 using ..Checkerboard: checkerboard_order, checkerboard_groups
 using ..RestartedGMRES: GMRES, solve!
+using ..ConjugateGradients: ConjugateGradient
 using ..Utilities: get_index
 
 export HolsteinModel
@@ -138,12 +138,16 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     "A vector for storing the temporary product Mᵀ⋅g needed for Conjugate Gradient method."
     Mᵀg::Vector{T2}
 
+    "If true the default matrix multiplication uses just the M matrix.
+    If false the default matrix multiplication use the symmetric matrix MᵀM instead."
+    mul_by_M::Bool
+
+    "If true multiply by Mᵀ instead of M."
+    transposed::Bool
+
     "Stores state vectors for Conjugate Gradient algorithm so as to avoid
     extra memory allocations."
-    cg_state_vars::CGStateVariables{T2,Vector{T2}}
-
-    "Boolean to signify if GMRES should be used instead of Conjugate Gradient."
-    use_gmres::Bool
+    cg::ConjugateGradient{T2,T1}
 
     "GMRES type that preallocates memory for algorithm."
     gmres::GMRES{T1,T2}
@@ -156,7 +160,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     Constructor for Holstein type.
     """
     function HolsteinModel(geom::Geometry{T}, lattice::Lattice{T}, β::T, Δτ::T;
-                           is_complex::Bool=false, tol::T=1e-4, use_gmres::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
+                           is_complex::Bool=false, tol::T=1e-4, mul_by_M::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
 
         # calculating length of imaginary time axis
         Lτ = round(Int,β/Δτ)
@@ -212,6 +216,9 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
         # temporary vectors
         ytemp = zeros(T,nindices)
 
+        # if true multiply by Mᵀ instead of M
+        transposed = false
+
         # constructing holstein model
         if is_complex
 
@@ -219,7 +226,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             Mᵀg = zeros(Complex{T},nindices)
 
             # conjugate gradient state variables
-            cg_state_vars = CGStateVariables(zeros(Complex{T},nindices),zeros(Complex{T},nindices),zeros(Complex{T},nindices))
+            cg = ConjugateGradient(Mᵀg,tol=tol)
 
             # GMRES type
             gmres = GMRES(Mᵀg,tol=tol,restart=restart)
@@ -227,14 +234,14 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
                               ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                              tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
+                              tol, ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
         else
 
             # temporary vectors
             Mᵀg = zeros(T,nindices)
 
             # conjugate gradient state variables
-            cg_state_vars = CGStateVariables(zeros(T,nindices),zeros(T,nindices),zeros(T,nindices))
+            cg = ConjugateGradient(Mᵀg,tol=tol)
 
             # GMRES type
             gmres = GMRES(Mᵀg,tol=tol,restart=restart)
@@ -242,7 +249,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
                      ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                     tol, ytemp, Mᵀg, cg_state_vars, use_gmres, gmres)
+                     tol, ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
         end
     end
 
@@ -393,8 +400,7 @@ for param in [ :tij , :ωij ]
 end
 
 
-# adding functionality to assign_ωij! function so that the
-# array holsteinmodel.sign_ωij is also modified
+# adding functionality to assign_ωij! function so that the array holsteinmodel.sign_ωij is also modified
 function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Number, sgn::Int, orbit1::Int, orbit2::Int, displacement::Vector{Int})
 
     @assert abs(sgn)==1
@@ -466,13 +472,13 @@ function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:Abstrac
     nsites   = holstein.nsites::Int
 
     # iterating over time slices
-    @inbounds @fastmath for site in 1:nsites
+    @inbounds @fastmath for i in 1:nsites
         # iterating over sites in lattice
         for τ in 1:Lτ
             # getting index in vector
-            i = get_index(τ,site,Lτ)
+            index = get_index(τ,i,Lτ)
             # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅xᵢ(τ)-μᵢ)}
-            expnΔτV[i] = exp( -Δτ * ( λ[site] * x[i] - μ[site] ) )
+            expnΔτV[index] = exp( -Δτ * ( λ[i] * x[index] - μ[i] ) )
         end
     end
 
@@ -570,6 +576,9 @@ function read_phonons(holstein::HolsteinModel{T1,T2},filename::String) where {T1
         end
 
     end
+
+    # construct exponentiated interaction matrix
+    construct_expnΔτV!(holstein)
 
     return nothing
 end

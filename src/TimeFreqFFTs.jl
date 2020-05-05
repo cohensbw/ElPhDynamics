@@ -1,8 +1,8 @@
 module TimeFreqFFTs
 
-using FFTW
 using UnsafeArrays
 using LinearAlgebra
+using FFTW
 
 using ..Lattices:   Lattice
 
@@ -38,9 +38,7 @@ struct TimeFreqFFT{T<:AbstractFloat}
         fftplan  = plan_fft(vtemp, (1,), flags=FFTW.PATIENT)
         ifftplan = plan_ifft(vtemp, (1,), flags=FFTW.PATIENT)
 
-        println(typeof(ifftplan))
-
-        new{T}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
+        return new{T}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
     end
 end
 
@@ -54,7 +52,7 @@ function τ_to_ω!(vout::AbstractVector{Complex{T1}},op::TimeFreqFFT{T1},vin::Ab
     N  = op.N::Int
     Θ  = op.Θ::Vector{Complex{T1}}
     vtemp = op.vtemp::Array{Complex{T1},2}
-    @uviews vin vtemp vout begin
+    @uviews vin vout begin
         # apply unitary transformation to restore translation invariance in the
         # imaginary time direciton.
         uin  = reshape(vin,L,N)
@@ -72,9 +70,8 @@ end
 
 function τ_to_ω!(vout::AbstractVector{T1},op::TimeFreqFFT{T1},vin::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Complex}
 
-    utemp = op.utemp
-    τ_to_ω!(utemp,op,vin)
-    @. vout = real(utemp)
+    τ_to_ω!(op.utemp,op,vin)
+    @. vout = real(op.utemp)
     return nothing
 end
 
@@ -86,19 +83,19 @@ end
 
 
 """
-Apply the transformation v=[Θ⁺⋅F⁺]⋅ν from frequency ω to imaginary time τ space.
+Apply the transformation v=[Θᵀ⋅Fᵀ]⋅ν from frequency ω to imaginary time τ space.
 """
-function ω_to_τ!(vout::AbstractVector{Complex{T1}},op::TimeFreqFFT{T1},vin::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number}
+function ω_to_τ!(vout::AbstractVector{Complex{T}},op::TimeFreqFFT{T},vin::AbstractVector{Complex{T}}) where {T<:AbstractFloat}
 
-    L    = op.L::Int
+    L     = op.L::Int
     N     = op.N::Int
-    Θ     = op.Θ::Vector{Complex{T1}}
-    vtemp = op.vtemp::Array{Complex{T1},2}
+    Θ     = op.Θ::Vector{Complex{T}}
+    vtemp = op.vtemp::Array{Complex{T},2}
     @uviews vin vout begin
-        copyto!(vtemp,vin)
         # apply (ω ⟶ τ) FFT
+        uin  = reshape(vin, L,N)
         uout = reshape(vout,L,N)
-        mul!(uout,op.ifftplan,vtemp)
+        mul!(uout,op.ifftplan,uin)
         # apply unitary transformation to restore anitperiodic boundary conditions
         # imaginary time direciton.
         @fastmath @inbounds for i in 1:N
@@ -110,17 +107,24 @@ function ω_to_τ!(vout::AbstractVector{Complex{T1}},op::TimeFreqFFT{T1},vin::Ab
     return nothing
 end
 
+function ω_to_τ!(vout::AbstractVector{T2},op::TimeFreqFFT{T1},vin::AbstractVector{T1};thresh::T1=1e-12) where {T1<:AbstractFloat,T2<:Complex}
+
+    copyto!(op.vtemp,vin)
+    ω_to_τ!(vout,op,op.vtemp)
+    return nothing
+end
+
 function ω_to_τ!(vout::AbstractVector{T1},op::TimeFreqFFT{T1},vin::AbstractVector{T2};thresh::T1=1e-12) where {T1<:AbstractFloat,T2<:Complex}
 
-    utemp = op.utemp
-    ω_to_τ!(utemp,op,vin)
-    @. vout = real(utemp)
+    ω_to_τ!(op.utemp,op,vin)
+    @. vout = real(op.utemp)
     return nothing
 end
 
 function ω_to_τ!(v::AbstractVector{Complex{T}},op::TimeFreqFFT{T}) where {T<:AbstractFloat}
 
-    ω_to_τ!(v,op,v)
+    copyto!(op.vtemp,v)
+    ω_to_τ!(v,op,op.vtemp)
     return nothing
 end
 

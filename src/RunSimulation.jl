@@ -6,9 +6,8 @@ using Random
 using ..HolsteinModels: HolsteinModel
 using ..LangevinSimulationParameters: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!
-using ..LangevinDynamics: update_euler_fa!, update_rk_fa!
+using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..FourierAcceleration: FourierAccelerator
-using ..BlockPreconditioners: BlockPreconditioner, setup!
 
 using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
 using ..NonLocalMeasurements: process_nonlocal_measurements!, construct_nonlocal_measurements_container
@@ -22,28 +21,12 @@ using ..LocalMeasurements: write_local_measurements
 
 export run_simulation!
 
-function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, fa::FourierAccelerator{T1},
+function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, dynamics::Dynamics, fa::FourierAccelerator{T1},
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
-
-    dx     = zeros(Float64, length(holstein))
-    fft_dx = zeros(Complex{Float64}, length(holstein))
-
-    dSdx     = zeros(Float64, length(holstein))
-    fft_dSdx = zeros(Complex{Float64}, length(holstein))
-    dSdx2    = zeros(Float64, length(holstein))
-
-    g    = randn(Float64, length(holstein))
-    M⁻¹g = zeros(Float64, length(holstein))
-
-    η     = randn(Float64, length(holstein))
-    fft_η = zeros(Complex{Float64}, length(holstein))
-
-    p     = η
-    fft_p = fft_η
 
     # declare two electron greens function estimators
     Gr1 = EstimateGreensFunction(holstein)
@@ -79,20 +62,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     # thermalizing system
     for timestep in 1:sim_params.burnin
 
-        # set up block preconditioner if being used
-        if holstein.use_gmres
-            setup!(preconditioner)
-        end
-
-        if sim_params.update_method==1
-            # using Euler method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-        elseif sim_params.update_method==2
-            # using Runge-Kutta method with Fourier Acceleration
-            simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-        else
-            error("update_method not valid.")
-        end
+        simulation_time += @elapsed iters += evolve!(holstein, dynamics, fa, preconditioner)
     end
 
     ###########################################
@@ -113,25 +83,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             # iterate over number of langevin steps per measurement
             for timestep in 1:sim_params.meas_freq
 
-                # set up block preconditioner if being used
-                if holstein.use_gmres
-                    setup!(preconditioner)
-                end
-
-                if sim_params.update_method==1
-                    # using Euler method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_euler_fa!(holstein, fa, dx, fft_dx, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-                elseif sim_params.update_method==2
-                    # using Runge-Kutta method with Fourier Acceleration
-                    simulation_time += @elapsed iters += update_rk_fa!(holstein, fa, dx, fft_dx, dSdx2, dSdx, fft_dSdx, g, M⁻¹g, η, fft_η, sim_params.Δt, preconditioner)
-                else
-                    error("update_method not valid.")
-                end
-            end
-
-            # set up block preconditioner if being used
-            if holstein.use_gmres
-                setup!(preconditioner)
+                simulation_time += @elapsed iters += evolve!(holstein, dynamics, fa, preconditioner)
             end
 
             # update stochastic estimates of the Green's functions
