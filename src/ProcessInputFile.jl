@@ -191,15 +191,19 @@ function process_input_file(filename::String)
     ## DEFINE MEASUREMENTS ##
     #########################
 
-    measurements = input["measurements"]
-
-    # get time depedent measurements
-    unequaltime_meas = [k for k in keys(measurements)
-                        if measurements[k]["time_dependent"]==true & measurements[k]["measure"]==true]
-
-    # get time indepedent measurements
-    equaltime_meas = [k for k in keys(measurements)
-                      if measurements[k]["time_dependent"]==false & measurements[k]["measure"]==true]
+    # specify which measurements to make
+    measurements     = input["measurements"]
+    unequaltime_meas = Vector{String}()
+    equaltime_meas   = Vector{String}()
+    for k in keys(measurements)
+        if measurements[k]["measure"]
+            if measurements[k]["time_dependent"]
+                push!(unequaltime_meas,k)
+            else
+                push!(equaltime_meas,k)
+            end
+        end
+    end
     
     return holstein, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
