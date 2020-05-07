@@ -31,11 +31,11 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
     norbits = holstein.lattice.norbits
 
     # write final phonon field configuration to file
-    write_phonons(holstein,sim_params.foldername*"phonon_config.out")
+    write_phonons(holstein,sim_params.datafolder*"phonon_config.out")
 
     # write M matrix to file
     if input["simulation"]["write_M_matrix"]
-        write_M_matrix(holstein,sim_params.foldername*"matrix.out")
+        write_M_matrix(holstein,sim_params.datafolder*"matrix.out")
     end
 
     ########################

@@ -66,17 +66,30 @@ struct SimulationParameters{T<:AbstractFloat}
             filepath *= "/"
         end
 
+        # data folder, including complete path to folder
+        datafolder = filepath*foldername
+
+        # create datafolder
+        id = 0
+        while true
+            id += 1
+            datafolderID = datafolder * "-" * string(id)
+            if !isdir(datafolderID)
+                datafolder = datafolderID
+                foldername = foldername * "-" * string(id)
+                mkdir(datafolder)
+                break
+            end
+        end
+
         # formatting foldername
         if !endswith(foldername,"/")
             foldername *= "/"
         end
 
-        # data folder, including complete path to folder
-        datafolder = filepath*foldername
-
-        # making directory the data will be written into
-        if !isdir(datafolder)
-            mkdir(datafolder)
+        # formatting datafolder name
+        if !endswith(datafolder,"/")
+            datafolder *= "/"
         end
 
         new{T}(Δt,update_method,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)

@@ -19,7 +19,7 @@ using ..BlockPreconditioners: LeftBlockPreconditioner
 # using ..SingleSitePreconditioners: LeftSingleSitePreconditioner
 # using ..DiagonalPreconditioners: LeftDiagonalPreconditioner
 
-export process_input_file
+export process_input_file, initialize_holstein_model
 
 function process_input_file(filename::String)
     
@@ -47,12 +47,97 @@ function process_input_file(filename::String)
                                       input["simulation"]["filepath"],
                                       input["simulation"]["foldername"])
 
+    # copy input file into data folder
+    cp(filename,sim_params.datafolder*filename)
+
     # initialize random number generator with seed
+    if !("random_seed" in keys(input["simulation"]))
+        input["simulation"]["random_seed"] = rand(Int)
+    end
     Random.seed!(input["simulation"]["random_seed"])
 
     ##############################
     ## CONSTRUCT HOLSTEIN MODEL ##
     ##############################
+    
+    holstein = initialize_holstein_model(filename)
+
+    # intialize phonon field
+    if input["holstein"]["read_phonon_config"]
+        read_phonons(holstein, input["holstein"]["phonon_config_file"])
+    else
+        init_phonons_half_filled!(holstein)
+    end
+
+    ###########################
+    ## DEFINE PRECONDITIONER ##
+    ###########################
+
+    # default Identity preconditioner
+    preconditioner = I
+
+    if input["simulation"]["use_preconditioner"]
+        preconditioner = LeftBlockPreconditioner(holstein,tol=input["simulation"]["tol"],restart=input["simulation"]["restart"])
+        # preconditioner = LeftSingleSitePreconditioner(holstein)
+        # preconditioner = LeftDiagonalPreconditioner(holstein)
+    end
+    
+    #################################
+    ## DEFINE FOURIER ACCELERATION ##
+    #################################
+    
+    # defining FourierAccelerator type
+    fa = FourierAccelerator(holstein, 0.5, input["simulation"]["dt"])
+    
+    # set the mass used to construct fourier acceleration matrix
+    for d in input["fourier_acceleration"]
+        update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
+    end
+
+    ################################
+    ## DEFINE DYNAMICS TO BE USED ##
+    ################################
+
+    Δt = input["simulation"]["dt"]
+    NL = length(holstein)
+
+    dynamics = nothing
+    if input["simulation"]["update_method"]==1
+        dynamics = EulerDynamics(NL,Δt)
+    elseif input["simulation"]["update_method"]==2
+        dynamics = RungeKuttaDynamics(NL,Δt)
+    elseif input["simulation"]["update_method"]==3
+        dynamics = HeunsDynamics(NL,Δt)
+    else
+        error("Did not specify a valid dynamics option.")
+    end
+
+    #########################
+    ## DEFINE MEASUREMENTS ##
+    #########################
+
+    # specify which measurements to make
+    measurements     = input["measurements"]
+    unequaltime_meas = Vector{String}()
+    equaltime_meas   = Vector{String}()
+    for k in keys(measurements)
+        if measurements[k]["measure"]
+            if measurements[k]["time_dependent"]
+                push!(unequaltime_meas,k)
+            else
+                push!(equaltime_meas,k)
+            end
+        end
+    end
+    
+    return holstein, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+end
+
+
+function initialize_holstein_model(filename::String)
+
+    # read input file
+    input = TOML.parsefile(filename)
     
     # define lattice geometry
     geom = Geometry(input["lattice"]["ndim"],
@@ -134,78 +219,10 @@ function process_input_file(filename::String)
         end
     end
 
-    # intialize phonon field
-    if input["holstein"]["read_phonon_config"]
-        read_phonons(holstein, input["holstein"]["phonon_config_file"])
-    else
-        init_phonons_half_filled!(holstein)
-    end
-
     # construct exponentiated interaction matrix
     construct_expnΔτV!(holstein)
 
-    ###########################
-    ## DEFINE PRECONDITIONER ##
-    ###########################
-
-    # default Identity preconditioner
-    preconditioner = I
-
-    if input["simulation"]["use_preconditioner"]
-        preconditioner = LeftBlockPreconditioner(holstein,tol=input["simulation"]["tol"],restart=input["simulation"]["restart"])
-        # preconditioner = LeftSingleSitePreconditioner(holstein)
-        # preconditioner = LeftDiagonalPreconditioner(holstein)
-    end
-    
-    #################################
-    ## DEFINE FOURIER ACCELERATION ##
-    #################################
-    
-    # defining FourierAccelerator type
-    fa = FourierAccelerator(holstein, 0.5, input["simulation"]["dt"])
-    
-    # set the mass used to construct fourier acceleration matrix
-    for d in input["fourier_acceleration"]
-        update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
-    end
-
-    ################################
-    ## DEFINE DYNAMICS TO BE USED ##
-    ################################
-
-    Δt = input["simulation"]["dt"]
-    NL = length(holstein)
-
-    dynamics = nothing
-    if input["simulation"]["update_method"]==1
-        dynamics = EulerDynamics(NL,Δt)
-    elseif input["simulation"]["update_method"]==2
-        dynamics = RungeKuttaDynamics(NL,Δt)
-    elseif input["simulation"]["update_method"]==3
-        dynamics = HeunsDynamics(NL,Δt)
-    else
-        error("Did not specify a valid dynamics option.")
-    end
-
-    #########################
-    ## DEFINE MEASUREMENTS ##
-    #########################
-
-    # specify which measurements to make
-    measurements     = input["measurements"]
-    unequaltime_meas = Vector{String}()
-    equaltime_meas   = Vector{String}()
-    for k in keys(measurements)
-        if measurements[k]["measure"]
-            if measurements[k]["time_dependent"]
-                push!(unequaltime_meas,k)
-            else
-                push!(equaltime_meas,k)
-            end
-        end
-    end
-    
-    return holstein, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return holstein
 end
 
 end
