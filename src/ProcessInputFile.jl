@@ -52,7 +52,7 @@ function process_input_file(filename::String)
 
     # initialize random number generator with seed
     if !("random_seed" in keys(input["simulation"]))
-        input["simulation"]["random_seed"] = rand(Int)
+        input["simulation"]["random_seed"] = abs(rand(Int))
     end
     Random.seed!(input["simulation"]["random_seed"])
 
