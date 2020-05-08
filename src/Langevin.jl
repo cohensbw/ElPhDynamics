@@ -95,7 +95,7 @@ function simulate(args)
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary(holstein, input, sim_params, simulation_time, measurement_time, write_time, iters)
+    write_simulation_summary(holstein, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters)
 end
 
 

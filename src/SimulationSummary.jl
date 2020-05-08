@@ -13,7 +13,9 @@ export write_simulation_summary
 """
 Writes a simulation summary file after a simulation completes.
 """
-function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters{T}, simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
+function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters{T},
+                                  unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String},
+                                  simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
 
     @assert sim_params.num_bins%nbins==0
 
@@ -88,7 +90,8 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         ######################################
 
         # container for storing non-local measurement data 
-        container = zeros(T,nbins,Lτ,L1,L2,L3,norbits,norbits)
+        unequaltime_container = zeros(T,nbins,Lτ,L1,L2,L3,norbits,norbits)
+        equaltime_container   = zeros(T,nbins, 1,L1,L2,L3,norbits,norbits)
         
         # writing real-space non-local measurements
         write(outfile,"\n#######################################\n")
@@ -96,8 +99,16 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile,  "#######################################\n\n")
 
         for file in files
+            # checking if real space measurement
             if endswith(file,"_r.out")
-                write_nonlocal_data(outfile, file, sim_params, container)
+                # getting measurement
+                measurement = split(file,"_")[1]
+                # determine if equal time or unequal time measurement
+                if measurement in unequaltime_meas
+                    write_nonlocal_data(outfile, file, sim_params, unequaltime_container)
+                else
+                    write_nonlocal_data(outfile, file, sim_params, equaltime_container)
+                end
             end
         end
 
@@ -107,8 +118,16 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile,  "###########################################\n\n")
         
         for file in files
+            # checking if momentum space measurement
             if endswith(file,"_k.out")
-                write_nonlocal_data(outfile, file, sim_params, container)
+                # getting measurement
+                measurement = split(file,"_")[1]
+                # determine if equal time or unequal time measurement
+                if measurement in unequaltime_meas
+                    write_nonlocal_data(outfile, file, sim_params, unequaltime_container)
+                else
+                    write_nonlocal_data(outfile, file, sim_params, equaltime_container)
+                end
             end
         end
 
