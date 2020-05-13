@@ -11,11 +11,13 @@ using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..TightBindingFFTs: TightBindingFFT, add_bond!, calc_basis!, r_to_k!, k_to_r!
 using ..Utilities: get_index
 
-export LeftPerturbativePreconditioner, setup!
+export LeftPerturbativePreconditioner, RightPerturbativePreconditioner, SplitPerturbativePreconditioner, setup!
 
-abstract type PerturbativePreconditioner end
-
-mutable struct LeftPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: PerturbativePreconditioner
+"""
+Defines the perturbative expansion, either from the non-interacting or single-site limit,
+that is used to represent each block diagonal matrix M⁻¹[ω,ω].
+"""
+mutable struct PerturbativeExpansion{T1<:AbstractFloat,T2<:Number}
 
     "current freuqncy mode ω to consider"
     ω::Int
@@ -70,7 +72,7 @@ mutable struct LeftPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: P
     "Temporary vector length N."
     v4::AbstractVector{Complex{T1}}
 
-    function LeftPerturbativePreconditioner(holstein::HolsteinModel{T1,T2}, tightbindingfft::TightBindingFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
+    function PerturbativeExpansion(holstein::HolsteinModel{T1,T2}, tightbindingfft::TightBindingFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
 
         N   = holstein.nsites
         L   = holstein.Lτ
@@ -96,15 +98,98 @@ mutable struct LeftPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: P
     end
 end
 
+"""
+Abstract type to reprepresent preconditioners based on perterubative expansion.
+"""
+abstract type PerturbativePreconditioner end
 
-function setup!(op::LeftPerturbativePreconditioner{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+"""
+Left preconditioner based on perturbative expansion.
+"""
+mutable struct LeftPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: PerturbativePreconditioner
+
+    expansion::PerturbativeExpansion{T1,T2}
+
+    function LeftPerturbativePreconditioner(holstein::HolsteinModel{T1,T2}, tightbindingfft::TightBindingFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
+
+        expansion = PerturbativeExpansion(holstein,tightbindingfft)
+        return new{T1,T2}(expansion)
+    end
+
+    function LeftPerturbativePreconditioner(expansion::PerturbativeExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+
+        return new{T1,T2}(expansion)
+    end 
+end
+
+"""
+Right preconditioner based on perturbative expansion.
+"""
+mutable struct RightPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: PerturbativePreconditioner
+
+    expansion::PerturbativeExpansion{T1,T2}
+
+    function RightPerturbativePreconditioner(holstein::HolsteinModel{T1,T2}, tightbindingfft::TightBindingFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
+
+        expansion = PerturbativeExpansion(holstein,tightbindingfft)
+        return new{T1,T2}(expansion)
+    end
+
+    function RightPerturbativePreconditioner(expansion::PerturbativeExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+
+        return new{T1,T2}(expansion)
+    end
+end
+
+"""
+Split preconditioner based on perturbative expansion.
+"""
+mutable struct SplitPerturbativePreconditioner{T1<:AbstractFloat,T2<:Number} <: PerturbativePreconditioner
+
+    expansion::PerturbativeExpansion{T1,T2}
+
+    function SplitPerturbativePreconditioner(holstein::HolsteinModel{T1,T2}, tightbindingfft::TightBindingFFT{T1}) where {T1<:AbstractFloat,T2<:Number}
+
+        expansion = PerturbativeExpansion(holstein,tightbindingfft)
+        return new{T1,T2}(expansion)
+    end
+end
+
+"""
+Return RightPerturbativePreconditioner given LeftPerturbativePreconditioner.
+"""
+function transpose(P::LeftPerturbativePreconditioner)
+
+    return RightPerturbativePreconditioner(P.expansion)
+end
+
+"""
+Return LeftPerturbativePreconditioner given RightPerturbativePreconditioner.
+"""
+function transpose(P::RightPerturbativePreconditioner)
+
+    return LeftPerturbativePreconditioner(P.expansion)
+end
+
+
+"""
+Set up the PerturbativePreconditioner i.e. calculate all relevant quantities
+based on current phonon field configuration.
+"""
+function setup!(op::PerturbativePreconditioner)
+
+    setup!(op.expansion)
+    return nothing
+end
+
+function setup!(op::PerturbativeExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
     N  = op.holstein.nsites::Int
     L  = op.holstein.Lτ::Int
-    Δτ = op.holstein.Δτ::T1
+    Δτ = op.holstein.Δτ
 
     # calulcate diagonal matrix exp{-Δτ⋅V̄} = (1/L)∑exp{-Δτ⋅V(τ)}
-    expnΔτV = op.holstein.expnΔτV::Vector{T2}
+    expnΔτV = op.holstein.expnΔτV
     @fastmath @inbounds for i in 1:N
         op.expnΔτV̄[i] = 0.0
         for τ in 1:L
@@ -115,13 +200,13 @@ function setup!(op::LeftPerturbativePreconditioner{T1,T2}) where {T1<:AbstractFl
 
     # set exp{-Δτ⋅c₀} value
     expnV̄₀      = sum(op.expnΔτV̄)/N # exp{-Δτ⋅V̄₀} = avg[exp{-Δτ⋅V̄}] 
-    op.expnΔτc₀ = 1.0/expnV̄₀        # exp{-Δτ⋅c₀} where c₀ = -V̄₀
+    op.expnΔτc₀ = inv(expnV̄₀)       # exp{-Δτ⋅c₀} = exp{+Δτ⋅V̄₀} <==> c₀ = -V̄₀
 
     # set exp{-Δτ⋅cₛ} value
     op.expnΔτcₛ = 1.0 # exp{-Δτ⋅cₛ}
 
     # λ are the eigenvalues of the K matrix.
-    λ = op.tightbindingfft.λk::Array{T1,4}
+    λ = op.tightbindingfft.λk
 
     # iterate over frequency
     @fastmath @inbounds for ω in 1:cld(L,2)
@@ -135,7 +220,7 @@ function setup!(op::LeftPerturbativePreconditioner{T1,T2}) where {T1<:AbstractFl
             for k in 1:N
                 # G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}=exp{-Δτ⋅K}⋅exp{+Δτ⋅c₀}
                 B₀        = exp(-Δτ*λ[k])/op.expnΔτc₀
-                op.G[k,ω] = 1.0/(1.0 - z*B₀ - iΔτη)
+                op.G[k,ω] = inv(1.0 - z*B₀ - iΔτη)
             end
         # if doing small K expansion away from single-site limit
         else
@@ -143,7 +228,7 @@ function setup!(op::LeftPerturbativePreconditioner{T1,T2}) where {T1<:AbstractFl
             for i in 1:N
                 # Gₛ(ω) = [-z⋅(I - zᵀ(ω)⋅Aₛ⁻¹ + i⋅Δτ⋅η(ω))]⁻¹ where Aₛ=exp{-Δτ⋅(V̄+cₛ)}=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅cₛ}
                 Aₛ        = op.expnΔτV̄[i]*op.expnΔτcₛ
-                op.G[i,ω] = 1.0/(-z*( 1.0 - conj(z)/Aₛ + iΔτη))
+                op.G[i,ω] = inv(-z*( 1.0 - conj(z)*inv(Aₛ) + iΔτη))
             end
         end
     end
@@ -157,9 +242,12 @@ function setup!(op)
 end
 
 
-function ldiv!(vout::AbstractVector{T},op::PerturbativePreconditioner,vin::AbstractVector{T}) where {T<:AbstractFloat}
+"""
+Apply Preconditioner.
+"""
+function ldiv!(vout::AbstractVector{T},P::PerturbativePreconditioner,vin::AbstractVector{T}) where {T<:AbstractFloat}
 
-
+    op = P.expansion::PerturbativeExpansion
     N  = op.holstein.nsites::Int
     L  = op.holstein.Lτ::Int
     v1 = op.v1::Vector{Complex{T}}
@@ -191,12 +279,14 @@ function ldiv!(vout::AbstractVector{T},op::PerturbativePreconditioner,vin::Abstr
             # set frequency
             op.ω = ω
 
-            if op.limit[ω]==true
+            if op.limit[ω]==true && op.order[ω]>=0
                 # apply small V expansion away from non-interacting limit
-                mul_invM0!(u2,op,u1)
-            else
+                mul_M₀⁻¹!(u2,P,u1)
+            elseif op.limit[ω]==false && op.order[ω]>=0
                 # apply small K expansion away from single-site limit
-                mul_invMs!(u2,op,u1)
+                mul_Mₛ⁻¹!(u2,P,u1)
+            else
+                copyto!(u2,u1)
             end
 
             # accounting for symmetry
@@ -225,27 +315,28 @@ end
 """
 Calculate v′=[1+G₀Γ₀+(G₀Γ₀)²+...]⋅G₀⋅A₀⁻¹⋅v product arrived at perturbing away from the non-interacting limit.
 """
-function mul_invM0!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul_M₀⁻¹!(v′::AbstractVector{Complex{T1}},Pl::LeftPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
-    Δτ   = op.holstein.Δτ::T1
+    op   = Pl.expansion::PerturbativeExpansion{T1,T2}
+    Δτ   = op.holstein.Δτ
     η    = op.η[op.ω]
     iΔτη = im*Δτ*η
     G    = op.G::Matrix{Complex{T1}}
     v₀   = op.v3::Vector{Complex{T1}}
-    vk   = op.v4::Vector{Complex{T1}}
+    vₖ   = op.v4::Vector{Complex{T1}}
 
     @uviews G begin
-
-        # v′= A₀⁻¹⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
-        @. v′ = inv(op.expnΔτV̄*op.expnΔτc₀) * v
 
         # G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
         G₀ = @view G[:,op.ω]
 
+        # v′= A₀⁻¹⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
+        @. v′ = inv(op.expnΔτV̄*op.expnΔτc₀) * v
+
         # v′= G₀⋅A₀⁻¹⋅v 
-        r_to_k!(vk,op.tightbindingfft,v′)
-        @. vk *= G₀
-        k_to_r!(v′,op.tightbindingfft,vk)
+        r_to_k!(vₖ,op.tightbindingfft,v′)
+        @. vₖ *= G₀
+        k_to_r!(v′,op.tightbindingfft,vₖ)
 
         # v′=[1 + G₀Γ₀ + (G₀Γ₀)² + ...]⋅G₀⋅A₀⁻¹⋅v where Γ₀ = I - A₀⁻¹ - Δτ⋅(iη)
         # Apply recursive algorithm to execute the multiplication by the expansion
@@ -255,9 +346,133 @@ function mul_invM0!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePrecon
             # vₙ = Γ₀⋅vₙ₋₁
             @. vₙ *= (1.0 - inv(op.expnΔτV̄*op.expnΔτc₀) - iΔτη)
             # vₙ = G₀⋅Γ₀⋅vₙ₋₁
-            r_to_k!(vk,op.tightbindingfft,vₙ)
-            @. vk *= G₀
-            k_to_r!(vₙ,op.tightbindingfft,vk)
+            r_to_k!(vₖ,op.tightbindingfft,vₙ)
+            @. vₖ *= G₀
+            k_to_r!(vₙ,op.tightbindingfft,vₖ)
+            # vₙ = v₀ + G₀⋅Γ₀⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+    end
+
+    return nothing
+end
+
+"""
+Calculate v′=A₀⁻ᵀ⋅G₀ᵀ⋅[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v product arrived at perturbing away from the non-interacting limit.
+"""
+function mul_M₀⁻¹!(v′::AbstractVector{Complex{T1}},Pr::RightPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op   = Pr.expansion::PerturbativeExpansion{T1,T2}
+    Δτ   = op.holstein.Δτ
+    η    = op.η[op.ω]
+    iΔτη = im*Δτ*η
+    G    = op.G::Matrix{Complex{T1}}
+    vₖ   = op.v4::Vector{Complex{T1}}
+
+    @uviews G begin
+
+        # G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
+        G₀ = @view G[:,op.ω]
+        
+        # v′=[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v where Γ₀ = I - A₀⁻¹ - Δτ⋅(iη)
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        copyto!(v′,v)
+        v₀ = v
+        vₙ = v′
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = G₀ᵀ⋅vₙ₋₁
+            r_to_k!(vₖ,op.tightbindingfft,vₙ)
+            @. vₖ *= conj(G₀)
+            k_to_r!(vₙ,op.tightbindingfft,vₖ)
+            # vₙ = Γ₀ᵀ⋅G₀ᵀ⋅vₙ₋₁
+            @. vₙ *= conj(1.0 - inv(op.expnΔτV̄*op.expnΔτc₀) - iΔτη)
+            # vₙ = v₀ + Γ₀ᵀ⋅G₀ᵀ⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+
+        # v′= G₀ᵀ⋅[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v
+        # where G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
+        r_to_k!(vₖ,op.tightbindingfft,v′)
+        @. vₖ *= conj(G₀)
+        k_to_r!(v′,op.tightbindingfft,vₖ)
+
+        # v′=A₀⁻ᵀ⋅G₀⋅[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
+        @. v′ *= conj(inv(op.expnΔτV̄*op.expnΔτc₀))
+    end
+
+    return nothing
+end
+
+"""
+Calculate v′=[(1+G₀Γ₀+(G₀Γ₀)²+...)⋅G₀⋅A₀⁻¹]⋅[A₀⁻ᵀ⋅G₀ᵀ⋅(1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...)]⋅v
+"""
+function mul_M₀⁻¹!(v′::AbstractVector{Complex{T1}},Ps::SplitPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op   = Ps.expansion::PerturbativeExpansion{T1,T2}
+    Δτ   = op.holstein.Δτ
+    η    = op.η[op.ω]
+    iΔτη = im*Δτ*η
+    G    = op.G::Matrix{Complex{T1}}
+    v₀   = op.v3::Vector{Complex{T1}}
+    vₖ   = op.v4::Vector{Complex{T1}}
+
+    @uviews G begin
+
+        # G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
+        G₀ = @view G[:,op.ω]
+
+        ###########################
+        ## MULTIPLY BY M₀⁻ᵀ[ω,ω] ##
+        ###########################
+        
+        # v′=[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v where Γ₀ = I - A₀⁻¹ - Δτ⋅(iη)
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        copyto!(v′,v)
+        v₀ = v
+        vₙ = v′
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = G₀ᵀ⋅vₙ₋₁
+            r_to_k!(vₖ,op.tightbindingfft,vₙ)
+            @. vₖ *= conj(G₀)
+            k_to_r!(vₙ,op.tightbindingfft,vₖ)
+            # vₙ = Γ₀ᵀ⋅G₀ᵀ⋅vₙ₋₁
+            @. vₙ *= conj(1.0 - inv(op.expnΔτV̄*op.expnΔτc₀) - iΔτη)
+            # vₙ = v₀ + Γ₀ᵀ⋅G₀ᵀ⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+
+        # v′= G₀ᵀ⋅[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v
+        # where G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
+        r_to_k!(vₖ,op.tightbindingfft,v′)
+        @. vₖ *= conj(G₀)
+        k_to_r!(v′,op.tightbindingfft,vₖ)
+
+        # v′=A₀⁻ᵀ⋅G₀⋅[1+Γ₀ᵀG₀ᵀ+(Γ₀ᵀG₀ᵀ)²+...]⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
+        @. v′ *= conj(inv(op.expnΔτV̄*op.expnΔτc₀))
+
+        ###########################
+        ## MULTIPLY BY M₀⁻¹[ω,ω] ##
+        ###########################
+
+        # v′= A₀⁻¹⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
+        @. v′ *= inv(op.expnΔτV̄*op.expnΔτc₀)
+
+        # v′= G₀⋅A₀⁻¹⋅v 
+        r_to_k!(vₖ,op.tightbindingfft,v′)
+        @. vₖ *= G₀
+        k_to_r!(v′,op.tightbindingfft,vₖ)
+
+        # v′=[1 + G₀Γ₀ + (G₀Γ₀)² + ...]⋅G₀⋅A₀⁻¹⋅v where Γ₀ = I - A₀⁻¹ - Δτ⋅(iη)
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        vₙ = v′
+        copyto!(v₀,vₙ)
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = Γ₀⋅vₙ₋₁
+            @. vₙ *= (1.0 - inv(op.expnΔτV̄*op.expnΔτc₀) - iΔτη)
+            # vₙ = G₀⋅Γ₀⋅vₙ₋₁
+            r_to_k!(vₖ,op.tightbindingfft,vₙ)
+            @. vₖ *= G₀
+            k_to_r!(vₙ,op.tightbindingfft,vₖ)
             # vₙ = v₀ + G₀⋅Γ₀⋅vₙ₋₁
             @. vₙ += v₀
         end
@@ -270,8 +485,9 @@ end
 """
 Calculate v′=[1+GₛΓₛ+(GₛΓₛ)²+...]⋅Gₛ⋅Aₛ⁻¹⋅v product arrived at given by perturbing away from the single-site limit.
 """
-function mul_invMs!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul_Mₛ⁻¹!(v′::AbstractVector{Complex{T1}},Pl::LeftPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
+    op   = Pl.expansion::PerturbativeExpansion{T1,T2}
     Δτ   = op.holstein.Δτ::T1
     η    = op.η[op.ω]
     iΔτη = im*Δτ*η
@@ -290,7 +506,7 @@ function mul_invMs!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePrecon
         Gₛ = @view G[:,op.ω]
 
         # v′= Aₛ⁻¹⋅v where Aₛ = exp{-Δτ⋅(V̄+cₛ)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅cₛ}
-        @. v′ = inv(op.expnΔτV̄*op.expnΔτc₀) * v
+        @. v′ = inv(op.expnΔτV̄*op.expnΔτcₛ) * v
 
         # v′= Gₛ⋅Aₛ⁻¹⋅v 
         @. v′ *= Gₛ
@@ -314,5 +530,129 @@ function mul_invMs!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePrecon
     return nothing
 end
 
+"""
+Calculate v′=Aₛ⁻ᵀ⋅Gₛᵀ⋅[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v product arrived at given by perturbing away from the single-site limit.
+"""
+function mul_Mₛ⁻¹!(v′::AbstractVector{Complex{T1}},Pr::RightPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op   = Pr.expansion::PerturbativeExpansion{T1,T2}
+    Δτ   = op.holstein.Δτ::T1
+    η    = op.η[op.ω]
+    iΔτη = im*Δτ*η
+    z    = op.z[op.ω]
+    G    = op.G::Matrix{Complex{T1}}
+    vₙ′  = op.v4::Vector{Complex{T1}}
+
+    neighbor_table_tij = op.holstein.neighbor_table_tij::Matrix{Int}
+    coshtij = op.holstein.coshtij::Vector{T2}
+    sinhtij = op.holstein.sinhtij::Vector{T2}
+
+    @uviews G begin
+
+        # Gₛ(ω) = [-z⋅(I - zᵀ(ω)⋅Aₛ⁻¹ + i⋅Δτ⋅η(ω))]⁻¹
+        Gₛ = @view G[:,op.ω]
+        
+        # v′=[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v where Γₛ = -z⋅[I-Bₛ+Δτ(iη)] where Bₛ=exp{-Δτ·(K-cₛ)}.
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        copyto!(v′,v)
+        v₀ = v
+        vₙ = v′
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = Gₛᵀ⋅vₙ₋₁
+            @. vₙ *= conj(Gₛ)
+            # vₙ = Γₛᵀ⋅Gₛᵀ⋅vₙ₋₁
+            @. vₙ′ = conj(inv(op.expnΔτcₛ)) * vₙ
+            checkerboard_transpose_mul!(vₙ′,neighbor_table_tij,coshtij,sinhtij)
+            @. vₙ = -conj(z) * (vₙ + conj(iΔτη)*vₙ - vₙ′)
+            # vₙ = v₀ + Γₛᵀ⋅Gₛᵀ⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+
+        # v′=Gₛᵀ⋅[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v
+        @. v′ *= conj(Gₛ)
+
+        # v′=Aₛ⁻ᵀ⋅Gₛᵀ⋅[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v
+        @. v′ *= conj(inv(op.expnΔτV̄*op.expnΔτcₛ))
+    end
+
+    return nothing
+end
+
+"""
+Calculate v′=[(1+GₛΓₛ+(GₛΓₛ)²+...)⋅Gₛ⋅Aₛ⁻¹]⋅[Aₛ⁻ᵀ⋅Gₛᵀ⋅(1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...)]⋅v
+"""
+function mul_Mₛ⁻¹!(v′::AbstractVector{Complex{T1}},Pr::SplitPerturbativePreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op   = Pr.expansion::PerturbativeExpansion{T1,T2}
+    Δτ   = op.holstein.Δτ::T1
+    η    = op.η[op.ω]
+    iΔτη = im*Δτ*η
+    z    = op.z[op.ω]
+    G    = op.G::Matrix{Complex{T1}}
+    vₙ′  = op.v4::Vector{Complex{T1}}
+
+    neighbor_table_tij = op.holstein.neighbor_table_tij::Matrix{Int}
+    coshtij = op.holstein.coshtij::Vector{T2}
+    sinhtij = op.holstein.sinhtij::Vector{T2}
+
+    @uviews G begin
+
+        # Gₛ(ω) = [-z⋅(I - zᵀ(ω)⋅Aₛ⁻¹ + i⋅Δτ⋅η(ω))]⁻¹
+        Gₛ = @view G[:,op.ω]
+
+        ###########################
+        ## MULTIPLY BY Mₛ⁻ᵀ[ω,ω] ##
+        ###########################
+        
+        # v′=[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v where Γₛ = -z⋅[I-Bₛ+Δτ(iη)] where Bₛ=exp{-Δτ·(K-cₛ)}.
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        copyto!(v′,v)
+        v₀ = v
+        vₙ = v′
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = Gₛᵀ⋅vₙ₋₁
+            @. vₙ *= conj(Gₛ)
+            # vₙ = Γₛᵀ⋅Gₛᵀ⋅vₙ₋₁
+            @. vₙ′ = conj(inv(op.expnΔτcₛ)) * vₙ
+            checkerboard_transpose_mul!(vₙ′,neighbor_table_tij,coshtij,sinhtij)
+            @. vₙ = -conj(z) * (vₙ + conj(iΔτη)*vₙ - vₙ′)
+            # vₙ = v₀ + Γₛᵀ⋅Gₛᵀ⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+
+        # v′=Gₛᵀ⋅[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v
+        @. v′ *= conj(Gₛ)
+
+        # v′=Aₛ⁻ᵀ⋅Gₛᵀ⋅[1+ΓₛᵀGₛᵀ+(ΓₛᵀGₛᵀ)²+...]⋅v
+        @. v′ *= conj(inv(op.expnΔτV̄*op.expnΔτcₛ))
+
+        ###########################
+        ## MULTIPLY BY Mₛ⁻¹[ω,ω] ##
+        ###########################
+
+        # v′= Aₛ⁻¹⋅v where Aₛ = exp{-Δτ⋅(V̄+cₛ)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅cₛ}
+        @. v′ *= inv(op.expnΔτV̄*op.expnΔτcₛ)
+
+        # v′= Gₛ⋅Aₛ⁻¹⋅v 
+        @. v′ *= Gₛ
+
+        # v′=[1 + GₛΓₛ + (GₛΓₛ)² + ...]⋅Gₛ⋅Aₛ⁻¹⋅v where Γₛ = -z⋅[I-Bₛ+Δτ(iη)] where Bₛ=exp{-Δτ·(K-cₛ)}.
+        # Apply recursive algorithm to execute the multiplication by the expansion
+        vₙ = v′
+        copyto!(v₀,vₙ)
+        @fastmath @inbounds for n in 1:op.order[op.ω]
+            # vₙ = Γₛ⋅vₙ₋₁
+            @. vₙ′ = inv(op.expnΔτcₛ) * vₙ # vₙ′ = exp{+Δτ⋅cₛ}⋅vₙ₋₁
+            checkerboard_mul!(vₙ′,neighbor_table_tij,coshtij,sinhtij) # vₙ′= Bₛ⋅vₙ₋₁= exp{-Δτ·(K-cₛ)}⋅vₙ₋₁
+            @. vₙ = -z * (vₙ + iΔτη*vₙ - vₙ′)
+            # vₙ = Gₛ⋅Γₛ⋅vₙ₋₁
+            @. vₙ *= Gₛ
+            # vₙ = v₀ + Gₛ⋅Γₛ⋅vₙ₋₁
+            @. vₙ += v₀
+        end
+    end
+
+    return nothing
+end
 
 end
