@@ -237,28 +237,29 @@ function mul_invM0!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePrecon
     @uviews G begin
 
         # v′= A₀⁻¹⋅v where A₀ = exp{-Δτ⋅(V̄+c₀)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅c₀}
-        @. v′ = v/op.expnΔτV̄/op.expnΔτc₀
+        @. v′ = inv(op.expnΔτV̄*op.expnΔτc₀) * v
 
         # G₀(ω) = [I - z(ω)⋅B₀ - i⋅Δτ⋅η(ω)]⁻¹ where B₀=exp{-Δτ(K-c₀)}
         G₀ = @view G[:,op.ω]
 
         # v′= G₀⋅A₀⁻¹⋅v 
         r_to_k!(vk,op.tightbindingfft,v′)
-        @. vk = G₀ * vk
+        @. vk *= G₀
         k_to_r!(v′,op.tightbindingfft,vk)
 
         # v′=[1 + G₀Γ₀ + (G₀Γ₀)² + ...]⋅G₀⋅A₀⁻¹⋅v where Γ₀ = I - A₀⁻¹ - Δτ⋅(iη)
         # Apply recursive algorithm to execute the multiplication by the expansion
-        copyto!(v₀,v′)
+        vₙ = v′
+        copyto!(v₀,vₙ)
         @fastmath @inbounds for n in 1:op.order[op.ω]
             # vₙ = Γ₀⋅vₙ₋₁
-            @. v′ = v′ - v′/op.expnΔτV̄/op.expnΔτc₀ - iΔτη*v′
+            @. vₙ *= (1.0 - inv(op.expnΔτV̄*op.expnΔτc₀) - iΔτη)
             # vₙ = G₀⋅Γ₀⋅vₙ₋₁
-            r_to_k!(vk,op.tightbindingfft,v′)
-            @. vk = G₀ * vk
-            k_to_r!(v′,op.tightbindingfft,vk)
+            r_to_k!(vk,op.tightbindingfft,vₙ)
+            @. vk *= G₀
+            k_to_r!(vₙ,op.tightbindingfft,vk)
             # vₙ = v₀ + G₀⋅Γ₀⋅vₙ₋₁
-            @. v′ = v₀ + v′
+            @. vₙ += v₀
         end
     end
 
@@ -289,21 +290,20 @@ function mul_invMs!(v′::AbstractVector{Complex{T1}},op::LeftPerturbativePrecon
         Gₛ = @view G[:,op.ω]
 
         # v′= Aₛ⁻¹⋅v where Aₛ = exp{-Δτ⋅(V̄+cₛ)} = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅cₛ}
-        @. v′ = v/op.expnΔτV̄/op.expnΔτc₀
+        @. v′ = inv(op.expnΔτV̄*op.expnΔτc₀) * v
 
         # v′= Gₛ⋅Aₛ⁻¹⋅v 
-        @. v′ = Gₛ * v′
+        @. v′ *= Gₛ
 
         # v′=[1 + GₛΓₛ + (GₛΓₛ)² + ...]⋅Gₛ⋅Aₛ⁻¹⋅v where Γₛ = -z⋅[I-Bₛ+Δτ(iη)] where Bₛ=exp{-Δτ·(K-cₛ)}.
         # Apply recursive algorithm to execute the multiplication by the expansion
-        copyto!(v₀,v′)
         vₙ = v′
+        copyto!(v₀,vₙ)
         @fastmath @inbounds for n in 1:op.order[op.ω]
             # vₙ = Γₛ⋅vₙ₋₁
-            @. vₙ′ = vₙ / op.expnΔτcₛ # vₙ′ = exp{+Δτ⋅cₛ}⋅vₙ₋₁
+            @. vₙ′ = inv(op.expnΔτcₛ) * vₙ # vₙ′ = exp{+Δτ⋅cₛ}⋅vₙ₋₁
             checkerboard_mul!(vₙ′,neighbor_table_tij,coshtij,sinhtij) # vₙ′= Bₛ⋅vₙ₋₁= exp{-Δτ·(K-cₛ)}⋅vₙ₋₁
-            @. vₙ = vₙ + iΔτη*vₙ - vₙ′
-            @. vₙ *= -z
+            @. vₙ = -z * (vₙ + iΔτη*vₙ - vₙ′)
             # vₙ = Gₛ⋅Γₛ⋅vₙ₋₁
             @. vₙ *= Gₛ
             # vₙ = v₀ + Gₛ⋅Γₛ⋅vₙ₋₁
