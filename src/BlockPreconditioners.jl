@@ -53,7 +53,7 @@ mutable struct LeftBlockPreconditioner{T1<:AbstractFloat,T2<:Number} <: BlockPre
         ω  = 1
 
         timefreqfft = TimeFreqFFT(holstein.lattice,L)
-        ω_phases    = [exp(2*π*im*((ω-1)+1/2)/L) for ω = 1:L]
+        ω_phases    = [exp(2*π*im*((ω-1)+1/2)/L) for ω in 1:L]
         expnΔτV_bar = zeros(T1,N)
         z1          = zeros(Complex{T1},N*L)
         z2          = zeros(Complex{T1},N*L)
@@ -162,7 +162,6 @@ function ldiv!(vout::AbstractVector{T},op::BlockPreconditioner,vin::AbstractVect
             b    = @view a1T[:,ω]
             x    = @view a2T[:,ω]
             flag, iters, Δ = RestartedGMRES.solve!(x,op,b,op.gmres,I)
-            # println(ω," ",iters)
 
             # accounting for symmetry
             for i in 1:N

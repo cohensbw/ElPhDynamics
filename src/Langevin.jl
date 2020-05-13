@@ -16,13 +16,15 @@ include("RestartedGMRES.jl")
 
 include("ConjugateGradients.jl")
 
-# include("LatticeFFTs.jl")
-
 include("TimeFreqFFTs.jl")
+
+include("TightBindingFFTs.jl")
 
 include("HolsteinModels.jl")
 
 include("BlockPreconditioners.jl")
+
+include("PerturbativePreconditioners.jl")
 
 # include("DiagonalPreconditioners.jl")
 
