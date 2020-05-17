@@ -7,9 +7,7 @@ using LinearAlgebra
 using ..HolsteinModels: HolsteinModel, mulMᵀ!
 using ..Utilities: get_index, get_site, get_τ
 
-using ..BlockPreconditioners: setup!
-# using ..SingleSitePreconditioners: setup!
-# using ..DiagonalPreconditioners: setup!
+using ..KPMPreconditioners: setup!
 
 export EstimateGreensFunction
 export update!, estimate

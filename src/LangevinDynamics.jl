@@ -9,9 +9,7 @@ using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
 using ..PhononAction: calc_dSbosedx!
 using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!
 
-using ..BlockPreconditioners: setup!
-# using ..SingleSitePreconditioners: setup!
-# using ..DiagonalPreconditioners: setup!
+using ..KPMPreconditioners: setup!
 
 export evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 export calc_dSdx!, calc_dSfdx!

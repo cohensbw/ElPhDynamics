@@ -15,9 +15,7 @@ using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..FourierAcceleration: FourierAccelerator, update_Q!
 using ..LangevinSimulationParameters: SimulationParameters
 
-using ..BlockPreconditioners: LeftBlockPreconditioner
-# using ..SingleSitePreconditioners: LeftSingleSitePreconditioner
-# using ..DiagonalPreconditioners: LeftDiagonalPreconditioner
+using ..KPMPreconditioners: LeftKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
 
@@ -77,9 +75,11 @@ function process_input_file(filename::String)
     preconditioner = I
 
     if input["simulation"]["use_preconditioner"]
-        preconditioner = LeftBlockPreconditioner(holstein,tol=input["simulation"]["tol"],restart=input["simulation"]["restart"])
-        # preconditioner = LeftSingleSitePreconditioner(holstein)
-        # preconditioner = LeftDiagonalPreconditioner(holstein)
+        λ_lo = input["simulation"]["lambda_lo"]
+        λ_hi = input["simulation"]["lambda_hi"]
+        c1   = input["simulation"]["c1"]
+        c2   = input["simulation"]["c2"]
+        preconditioner = LeftKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
     end
     
     #################################

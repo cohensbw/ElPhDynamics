@@ -26,11 +26,7 @@ include("BlockPreconditioners.jl")
 
 include("PerturbativePreconditioners.jl")
 
-# include("DiagonalPreconditioners.jl")
-
-# include("SymmetricPreconditioners.jl")
-
-# include("SingleSitePreconditioners.jl")
+include("KPMPreconditioners.jl")
 
 include("InitializePhonons.jl")
 
