@@ -4,7 +4,7 @@ using Statistics
 using Printf
 using Pkg.TOML
 
-using ..LangevinSimulationParameters: SimulationParameters
+using ..SimulationParams: SimulationParameters
 using ..HolsteinModels: HolsteinModel, write_phonons, write_M_matrix
 
 export write_simulation_summary
@@ -15,7 +15,8 @@ Writes a simulation summary file after a simulation completes.
 """
 function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters{T},
                                   unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String},
-                                  simulation_time::T, measurement_time::T, write_time::T, iters::T, nbins::Int=10) where {T<:Number}
+                                  simulation_time::T, measurement_time::T, write_time::T, iters::T, acceptance_rate::T,
+                                  nbins::Int=10) where {T<:Number}
 
     @assert sim_params.num_bins%nbins==0
 
@@ -74,6 +75,7 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile, "Write Time (min) = ",       @sprintf("%.4f",write_time), "\n")
         write(outfile, "Total Time (min) = ",       @sprintf("%.4f",total_time), "\n")
         write(outfile, "Iterative Solver Steps = ", @sprintf("%.4f",iters), "\n")
+        write(outfile, "Acceptance Rate = ", @sprintf("%.4f",acceptance_rate), "\n")
         
         ##################################
         ## WRITE LOCAL MEASUREMENT DATA ##

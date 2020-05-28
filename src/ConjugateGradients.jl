@@ -1,6 +1,7 @@
 module ConjugateGradients
 
 using LinearAlgebra
+using Printf
 import LinearAlgebra: ldiv!
 
 export ConjugateGradient, solve!
@@ -87,6 +88,7 @@ function solve!(x::AbstractVector{T1},A,b::AbstractVector{T1},cg::ConjugateGradi
         end
     end
     
+    @warn @sprintf("Conjugate Gradient Failed To Converge; Iterations = %d",cg.maxiter)
     return cg.maxiter
     
 end
@@ -150,6 +152,7 @@ function solve!(x::AbstractVector{T1},A,b::AbstractVector{T1},cg::ConjugateGradi
         axpby!(1.0,z,β,p)
     end
     
+    @warn @sprintf("Conjugate Gradient Failed To Converge; Iterations = %d",cg.maxiter)
     return cg.maxiter
 end
 
@@ -204,6 +207,7 @@ function solve!(x::AbstractVector{T1},A,b::AbstractVector{T1},cg::ConjugateGradi
         axpby!(1.0,r,β,p)
     end
     
+    @warn @sprintf("Conjugate Gradient Failed To Converge; Iterations = %d",cg.maxiter)
     return cg.maxiter
 end
 

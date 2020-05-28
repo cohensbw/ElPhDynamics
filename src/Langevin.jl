@@ -36,11 +36,13 @@ include("FourierAcceleration.jl")
 
 include("LangevinDynamics.jl")
 
+include("HMC.jl")
+
 include("GreensFunctions.jl")
 
 # include("FourierTransforms.jl")
 
-include("LangevinSimulationParameters.jl")
+include("SimulationParams.jl")
 
 include("NonLocalMeasurements.jl")
 
@@ -87,13 +89,13 @@ function simulate(args)
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters = run_simulation!(holstein, sim_params, dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
+    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(holstein, sim_params, dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary(holstein, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters)
+    write_simulation_summary(holstein, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
 end
 
 

@@ -2,6 +2,7 @@ module RestartedGMRES
 
 using LinearAlgebra
 using UnsafeArrays
+using Printf
 
 export GMRES, solve!
 
@@ -119,6 +120,8 @@ function solve!(x::AbstractVector{T2},A,b::AbstractVector{T2},gmres::GMRES{T1,T2
             end
         end
     end
+
+    @warn @sprintf("GMRES Failed To Converge; Iteration = %d",iter)
     return 0, iter, Δ
 end
 

@@ -1,5 +1,5 @@
 # NOTE: COMMAND TO RUN SIMULATION
-# julia -O3 -e "using Langevin; simulate(ARGS)" -- input.TOML
+# julia -O3 -e "using Langevin; simulate(ARGS)" -- hmc_input.TOML
 
 ##################################
 ## SPECIFY INPUT FORMAT VERSION ##
@@ -96,6 +96,9 @@ omega_max = 10.0
 
 [simulation]
 
+# whether this is a hybrid monte carlo simulation
+is_hybrid_monte_carlo = true
+
 # whether to write final M matrix to file or not
 write_M_matrix = false
 
@@ -129,14 +132,17 @@ c1 = 1.0
 # preconditioner parameter
 c2 = 1.0
 
-# number of thermalization steps
-burnin = 100000
+# thermalization time
+burnin_time = 10_000.0
 
-# total number of steps
-nsteps = 500000
+# simulation time
+simulation_time = 50_000.0
 
-# measurement frequency
-meas_freq = 1000
+# time between the velocity v and auxialary variables phi being refreshed.
+# this is also the time between measurements being made.
+# refresh frequencies less than 1.0 result in partial momentum refreshes occuring.
+# strandard hybrid monte carlo assumes refresh_time=1.0
+refresh_time = 1.0
 
 # number of bins ie the number of times measurements will
 # be written to file.
@@ -144,11 +150,6 @@ num_bins = 100
 
 # downsampling of non-local measurements in imaginary time direction
 downsample = 1
-
-# what type of update method to use.
-# 1: Euler Upate + Fourier Acceleration
-# 2: Runge-Kutta Update + Fourier Acceleration
-update_method = 2
 
 # filepath to where to write data
 filepath = "."

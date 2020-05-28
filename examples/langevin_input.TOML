@@ -1,0 +1,185 @@
+# NOTE: COMMAND TO RUN SIMULATION
+# julia -O3 -e "using Langevin; simulate(ARGS)" -- langevin_input.TOML
+
+##################################
+## SPECIFY INPUT FORMAT VERSION ##
+##################################
+
+input_format_version = "0.1.0"
+
+######################
+## DEFINING LATTICE ##
+######################
+
+[lattice]
+
+# number of dimensions
+ndim = 2
+
+# number of orbitals/sites per unit cell
+norbits = 1
+
+# define lattice vectors.
+lattice_vectors = [[1.0,0.0], # first lattice vector
+                   [0.0,1.0]] # second lattice vector
+
+# define basis vectors
+basis_vectors = [[0.0,0.0]] # first basis vector
+
+# size of lattice
+L = 4
+
+#############################
+## DEFINING HOLSTEIN MODEL ##
+#############################
+
+[holstein]
+
+# whether to initialize phonons from file
+read_phonon_config = false
+
+# filename to read phonon config from
+phonon_config_file = "phonon_config.out"
+
+# discretization
+dtau = 0.1
+
+# setting temperature
+beta = 2.0
+
+# define hopping in lattice
+[[holstein.t]]
+val    = 1.0     # mean value
+stddev = 0.0       # (optional) standard deviation
+orbit  = [1, 1]    # orbital types being connected
+dL     = [1, 0, 0] # displacement vector in unit cells
+
+# define hopping in lattice
+[[holstein.t]]
+val   = 1.0
+orbit = [1, 1]
+dL    = [0, 1, 0]
+
+# define phonon frequency
+[[holstein.omega]]
+orbit  = [1] # which orbital types the omega value is applied to
+val    = 1.0 # mean value used for parameter
+stddev = 0.0 # (optional) standard deviation
+
+# define electron-phonon coupling
+[[holstein.lambda]]
+orbit = [1]
+val   = 1.0
+
+# define chemical potential
+[[holstein.mu]]
+orbit = [1]
+val   = -1.0
+
+# define anharmonic term of form X^4
+[[holstein.omega4]]
+orbit  = [1]
+val    = 0.0
+
+###################################
+## DEFINING FOURIER ACCELERATION ##
+###################################
+
+[[fourier_acceleration]]
+mass = 0.5
+omega_min = 0.0
+omega_max = 10.0
+
+####################################
+## DEFINING SIMULATION PARAMETERS ##
+####################################
+
+[simulation]
+
+# whether this is a hybrid monte carlo simulation
+is_hybrid_monte_carlo = false
+
+# whether to write final M matrix to file or not
+write_M_matrix = false
+
+# random number generator seed
+random_seed = 38923
+
+# langevin time step
+dt = 1e-3
+
+# tolerace used in iterative solvers
+tol = 1e-4
+
+# flag to determine whether or not to use block preconditioner.
+# if true then GMRES is used.
+# if false then Conjugate Gradient is used.
+use_preconditioner = false
+
+# restart for GMRES solver.
+# this parameter only matters if use_block_preconditioner = true
+restart = 30
+
+# preconditioner parameter
+lambda_lo = 0.3
+
+# preconditioner parameter
+lambda_hi = 1.7
+
+# preconditioner parameter
+c1 = 1.0
+
+# preconditioner parameter
+c2 = 1.0
+
+# number of thermalization steps
+burnin = 100000
+
+# total number of steps
+nsteps = 500000
+
+# measurement frequency
+meas_freq = 1000
+
+# number of bins ie the number of times measurements will
+# be written to file.
+num_bins = 100
+
+# downsampling of non-local measurements in imaginary time direction
+downsample = 1
+
+# what type of update method to use.
+# 1: Euler Upate + Fourier Acceleration
+# 2: Runge-Kutta Update + Fourier Acceleration
+update_method = 2
+
+# filepath to where to write data
+filepath = "."
+
+# name of folder for data to get dumped into
+foldername = "test"
+
+##################
+## MEASUREMENTS ##
+##################
+
+[measurements]
+
+# Electron Green's Function Measurement
+[measurements.Greens]
+measure        = true # whether or not to measure the quantity
+time_dependent = true # if measured, whether as equal time or unequal time measurement
+
+# Density-Desnity Correlation Function Measurement
+[measurements.DenDen]
+measure        = true
+time_dependent = false
+
+# Pair Green's Function Measurement
+# Note 1: If the time depedent pair green's function is being
+# measured than the S-Wave Susceptibility is also calcualted.
+# Note 2: As a side note, it is probably only ever worth
+# measuring the time depedent Pair Green's function.
+[measurements.PairGreens]
+measure        = false
+time_dependent = false

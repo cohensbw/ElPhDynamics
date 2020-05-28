@@ -3,7 +3,66 @@ module PhononAction
 using ..HolsteinModels: HolsteinModel
 using ..Utilities: get_index
 
-export calc_dSbosedx!
+export calc_Sbose, calc_dSbosedx!
+
+"""
+Calculates the pure phonon action Sbose such that exp{-Sbose}.
+"""
+function calc_Sbose(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+
+    x   = holstein.x::Vector{T1}
+    N   = holstein.nsites::Int
+    Lτ  = holstein.Lτ::Int
+    Δτ  = holstein.Δτ::T1
+    ω   = holstein.ω::Vector{T1}
+    ω4  = holstein.ω4::Vector{T1}
+    Sbose = 0.0::T1
+
+    # iterate over sites in lattice
+    for i in 1:N
+        # iterate over time slice in lattice
+        for τ in 1:Lτ
+            # get τ-1 accounting for periodic boundary conditions
+            τm1 = (τ-2+Lτ)%Lτ+1
+            # xᵢ(τ)
+            xᵢτ = x[get_index(τ,i,Lτ)]
+            # xᵢ(τ-1)
+            xᵢτm1 = x[get_index(τm1,i,Lτ)]
+            # calculate potential energy
+            Sbose += ω[i]^2*xᵢτ^2/2 + ω4[i]*xᵢτ^4
+            # calculate kintetic energy
+            Sbose += (xᵢτ-xᵢτm1)^2/Δτ^2/2
+        end
+    end
+
+    # calculate phonon potential energy associated with phonon dispersion
+    if length(holstein.ωij)>0
+        ωij                = holstein.ωij::Vector{T2}
+        sign_ωij           = holstein.sign_ωij::Vector{Int}
+        neighbor_table_ωij = holstein.neighbor_table_ωij::Matrix{Int}
+        # iterate over dispersive phonon modes
+        for m in 1:length(ωij)
+            ωij² = ωij[m] * ωij[m]
+            sgn = sign_ωij[m]
+            # getting pair of neighboring sites
+            i = neighbor_table_ωij[1,m]
+            j = neighbor_table_ωij[2,m]
+            # iterating over time slices
+            for τ in 1:L
+                # indexing offset into vectors associated with τ time slice
+                indx_i = get_index(τ,i,Lτ)
+                indx_j = get_index(τ,j,Lτ)
+                # updating partial derivative
+                Sbose += ωij² * ( x[indx_i] + sgn*x[indx_j] )^2/2
+            end
+        end
+    end
+
+    # necessary scaling factor as defintiion of Sbose includes a Δτ out front
+    Sbose *= Δτ
+    
+    return Sbose
+end
 
 """
 Calculates the dervative phonon action with respect to each phonon field and adds that value in place

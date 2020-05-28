@@ -6,7 +6,7 @@ using LinearAlgebra
 
 using ..Utilities: get_index, get_site, get_τ, θ, δ
 using ..HolsteinModels: HolsteinModel
-using ..LangevinSimulationParameters: SimulationParameters
+using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, estimate
 
 export make_nonlocal_measurements!

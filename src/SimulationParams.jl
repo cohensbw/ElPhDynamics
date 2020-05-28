@@ -1,4 +1,4 @@
-module LangevinSimulationParameters
+module SimulationParams
 
 export SimulationParameters
 
@@ -6,9 +6,6 @@ struct SimulationParameters{T<:AbstractFloat}
 
     "Langevin time step"
     Δt::T
-
-    "What kind of update method to use."
-    update_method::Int
 
     "Number of thermalization steps time steps."
     burnin::Int
@@ -43,10 +40,10 @@ struct SimulationParameters{T<:AbstractFloat}
     "filepath + foldername"
     datafolder::String
 
-    function SimulationParameters(Δt::T, update_method::Int, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String) where {T<:AbstractFloat}
+    function SimulationParameters(Δt::T, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String) where {T<:AbstractFloat}
 
         # sanity check
-        @assert nsteps>=meas_freq*num_bins
+        @assert nsteps >= meas_freq * num_bins
 
         # calculating the number of measurements that will be made in the simulation
         @assert nsteps%max(1,meas_freq)==0
@@ -92,7 +89,7 @@ struct SimulationParameters{T<:AbstractFloat}
             datafolder *= "/"
         end
 
-        new{T}(Δt,update_method,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
+        new{T}(Δt,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
     end
 end
 

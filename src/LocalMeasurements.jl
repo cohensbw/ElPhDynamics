@@ -3,7 +3,7 @@ module LocalMeasurements
 using Printf
 using ..Utilities: get_index, get_site, get_τ, simpson
 using ..HolsteinModels: HolsteinModel
-using ..LangevinSimulationParameters: SimulationParameters
+using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
 
 export make_local_measurements!

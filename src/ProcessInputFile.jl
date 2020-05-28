@@ -3,6 +3,8 @@ module ProcessInputFile
 using Pkg.TOML
 using Random
 using LinearAlgebra
+using Logging
+using LibGit2
 
 using ..Geometries: Geometry
 using ..Lattices: Lattice
@@ -12,12 +14,14 @@ using ..HolsteinModels: assign_tij!, assign_ωij!
 using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
+using ..HMC: HybridMonteCarlo
 using ..FourierAcceleration: FourierAccelerator, update_Q!
-using ..LangevinSimulationParameters: SimulationParameters
+using ..SimulationParams: SimulationParameters
 
-using ..KPMPreconditioners: LeftKPMPreconditioner
+using ..KPMPreconditioners: LeftKPMPreconditioner, LeftRightKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
+
 
 function process_input_file(filename::String)
     
@@ -34,19 +38,56 @@ function process_input_file(filename::String)
     ## DEFINE SIMULATION PARAMETERS ##
     ##################################
 
-    # construct simulation parameters object.
-    sim_params = SimulationParameters(input["simulation"]["dt"],
-                                      input["simulation"]["update_method"],
-                                      input["simulation"]["burnin"],
-                                      input["simulation"]["nsteps"],
-                                      input["simulation"]["meas_freq"],
-                                      input["simulation"]["num_bins"],
-                                      input["simulation"]["downsample"],
-                                      input["simulation"]["filepath"],
-                                      input["simulation"]["foldername"])
+    # default to langevin simulation
+    if !haskey(input["simulation"],"is_hybrid_monte_carlo")
+        input["simulation"] = false
+    end
+
+    # For Hybrid Monte Carlo simulation
+    if input["simulation"]["is_hybrid_monte_carlo"]
+
+        burnin_time     = input["simulation"]["burnin_time"]
+        simulation_time = input["simulation"]["simulation_time"]
+        refresh_time    = input["simulation"]["refresh_time"]
+
+        burnin = round(Int,burnin_time/refresh_time)
+        nsteps = round(Int,simulation_time/refresh_time)
+        meas_freq = 1
+
+        # construct simulation parameters object.
+        sim_params = SimulationParameters(input["simulation"]["dt"],
+                                          burnin,
+                                          nsteps,
+                                          meas_freq,
+                                          input["simulation"]["num_bins"],
+                                          input["simulation"]["downsample"],
+                                          input["simulation"]["filepath"],
+                                          input["simulation"]["foldername"])
+    # For Langevin simulation
+    else
+
+        # construct simulation parameters object.
+        sim_params = SimulationParameters(input["simulation"]["dt"],
+                                          input["simulation"]["burnin"],
+                                          input["simulation"]["nsteps"],
+                                          input["simulation"]["meas_freq"],
+                                          input["simulation"]["num_bins"],
+                                          input["simulation"]["downsample"],
+                                          input["simulation"]["filepath"],
+                                          input["simulation"]["foldername"])
+    end
 
     # copy input file into data folder
     cp(filename,sim_params.datafolder*filename)
+
+    # create log for simulation
+    logfilename = sim_params.datafolder*sim_params.foldername[1:end-1]*".log"
+    logio       = open(logfilename,"w+")
+    logger      = SimpleLogger(logio)
+    global_logger(logger)
+    
+    # write git commit of code to log file
+    @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
 
     # initialize random number generator with seed
     if !("random_seed" in keys(input["simulation"]))
@@ -74,7 +115,13 @@ function process_input_file(filename::String)
     # default Identity preconditioner
     preconditioner = I
 
-    if input["simulation"]["use_preconditioner"]
+    if input["simulation"]["use_preconditioner"] && input["simulation"]["is_hybrid_monte_carlo"]
+        λ_lo = input["simulation"]["lambda_lo"]
+        λ_hi = input["simulation"]["lambda_hi"]
+        c1   = input["simulation"]["c1"]
+        c2   = input["simulation"]["c2"]
+        preconditioner = LeftRightKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
+    elseif input["simulation"]["use_preconditioner"]
         λ_lo = input["simulation"]["lambda_lo"]
         λ_hi = input["simulation"]["lambda_hi"]
         c1   = input["simulation"]["c1"]
@@ -102,7 +149,9 @@ function process_input_file(filename::String)
     NL = length(holstein)
 
     dynamics = nothing
-    if input["simulation"]["update_method"]==1
+    if input["simulation"]["is_hybrid_monte_carlo"]
+        dynamics = HybridMonteCarlo(NL,Δt,refresh_time)
+    elseif input["simulation"]["update_method"]==1
         dynamics = EulerDynamics(NL,Δt)
     elseif input["simulation"]["update_method"]==2
         dynamics = RungeKuttaDynamics(NL,Δt)

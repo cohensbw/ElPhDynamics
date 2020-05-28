@@ -278,13 +278,13 @@ function muldMᵀdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abs
     # • yᵢ(1) = +∂Bᵀ/∂xᵢ(1)⋅vᵢ(Lτ)  for τ = 1
     # • yᵢ(τ) = -∂Bᵀ/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
     #
-    # • Bᵀ(τ) = exp{-Δτ⋅V[x(τ)]}ᵀ⋅exp{-Δτ⋅K}ᵀ
+    # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[x(τ)]}ᵀ
     # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}ᵀ
     # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}ᵀ
     #
     # • Therefore the final expression is:
-    # • yᵢ(1) = -[exp{-Δτ⋅K}]ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅vᵢ(Lτ)  for τ = 1
-    # • yᵢ(τ) = +[exp{-Δτ⋅K}]ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅vᵢ(τ-1) for τ > 1
+    # • yᵢ(1) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅vᵢ(Lτ)  for τ = 1
+    # • yᵢ(τ) = +exp{-Δτ⋅K}ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅vᵢ(τ-1) for τ > 1
     #
     # • Simplifying a little bit:
     # • yᵢ(1) = -Δτ⋅λᵢ⋅Bᵀ(1)⋅vᵢ(Lτ)  for τ = 1

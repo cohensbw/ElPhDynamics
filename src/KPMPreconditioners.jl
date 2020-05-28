@@ -11,7 +11,7 @@ using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
 
-export LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner
+export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner
 
 """
 Object to represent Kenerl Polynomial Expansion.
@@ -133,6 +133,7 @@ that uses Chebyshev Polynomials to approximate M⁻¹[ω,ω].
 """
 abstract type KPMPreconditioner end
 
+
 mutable struct LeftKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
 
     expansion::KPMExpansion{T1,T2}
@@ -151,6 +152,7 @@ mutable struct LeftKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPrecond
     end
 end
 
+
 mutable struct RightKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
 
     expansion::KPMExpansion{T1,T2}
@@ -166,6 +168,24 @@ mutable struct RightKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPrecon
     function RightKPMPreconditioner(expansion::KPMExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
         return new{T1,T2}(expansion)
+    end
+end
+
+
+mutable struct LeftRightKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
+
+    lkpm::LeftKPMPreconditioner{T1,T2}
+    rkpm::RightKPMPreconditioner{T1,T2}
+    expansion::KPMExpansion{T1,T2}
+
+    function LeftRightKPMPreconditioner(holstein::HolsteinModel{T1,T2},
+                                        λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
+                                        jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+
+        lkpm = LeftKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        rkpm = transpose(lkpm)
+        expansion = lkpm.expansion
+        return new{T1,T2}(lkpm,rkpm,expansion)
     end
 end
 
@@ -300,7 +320,26 @@ end
 
 
 """
-Multiply by KPM approximation to M⁻¹[ω,ω]
+Multiply by KPM approximation for M⁻¹[ω,ω] or M⁻ᵀ[ω,ω]
+"""
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op       = P.expansion::KPMExpansion{T1,T2}
+    holstein = op.holstein::HolsteinModel{T1,T2}
+    lkpm     = P.lkpm::LeftKPMPreconditioner{T1,T2}
+    rkpm     = P.rkpm::RightKPMPreconditioner{T1,T2}
+
+    if holstein.transposed
+        mul!(v′,rkpm,v)
+    else
+        mul!(v′,lkpm,v)
+    end
+
+    return nothing
+end
+
+"""
+Multiply by KPM approximation for M⁻¹[ω,ω]
 """
 function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
@@ -339,7 +378,7 @@ end
 
 
 """
-Multiply by KPM approximation to M⁻ᵀ[ω,ω]
+Multiply by KPM approximation for M⁻ᵀ[ω,ω]
 """
 function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
@@ -378,7 +417,7 @@ end
 
 
 """
-Multiply by KPM approximation to M⁻¹[ω,ω]⋅M⁻ᵀ[ω,ω]
+Multiply by KPM approximation for M⁻¹[ω,ω]⋅M⁻ᵀ[ω,ω]
 """
 function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
@@ -458,6 +497,25 @@ function mulA′!(v′::AbstractVector{Complex{T}},P::KPMPreconditioner,v::Abstr
     return nothing
 end
 
+
+"""
+Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K} or A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
+"""
+function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op       = P.expansion::KPMExpansion{T1,T2}
+    holstein = op.holstein::HolsteinModel{T1,T2}
+    lkpm     = P.lkpm::LeftKPMPreconditioner{T1,T2}
+    rkpm     = P.rkpm::RightKPMPreconditioner{T1,T2}
+
+    if holstein.transposed
+        mulA!(v′,rkpm,v)
+    else
+        mulA!(v′,lkpm,v)
+    end
+
+    return nothing
+end
 
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K}

@@ -49,20 +49,16 @@ struct EstimateGreensFunction{T<:Number}
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(holstein::HolsteinModel{T1,T2}, is_complex::Bool=false) where {T1<:AbstractFloat,T2<:Number}
+    function EstimateGreensFunction(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
         βN  = holstein.nindices
         N   = holstein.nsites
         β   = holstein.Lτ
 
-        g    = zeros(T1,βN)
-        M⁻¹g = zeros(T1,βN)
+        g    = zeros(T2,βN)
+        M⁻¹g = zeros(T2,βN)
 
-        if is_complex
-            new{Complex{T1}}(βN,N,β,g,M⁻¹g)
-        else
-            new{T1}(βN,N,β,g,M⁻¹g)
-        end
+        new{T2}(βN,N,β,g,M⁻¹g)
     end
 end
 
