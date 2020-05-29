@@ -15,7 +15,7 @@ using  ..ConjugateGradients: ConjugateGradient
 import ..RestartedGMRES
 using  ..RestartedGMRES: GMRES
 
-export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, muldMᵀdx!, construct_M, write_M_matrix
+export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix
 
 
 # overload `eltype` from Base
@@ -258,58 +258,6 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
         # y(Lτ) = -Δτ⋅λ⋅B(1)⋅v(1) for τ=1
         y[idx_L] = yL_temp
     end
-
-    return nothing
-end
-
-
-"""
-Performs the multiplication y = (dMᵀ/dx)⋅v
-""" 
-function muldMᵀdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractVector{T2}) where {T1<:AbstractFloat,T2<:Number,T3<:Number}
-
-    #########################################
-    ## PERFORM MULTIPLICATION y = ∂Mᵀ/∂x⋅v ##
-    #########################################
-
-    # Notes:
-    # • Consider y = ∂Mᵀ/∂xᵢ(τ)⋅v ==>
-    #
-    # • yᵢ(1) = +∂Bᵀ/∂xᵢ(1)⋅vᵢ(Lτ)  for τ = 1
-    # • yᵢ(τ) = -∂Bᵀ/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
-    #
-    # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[x(τ)]}ᵀ
-    # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}ᵀ
-    # • ∂Bᵀ/∂xᵢ(τ) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}ᵀ
-    #
-    # • Therefore the final expression is:
-    # • yᵢ(1) = -exp{-Δτ⋅K}ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅vᵢ(Lτ)  for τ = 1
-    # • yᵢ(τ) = +exp{-Δτ⋅K}ᵀ⋅Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅vᵢ(τ-1) for τ > 1
-    #
-    # • Simplifying a little bit:
-    # • yᵢ(1) = -Δτ⋅λᵢ⋅Bᵀ(1)⋅vᵢ(Lτ)  for τ = 1
-    # • yᵢ(τ) = +Δτ⋅λᵢ⋅Bᵀ(τ)⋅vᵢ(τ-1) for τ > 1
-
-    # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.nsites
-
-        # iterating over imaginary time slices
-        for τ in 2:holstein.Lτ
-
-            # y(τ) = Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}ᵀ⋅v(τ-1) for τ > 1
-            idx_τm = get_index(τ-1, i, holstein.Lτ)
-            idx_τ  = get_index(τ,   i, holstein.Lτ)
-            y[idx_τ] = holstein.Δτ * holstein.λ[i]conj(holstein.expnΔτV[idx_τ]) * v[idx_τm]
-        end
-
-        # y(1) = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}ᵀ⋅v(Lτ) for τ=1
-        idx_L = get_index(holstein.Lτ, i, holstein.Lτ)
-        idx_1 = get_index(1,           i, holstein.Lτ)
-        y[idx_1] = -holstein.Δτ * holstein.λ[i] * conj(holstein.expnΔτV[idx_1]) * v[idx_L]
-    end
-
-    # y(τ) = [exp{-Δτ⋅K}]ᵀ⋅y(τ)
-    checkerboard_transpose_mul!(y, holstein.neighbor_table_tij, holstein.coshtij, holstein.sinhtij, holstein.Lτ)
 
     return nothing
 end

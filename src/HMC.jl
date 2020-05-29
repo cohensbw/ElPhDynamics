@@ -6,7 +6,7 @@ using LinearAlgebra
 using Printf
 
 using ..Utilities: get_index
-using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulM!, muldMdx!, mulMᵀ!, muldMᵀdx!
+using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulM!, muldMdx!, mulMᵀ!
 using ..PhononAction: calc_dSbosedx!, calc_Sbose
 using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!
 import ..KPMPreconditioners
@@ -381,14 +381,11 @@ function calc_S(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2})::T1 w
 end
 
 """
-Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
+Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋
 """
 function calc_dSdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=I)::Int where {T1<:AbstractFloat,T2<:Number}
     
     dSdx = hmc.dSdx
-
-    # initialize dS/dx to zero
-    fill!(dSdx,0.0)
     
     # dS/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
     iters = calc_dSfdx!(hmc,holstein,preconditioner)
@@ -418,14 +415,15 @@ end
 
 
 """
-Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊-ϕ + ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
+Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ + ₋ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
 More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
 """
 function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=I)::Int where {T1<:AbstractFloat,T2<:Number}
     
-    dSdx   = hmc.dSdx
-    dSfdx′ = hmc.R
-    dSfdx″ = hmc.u
+    dSdx     = hmc.dSdx
+    dSdx′    = hmc.R
+    dMdxO⁻¹ϕ = hmc.R
+    MO⁻¹ϕ    = hmc.u
     
     O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
     O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
@@ -433,23 +431,42 @@ function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
     iters = calc_O⁻¹ϕ!(hmc,holstein,preconditioner)
 
-    # dS/dx′ = M⋅O⁻¹⋅ϕ₊
-    mulM!(dSfdx′,holstein,O⁻¹ϕ₊)
+    # calculate dM/dx⋅O⁻¹⋅ϕ₊
+    muldMdx!(dMdxO⁻¹ϕ,holstein,O⁻¹ϕ₊)
 
-    # dS/dx″ = [dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊
-    muldMᵀdx!(dSfdx″,holstein,dSfdx′)
+    # calculate M⋅O⁻¹⋅ϕ₊
+    mulM!(MO⁻¹ϕ,holstein,O⁻¹ϕ₊)
 
-    # dS/dx += -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊
-    @. dSdx += -O⁻¹ϕ₊ * dSfdx″
+    # calculate -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ = -[M⋅O⁻¹⋅ϕ₊]ᵀ⋅[dM/dx⋅O⁻¹⋅ϕ₊]
+    @. dSdx = - MO⁻¹ϕ * dMdxO⁻¹ϕ
 
-    # dS/dx′ = M⋅O⁻¹⋅ϕ₋
-    mulM!(dSfdx′,holstein,O⁻¹ϕ₋)
+    # calculate dM/dx⋅O⁻¹⋅ϕ₋
+    muldMdx!(dMdxO⁻¹ϕ,holstein,O⁻¹ϕ₋)
 
-    # dS/dx″ = [dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    muldMᵀdx!(dSfdx″,holstein,dSfdx′)
+    # calculate M⋅O⁻¹⋅ϕ₋
+    mulM!(MO⁻¹ϕ,holstein,O⁻¹ϕ₋)
 
-    # dS/dx += -ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    @. dSdx += -O⁻¹ϕ₋ * dSfdx″
+    # calculate -ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ = -[M⋅O⁻¹⋅ϕ₋]ᵀ⋅[dM/dx⋅O⁻¹⋅ϕ₋]
+    @. dSdx′ = dSdx - MO⁻¹ϕ * dMdxO⁻¹ϕ
+
+    # In the lines of code below there is a subtle detail that is addressed that is a result of defining
+    # our M matrix with the -B[τ] matrices on the upper diagonal instead of the lower diagonal.
+    # After doing matrix-vector multiplies by all the  dM/dx's, the expectation value for the partial
+    # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.
+    # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
+    # and storing the ∂Sf/∂xᵢ(τ) partial derivative values in the vector dSdx′, and then copying a properly
+    # shifted version into the vector dSdx.
+
+    # iterate over sites
+    @inbounds @fastmath for site in 1:holstein.nsites
+        # iterate over time slices
+        for τ in 1:holstein.Lτ
+            idx_τ   = get_index(τ,               site, holstein.Lτ)
+            idx_τp1 = get_index(τ%holstein.Lτ+1, site, holstein.Lτ)
+            # shifting values one time slice forward
+            dSdx[idx_τp1] = real(dSdx′[idx_τ])
+        end
+    end
 
     return iters
 end
