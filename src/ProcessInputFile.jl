@@ -95,6 +95,7 @@ function process_input_file(filename::String)
     
     # write git commit of code to log file
     @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
+    flush(logio)
 
     ##############################
     ## CONSTRUCT HOLSTEIN MODEL ##
