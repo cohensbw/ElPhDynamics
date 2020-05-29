@@ -1,5 +1,9 @@
 module Langevin
 
+# setting number of threads used by FFTW to 1
+using FFTW
+FFTW.set_num_threads(1)
+
 #######################
 ## INCLUDING MODULES ##
 #######################
