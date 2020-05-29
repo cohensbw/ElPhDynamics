@@ -31,9 +31,6 @@ function process_input_file(filename::String)
     
     input = TOML.parsefile(filename)
 
-    # checking correct version for input file is specified
-    @assert input["input_format_version"] == "0.1.0"
-
     ##################################
     ## DEFINE SIMULATION PARAMETERS ##
     ##################################
@@ -63,6 +60,7 @@ function process_input_file(filename::String)
                                           input["simulation"]["downsample"],
                                           input["simulation"]["filepath"],
                                           input["simulation"]["foldername"])
+
     # For Langevin simulation
     else
 
@@ -77,6 +75,15 @@ function process_input_file(filename::String)
                                           input["simulation"]["foldername"])
     end
 
+    # make direcotory data will be written to
+    mkdir(sim_params.datafolder)
+
+    # initialize random number generator with seed
+    if !("random_seed" in keys(input["simulation"]))
+        input["simulation"]["random_seed"] = abs(rand(Int))
+    end
+    Random.seed!(input["simulation"]["random_seed"])
+
     # copy input file into data folder
     cp(filename,sim_params.datafolder*filename)
 
@@ -88,12 +95,6 @@ function process_input_file(filename::String)
     
     # write git commit of code to log file
     @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
-
-    # initialize random number generator with seed
-    if !("random_seed" in keys(input["simulation"]))
-        input["simulation"]["random_seed"] = abs(rand(Int))
-    end
-    Random.seed!(input["simulation"]["random_seed"])
 
     ##############################
     ## CONSTRUCT HOLSTEIN MODEL ##

@@ -74,7 +74,6 @@ struct SimulationParameters{T<:AbstractFloat}
             if !isdir(datafolderID)
                 datafolder = datafolderID
                 foldername = foldername * "-" * string(id)
-                mkdir(datafolder)
                 break
             end
         end

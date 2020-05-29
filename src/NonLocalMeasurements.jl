@@ -30,7 +30,7 @@ Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂
     Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
     Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
 
-    # takes care of time-ordering heavey-side step function
+    # takes care of time-ordering with heavey-side step function
     return (1-2*θ(τ₁-τ₂))*(Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
 end
 

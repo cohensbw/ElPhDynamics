@@ -56,7 +56,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     dSdx::Vector{T}
 
     """
-    Velcity.
+    Velocity.
     """
     v::Vector{T}
 
@@ -66,12 +66,12 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     R::Vector{T}
 
     """
-    Auxialiary fields for spin up electrons.
+    Auxiliary fields for spin up electrons.
     """
     ϕ₊::Vector{T}
 
     """
-    Auxialiary fields for spin down electrons.
+    Auxiliary fields for spin down electrons.
     """
     ϕ₋::Vector{T}
 
