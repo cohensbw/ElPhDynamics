@@ -7,7 +7,7 @@ using LinearAlgebra
 using ..Utilities: get_index
 using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
 using ..PhononAction: calc_dSbosedx!
-using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!
+using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 
 using ..KPMPreconditioners: setup!
 
@@ -26,33 +26,22 @@ abstract type Dynamics end
 struct EulerDynamics{T<:AbstractFloat} <: Dynamics
 
     N::Int
-
     Δt::T
-
     dSdx::Vector{T}
-    fft_dSdx::Vector{Complex{T}}
-
     η::Vector{T}
-    fft_η::Vector{Complex{T}}
-
     Δx::Vector{T}
-    fft_Δx::Vector{Complex{T}}
-
     R::Vector{T}
     M⁻¹R::Vector{T}
 
     function EulerDynamics(N::Int, Δt::T) where {T<:AbstractFloat}
 
         dSdx     = zeros(T,N)
-        fft_dSdx = zeros(Complex{T},N)
         η        = zeros(T,N)
-        fft_η    = zeros(Complex{T},N)
         Δx       = zeros(T,N)
-        fft_Δx   = zeros(Complex{T},N)
         R        = zeros(T,N)
         M⁻¹R     = zeros(T,N)
 
-        return new{T}(N,Δt,dSdx,fft_dSdx,η,fft_η,Δx,fft_Δx,R,M⁻¹R)
+        return new{T}(N,Δt,dSdx,η,Δx,R,M⁻¹R)
     end
 end
 
@@ -61,11 +50,10 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::EulerDynamics{T1}, fa::Fou
     N        = dyn.N
     Δt       = dyn.Δt
     dSdx     = dyn.dSdx
-    fft_dSdx = dyn.fft_dSdx
+    QdSdx    = dyn.dSdx
     η        = dyn.η
-    fft_η    = dyn.fft_η
+    sqrtQη   = dyn.η
     Δx       = dyn.Δx
-    fft_Δx   = dyn.fft_Δx
     R        = dyn.R
     M⁻¹R     = dyn.M⁻¹R
 
@@ -80,26 +68,20 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::EulerDynamics{T1}, fa::Fou
     randn!(R)
     iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
 
-    # fourier transform dSdx
-    forward_fft!( fft_dSdx , dSdx , fa)
+    # dSdx ==> Q⋅dSdx
+    fourier_accelerate!( QdSdx, fa , dSdx, 1.0 )
 
-    # accelerate fft_dSdx ==> Q⋅fft_dSdx
-    accelerate!( fft_dSdx , fa , 1.0 )
+    # η = √Q⋅η
+    fourier_accelerate!( sqrtQη, fa , η, 0.5 )
 
-    # fourier transform η
-    forward_fft!( fft_η , η , fa )
-
-    # accelerate fft_η ==> √Q⋅fft_η
-    accelerate!( fft_η , fa , 0.5 )
-
-    # calculate fft_dx
-    @. fft_Δx = sqrt(2.0*Δt)*fft_η - Δt*fft_dSdx
-
-    # perform inverse fourier transform to get Δx
-    inverse_fft!( Δx , fft_Δx , fa )
+    # Δx = √(2⋅Δt⋅Q)⋅η - Δt⋅Q⋅dS/dx
+    @. Δx = sqrt(2.0*Δt)*sqrtQη - Δt*QdSdx
 
     # update phonon fields
     @. holstein.x += Δx
+
+    # update the exponentiated interaction matrix to reflect current phonon field configuration.
+    construct_expnΔτV!(holstein)
 
     return iters
 end
@@ -121,19 +103,11 @@ end
 struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
 
     N::Int
-
     Δt::T
-
     dSdx::Vector{T}
     dSdx′::Vector{T}
-    fft_dSdx::Vector{Complex{T}}
-
     η::Vector{T}
-    fft_η::Vector{Complex{T}}
-
     Δx::Vector{T}
-    fft_Δx::Vector{Complex{T}}
-
     R::Vector{T}
     M⁻¹R::Vector{T}
 
@@ -141,15 +115,12 @@ struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
 
         dSdx     = zeros(T,N)
         dSdx′    = zeros(T,N)
-        fft_dSdx = zeros(Complex{T},N)
         η        = zeros(T,N)
-        fft_η    = zeros(Complex{T},N)
         Δx       = zeros(T,N)
-        fft_Δx   = zeros(Complex{T},N)
         R        = zeros(T,N)
         M⁻¹R     = zeros(T,N)
 
-        return new{T}(N,Δt,dSdx,dSdx′,fft_dSdx,η,fft_η,Δx,fft_Δx,R,M⁻¹R)
+        return new{T}(N,Δt,dSdx,dSdx′,η,Δx,R,M⁻¹R)
     end
 end
 
@@ -158,14 +129,16 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     N        = dyn.N
     Δt       = dyn.Δt
     dSdx     = dyn.dSdx
+    QdSdx    = dyn.dSdx
     dSdx′    = dyn.dSdx′
-    fft_dSdx = dyn.fft_dSdx
     η        = dyn.η
-    fft_η    = dyn.fft_η
+    sqrtQη   = dyn.η
     Δx       = dyn.Δx
-    fft_Δx   = dyn.fft_Δx
     R        = dyn.R
     M⁻¹R     = dyn.M⁻¹R
+    x        = holstein.x
+    x′       = holstein.x
+    x″       = holstein.x
 
     # update the exponentiated interaction matrix to reflect current phonon field configuration.
     construct_expnΔτV!(holstein)
@@ -178,13 +151,12 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
 
     # get the update for the fields using euler method
-    @. Δx = sqrt(2*Δt)*η - Δt*real(dSdx)
+    @. Δx = sqrt(2*Δt)*η - Δt*dSdx
 
     # update phonon fields
-    @. holstein.x += Δx
+    @. x′ = x + Δx
  
-    # update the exponentiated interaction matrix so that it reflects the current
-    # phonon field configuration.
+    # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
     construct_expnΔτV!(holstein)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
@@ -192,34 +164,28 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     iters = calc_dSdx!(dSdx′, R, M⁻¹R, holstein, preconditioner)
 
     # revert back to original phonon fields
-    @. holstein.x -= Δx
+    @. x = x′ - Δx
 
-    # update the exponentiated interaction matrix to reflect current phonon field configuration.
+    # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
     construct_expnΔτV!(holstein)
 
-    # get the partial derivative for the RK step
-    @. dSdx′ = (dSdx′+dSdx)/2.0
+    # get the partial derivative for the second RK step
+    @. dSdx = (dSdx′+dSdx)/2.0
 
-    # fourier transform dSdx′
-    forward_fft!( fft_dSdx , dSdx′ , fa)
+    # dS/dx ==> Q⋅dS/dx
+    fourier_accelerate!(QdSdx,fa,dSdx,1.0)
 
-    # accelerate fft_dSdx ==> Q⋅fft_dSdx
-    accelerate!( fft_dSdx , fa , 1.0 )
+    # η ==> √Q⋅η
+    fourier_accelerate!(sqrtQη,fa,η,0.5)
 
-    # fourier transform η
-    forward_fft!( fft_η , η , fa )
-
-    # accelerate noise vector fft_η ==> √(Q)⋅fft_η
-    accelerate!( fft_η , fa , 0.5 )
-
-    # calculate fft_Δx
-    @. fft_Δx = sqrt(2*Δt)*fft_η - Δt*fft_dSdx
-
-    # perform inverse fourier transform to get Δx
-    inverse_fft!( Δx , fft_Δx , fa )
+    # Δx = √(2⋅Δt⋅Q)⋅η - Δt⋅Q⋅dS/dx
+    @. Δx = sqrt(2.0*Δt)*sqrtQη - Δt*QdSdx 
 
     # update phonon fields
-    @. holstein.x += Δx
+    @. x″ = x + Δx
+
+    # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
+    construct_expnΔτV!(holstein)
 
     return iters
 end
@@ -252,7 +218,6 @@ struct HeunsDynamics{T<:AbstractFloat} <: Dynamics
     Δx::Vector{T}
     R::Vector{T}
     M⁻¹R::Vector{T}
-    fft_v::Vector{Complex{T}}
 
     function HeunsDynamics(N::Int,Δt::T) where {T<:AbstractFloat}
 
@@ -262,31 +227,32 @@ struct HeunsDynamics{T<:AbstractFloat} <: Dynamics
         Δx    = zeros(T,N)
         R     = zeros(T,N)
         M⁻¹R  = zeros(T,N)
-        fft_v = zeros(Complex{T},N)
 
-        return new{T}(N,Δt,η,dSdx,dSdx′,Δx,R,M⁻¹R,fft_v)
+        return new{T}(N,Δt,η,dSdx,dSdx′,Δx,R,M⁻¹R)
     end
 end
 
 function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1<:AbstractFloat,T2<:Number}
 
+    x        = holstein.x
+    x′       = holstein.x
+    x″       = holstein.x
+    Δx       = dyn.Δx
     Δt       = dyn.Δt
     η        = dyn.η
     dSdx     = dyn.dSdx
+    dΓdx     = dyn.dSdx
     dSdx′    = dyn.dSdx′
-    Δx       = dyn.Δx
+    dΓdx′    = dyn.dSdx′
     R        = dyn.R
     M⁻¹R     = dyn.M⁻¹R
-    fft_v    = dyn.fft_v
 
     # 1. intialize η
     randn!(η)
 
     # 2. ξ = [F⁻¹⋅√Q⋅F]⋅η
-    forward_fft!(fft_v,η,fa)
-    accelerate!(fft_v,fa,0.5)
-    inverse_fft!(η,fft_v,fa)
     ξ = η
+    fourier_accelerate!(ξ,fa,η,0.5)
 
     # 3. calcualte dS/dx
     construct_expnΔτV!(holstein)
@@ -294,16 +260,13 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::Fou
     iters1 = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
 
     # 4. dΓ/dx  = [F⁻¹⋅Q⋅F]⋅dS/dx
-    forward_fft!(fft_v,dSdx,fa)
-    accelerate!(fft_v,fa,1.0) 
-    inverse_fft!(dSdx,fft_v,fa)
-    dΓdx = dSdx
+    fourier_accelerate!(dΓdx,fa,dSdx,1.0)
 
     # 5. Δx = √(2Δt)⋅ξ - Δt⋅dΓ/dx
     @. Δx = sqrt(2*Δt)*ξ - Δt*dΓdx
 
     # 6. x′ = x + Δx
-    @. holstein.x += Δx
+    @. x′ = x + Δx
     construct_expnΔτV!(holstein)
 
     # 7. calculate dS/dx′
@@ -311,16 +274,13 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::Fou
     iters2 = calc_dSdx!(dSdx′, R, M⁻¹R, holstein, preconditioner)
 
     # 8. dΓ/dx′ = [F⁻¹⋅Q⋅F]⋅dS/dx′
-    forward_fft!(fft_v,dSdx′,fa)
-    accelerate!(fft_v,fa,1.0) 
-    inverse_fft!(dSdx′,fft_v,fa)
-    dΓdx′ = dSdx′
+    fourier_accelerate!(dΓdx′,fa,dSdx′,1.0)
 
     # 9. x = x′- Δx
-    @. holstein.x -= Δx
+    @. x = x′ - Δx
 
     # 10. x″ = x + √(2Δt)⋅ξ - Δt⋅(dΓ/dx+dΓ/dx′)/2 
-    holstein.x += sqrt(2*Δt)*ξ - Δt*(dΓdx+dΓdx′)/2
+    @. x″ = x + sqrt(2*Δt)*ξ - Δt*(dΓdx+dΓdx′)/2
     construct_expnΔτV!(holstein)
 
     return div(iters1+iters2,2)

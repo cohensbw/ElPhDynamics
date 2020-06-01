@@ -8,7 +8,7 @@ using Printf
 using ..Utilities: get_index
 using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulM!, muldMdx!, mulMᵀ!
 using ..PhononAction: calc_dSbosedx!, calc_Sbose
-using ..FourierAcceleration: FourierAccelerator, forward_fft!, inverse_fft!, accelerate!
+using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 import ..KPMPreconditioners
 
 export HybridMonteCarlo, update!
@@ -120,11 +120,6 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     u::Vector{T}
 
-    """
-    Temporary storage vector.
-    """
-    z::Vector{Complex{T}}
-
     function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T=1.0) where {T<:AbstractFloat}
 
         @assert 0.0<tr<=1.0
@@ -147,7 +142,6 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         O⁻¹ϕ₋′ = zeros(T,Ndof)
 
         u      = zeros(T,Ndof)
-        z      = zeros(Complex{T},Ndof)
 
         # partial momentum refresh parameter
         α = 1.0 - tr
@@ -158,7 +152,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # number of timesteps
         Nt = round(Int,tr/Δt)
 
-        return new{T}(Ndof, x, tr, Δt, Nt, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u, z)
+        return new{T}(Ndof, x, tr, Δt, Nt, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u)
     end
 end
 
@@ -172,7 +166,6 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     x0    = hmc.x
     dSdx  = hmc.dSdx
     QdSdx = hmc.dSdx
-    dSdx′ = hmc.z
     v     = hmc.v
     Nt    = hmc.Nt
     Δt    = hmc.Δt
@@ -190,9 +183,7 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     calc_dSdx!(hmc, holstein, preconditioner)
 
     # fourier accelerate dS/dx ==> Q⋅dS/dx
-    forward_fft!(dSdx′,dSdx,fa)
-    accelerate!(dSdx′,fa,1.0)
-    inverse_fft!(QdSdx,dSdx′,fa)
+    fourier_accelerate!(QdSdx,fa,dSdx,1.0)
 
     # calculate the total energy H
     H0 = calc_H(hmc, holstein, fa)
@@ -216,12 +207,9 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
         # calculate dS/dx(t+Δt) value
         iter_t = calc_dSdx!(hmc, holstein, preconditioner)
         iters += iter_t
-        # println(iter_t)
 
         # fourier accelerate dS/dx(t+Δt)
-        forward_fft!(dSdx′,dSdx,fa)
-        accelerate!(dSdx′,fa,1.0)
-        inverse_fft!(QdSdx,dSdx′,fa)
+        fourier_accelerate!(QdSdx,fa,dSdx,1.0)
 
         # v(t+Δt) = v(t+⋅Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
         @. v = v - Δt/2*QdSdx
@@ -236,7 +224,7 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     # get the number of iterations
     iters = cld(iters,Nt)
 
-    # raising warning if dynamics has stalled.
+    # raise warning if dynamics has stalled.
     if iters==hmc.Ndof || iters==2*hmc.Ndof
         @warn @sprintf("HMC Update Failed to Converge Dynamics; Iterations Per Solve = %d",iters)
     end
@@ -244,7 +232,6 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
-        # println("ACCEPTED")
         return true, T1(iters)
 
     else # if rejected
@@ -258,7 +245,6 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
         # reflect velocity
         @. v = -v
 
-        # println("REJECTED")
         return false, T1(iters)
     end
 end
@@ -272,16 +258,13 @@ momentum refreshes of the form `v = α⋅v + √(1-α²)⋅v′` where `v′=√
 """
 function refresh_v!(hmc::HybridMonteCarlo{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
+    R       = hmc.R
     sqrtQR  = hmc.R
-    v  = hmc.v
-    v′ = hmc.z
-    α  = hmc.α
+    v       = hmc.v
+    α       = hmc.α
 
-    randn!(sqrtQR)
-    forward_fft!(v′,sqrtQR,fa)
-    accelerate!(v′,fa,0.5)
-    inverse_fft!(sqrtQR,v′,fa)
-
+    randn!(R)
+    fourier_accelerate!(sqrtQR,fa,R,0.5)
     @. v = α*v + sqrt(1.0-α^2)*sqrtQR
 
     return nothing
@@ -355,12 +338,8 @@ Calculate the kintetic energy `K = v⋅Q⁻¹⋅v/2` where `Q` is the accelerati
 function calc_K(hmc::HybridMonteCarlo{T}, fa::FourierAccelerator{T})::T where {T<:AbstractFloat}
 
     v    = hmc.v
-    v′   = hmc.z
     Q⁻¹v = hmc.u
-
-    forward_fft!(v′,v,fa)
-    accelerate!(v′,fa,-1.0)
-    inverse_fft!(Q⁻¹v,v′,fa)
+    fourier_accelerate!(Q⁻¹v,fa,v,-1.0)
     K = dot(v,Q⁻¹v)/2
 
     return K
@@ -449,22 +428,19 @@ function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, 
     # calculate -ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ = -[M⋅O⁻¹⋅ϕ₋]ᵀ⋅[dM/dx⋅O⁻¹⋅ϕ₋]
     @. dSdx′ = dSdx - MO⁻¹ϕ * dMdxO⁻¹ϕ
 
-    # In the lines of code below there is a subtle detail that is addressed that is a result of defining
+    # In the section of code below there is a subtle detail that is addressed that results from defining
     # our M matrix with the -B[τ] matrices on the upper diagonal instead of the lower diagonal.
     # After doing matrix-vector multiplies by all the  dM/dx's, the expectation value for the partial
     # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.
     # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
     # and storing the ∂Sf/∂xᵢ(τ) partial derivative values in the vector dSdx′, and then copying a properly
-    # shifted version into the vector dSdx.
-
-    # iterate over sites
+    # shifted version into the final vector dSdx.
     @inbounds @fastmath for site in 1:holstein.nsites
-        # iterate over time slices
         for τ in 1:holstein.Lτ
-            idx_τ   = get_index(τ,               site, holstein.Lτ)
-            idx_τp1 = get_index(τ%holstein.Lτ+1, site, holstein.Lτ)
-            # shifting values one time slice forward
-            dSdx[idx_τp1] = real(dSdx′[idx_τ])
+            τp1           = τ%holstein.Lτ+1
+            idx_τ         = get_index(τ,   site, holstein.Lτ)
+            idx_τp1       = get_index(τp1, site, holstein.Lτ)
+            dSdx[idx_τp1] = dSdx′[idx_τ]
         end
     end
 
