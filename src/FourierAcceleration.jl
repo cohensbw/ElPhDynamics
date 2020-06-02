@@ -61,7 +61,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         vout = zeros(Complex{T1},N*L)
 
         # declaring temporary storage vector to represent vectors in frequency space.
-        u = zeros(Complex{T1},L)
+        u = zeros(Complex{T1},N*L)
 
         # vector for planning FFT
         v = zeros(Complex{T1},L,N)
