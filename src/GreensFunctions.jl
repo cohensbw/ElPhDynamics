@@ -76,6 +76,7 @@ function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2},
     setup!(preconditioner) # setup block preconditioner
     if holstein.mul_by_M
         # solve M⋅x=g ==> x=M⁻¹⋅g
+        holstein.transposed = false
         iters = ldiv!(Gr.M⁻¹g,holstein,Gr.g,preconditioner)
     else
         # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g

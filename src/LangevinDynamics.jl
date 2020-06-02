@@ -339,6 +339,7 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T3},M⁻¹g::Ab
     fill!(M⁻¹g,0.0)
     if holstein.mul_by_M
         # solve M⋅x=g ==> x=M⁻¹⋅g
+        holstein.transposed = false
         iters = ldiv!(M⁻¹g,holstein,g,preconditioner)
     else
         # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g
