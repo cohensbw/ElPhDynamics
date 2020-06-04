@@ -22,6 +22,9 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
     # phonon frequncies
     ω = holstein.ω
 
+    # anhmarnic phonon frequency
+    ω4 = holstein.ω4
+
     # electron-phonon coupling
     λ = holstein.λ
 
@@ -61,7 +64,7 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
                 Δx = x[get_index(τ%Lτ+1,site,Lτ)]-x[index]
                 container["phonon_kin"][orbit] += (0.5/Δτ-(Δx*Δx)/Δτ²/2) / normalization
                 # measuring phonon potential energy
-                container["phonon_pot"][orbit] += ω[site]*ω[site]*x[index]*x[index]/2.0 / normalization
+                container["phonon_pot"][orbit] += (ω[site]^2*x[index]^2/2 + ω4[site]*x[index]^4) / normalization
                 # measuring the electron phonon energy λ⟨x⋅(n₊+n₋)⟩
                 container["elph_energy"][orbit] += λ[site]*x[index]*(2.0-G1-G2) / normalization
                 # measure ⟨x⟩
