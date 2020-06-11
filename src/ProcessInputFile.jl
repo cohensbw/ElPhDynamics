@@ -15,7 +15,7 @@ using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
-using ..FourierAcceleration: FourierAccelerator, update_Q!
+using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 
 using ..KPMPreconditioners: LeftKPMPreconditioner, LeftRightKPMPreconditioner
@@ -45,10 +45,10 @@ function process_input_file(filename::String)
 
         burnin_time     = input["simulation"]["burnin_time"]
         simulation_time = input["simulation"]["simulation_time"]
-        refresh_time    = input["simulation"]["refresh_time"]
+        trajectory_time = input["simulation"]["trajectory_time"]
 
-        burnin = round(Int,burnin_time/refresh_time)
-        nsteps = round(Int,simulation_time/refresh_time)
+        burnin = round(Int,burnin_time/trajectory_time)
+        nsteps = round(Int,simulation_time/trajectory_time)
         meas_freq = 1
 
         # construct simulation parameters object.
@@ -136,11 +136,17 @@ function process_input_file(filename::String)
     #################################
     
     # defining FourierAccelerator type
-    fa = FourierAccelerator(holstein, 0.5, input["simulation"]["dt"])
+    fa = FourierAccelerator(holstein)
     
     # set the mass used to construct fourier acceleration matrix
     for d in input["fourier_acceleration"]
-        update_Q!(fa, holstein, d["mass"], input["simulation"]["dt"], d["omega_min"], d["omega_max"])
+        mass = d["mass"]
+        c = 0.0
+        if haskey(d,"c")
+            c = d["c"]
+        end
+        update_Q!(fa, holstein, d["omega_min"], d["omega_max"], mass)
+        update_M!(fa, holstein, d["omega_min"], d["omega_max"], mass, c)
     end
 
     ################################
@@ -152,7 +158,11 @@ function process_input_file(filename::String)
 
     dynamics = nothing
     if input["simulation"]["is_hybrid_monte_carlo"]
-        dynamics = HybridMonteCarlo(NL,Δt,refresh_time)
+        construct_guess           = input["simulation"]["construct_guess"]
+        momentum_refresh_fraction = input["simulation"]["momentum_refresh_fraction"]
+        @assert 0.0 < momentum_refresh_fraction <= 1.0
+        α = 1.0 - momentum_refresh_fraction
+        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,α,construct_guess)
     elseif input["simulation"]["update_method"]==1
         dynamics = EulerDynamics(NL,Δt)
     elseif input["simulation"]["update_method"]==2

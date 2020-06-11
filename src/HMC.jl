@@ -116,13 +116,19 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     O⁻¹ϕ₋′::Vector{T}
 
     """
+    Construct initial guess when solving linear system.
+    """
+    construct_guess::Bool
+
+    """
     Temporary storage vector.
     """
     u::Vector{T}
 
-    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T=1.0) where {T<:AbstractFloat}
+    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T,α::T,construct_guess::Bool=true) where {T<:AbstractFloat}
 
-        @assert 0.0<tr<=1.0
+        # partial momentum refresh parameter
+        @assert 0.0 <= α < 1.0
 
         x      = zeros(T,Ndof)
         dSdx   = zeros(T,Ndof)
@@ -143,16 +149,13 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
 
         u      = zeros(T,Ndof)
 
-        # partial momentum refresh parameter
-        α = 1.0 - tr
-
         # the action
         H = 0.0::T
 
         # number of timesteps
         Nt = round(Int,tr/Δt)
 
-        return new{T}(Ndof, x, tr, Δt, Nt, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u)
+        return new{T}(Ndof, x, tr, Δt, Nt, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
     end
 end
 
@@ -180,10 +183,11 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     refresh_ϕ!(hmc,holstein,fa)
 
     # calculate the initial dS/dx value
-    calc_dSdx!(hmc, holstein, preconditioner)
+    iters_0 = calc_dSdx!(hmc, holstein, preconditioner)
 
-    # fourier accelerate dS/dx ==> Q⋅dS/dx
-    fourier_accelerate!(QdSdx,fa,dSdx,1.0)
+    # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
+    fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
+    # fourier_accelerate!(QdSdx,fa,dSdx,1.0,use_mass=false)
 
     # calculate the total energy H
     H0 = calc_H(hmc, holstein, fa)
@@ -208,8 +212,9 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
         iter_t = calc_dSdx!(hmc, holstein, preconditioner)
         iters += iter_t
 
-        # fourier accelerate dS/dx(t+Δt)
-        fourier_accelerate!(QdSdx,fa,dSdx,1.0)
+        # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
+        fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
+        # fourier_accelerate!(QdSdx,fa,dSdx,1.0,use_mass=false)
 
         # v(t+Δt) = v(t+⋅Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
         @. v = v - Δt/2*QdSdx
@@ -223,11 +228,6 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
 
     # get the number of iterations
     iters = cld(iters,Nt)
-
-    # raise warning if dynamics has stalled.
-    if iters==hmc.Ndof || iters==2*hmc.Ndof
-        @warn @sprintf("HMC Update Failed to Converge Dynamics; Iterations Per Solve = %d",iters)
-    end
 
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
@@ -264,7 +264,8 @@ function refresh_v!(hmc::HybridMonteCarlo{T},fa::FourierAccelerator{T}) where {T
     α       = hmc.α
 
     randn!(R)
-    fourier_accelerate!(sqrtQR,fa,R,0.5)
+    fourier_accelerate!(sqrtQR,fa,R,-0.5,use_mass=true)
+    # fourier_accelerate!(sqrtQR,fa,R,0.5,use_mass=false)
     @. v = α*v + sqrt(1.0-α^2)*sqrtQR
 
     return nothing
@@ -339,7 +340,8 @@ function calc_K(hmc::HybridMonteCarlo{T}, fa::FourierAccelerator{T})::T where {T
 
     v    = hmc.v
     Q⁻¹v = hmc.u
-    fourier_accelerate!(Q⁻¹v,fa,v,-1.0)
+    fourier_accelerate!(Q⁻¹v,fa,v,1.0,use_mass=true)
+    # fourier_accelerate!(Q⁻¹v,fa,v,-1.0,use_mass=false)
     K = dot(v,Q⁻¹v)/2
 
     return K
@@ -391,7 +393,6 @@ function calc_Sf(hmc::HybridMonteCarlo{T})::T where {T<:AbstractFloat}
 
     return Sf
 end
-
 
 """
 Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ + ₋ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
@@ -475,12 +476,14 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2
 
     if !holstein.mul_by_M # if using Conjugate Gradient
 
-        # construct initial guess for solution to linear system
-        copyto!(u,O⁻¹ϕ₊)
-        @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
-        copyto!(O⁻¹ϕ₊′,u)
-
-        # fill!(O⁻¹ϕ₊,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,O⁻¹ϕ₊)
+            @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
+            copyto!(O⁻¹ϕ₊′,u)
+        else
+            fill!(O⁻¹ϕ₊,0.0)
+        end
 
         # solve linear system
         iters += ldiv!(O⁻¹ϕ₊,holstein,ϕ₊,preconditioner)
@@ -490,23 +493,27 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2
         # setup the precontioer
         KPMPreconditioners.setup!(preconditioner)
 
-        # construct initial guess for solution to linear system
-        copyto!(u,M⁻ᵀϕ₊)
-        @. M⁻ᵀϕ₊ = 2*M⁻ᵀϕ₊ - M⁻ᵀϕ₊′
-        copyto!(M⁻ᵀϕ₊′,u)
-
-        # fill!(M⁻ᵀϕ₊,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,M⁻ᵀϕ₊)
+            @. M⁻ᵀϕ₊ = 2*M⁻ᵀϕ₊ - M⁻ᵀϕ₊′
+            copyto!(M⁻ᵀϕ₊′,u)
+        else
+            fill!(M⁻ᵀϕ₊,0.0)
+        end
 
         # solve linear system
         holstein.transposed=true
         iters += ldiv!(M⁻ᵀϕ₊,holstein,ϕ₊,preconditioner)
 
-        # construct initial guess for solution to linear system
-        copyto!(u,O⁻¹ϕ₊)
-        @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
-        copyto!(O⁻¹ϕ₊′,u)
-
-        # fill!(O⁻¹ϕ₊,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,O⁻¹ϕ₊)
+            @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
+            copyto!(O⁻¹ϕ₊′,u)
+        else
+            fill!(O⁻¹ϕ₊,0.0)
+        end
 
         # solve linear system
         holstein.transposed=false
@@ -519,35 +526,41 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2
 
     if !holstein.mul_by_M # if using Conjugate Gradient
 
-        # construct initial guess for solution to linear system
-        copyto!(u,O⁻¹ϕ₋)
-        @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
-        copyto!(O⁻¹ϕ₋′,u)
-
-        # fill!(O⁻¹ϕ₋,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,O⁻¹ϕ₋)
+            @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
+            copyto!(O⁻¹ϕ₋′,u)
+        else
+            fill!(O⁻¹ϕ₋,0.0)
+        end
 
         # solve linear system
         iters += ldiv!(O⁻¹ϕ₋,holstein,ϕ₋,preconditioner)
         
     else # if using GMRES
 
-        # construct initial guess for solution to linear system
-        copyto!(u,M⁻ᵀϕ₋)
-        @. M⁻ᵀϕ₋ = 2*M⁻ᵀϕ₋ - M⁻ᵀϕ₋′
-        copyto!(M⁻ᵀϕ₋′,u)
-
-        # fill!(M⁻ᵀϕ₋,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,M⁻ᵀϕ₋)
+            @. M⁻ᵀϕ₋ = 2*M⁻ᵀϕ₋ - M⁻ᵀϕ₋′
+            copyto!(M⁻ᵀϕ₋′,u)
+        else
+            fill!(M⁻ᵀϕ₋,0.0)
+        end
 
         # solve linear system
         holstein.transposed=true
         iters += ldiv!(M⁻ᵀϕ₋,holstein,ϕ₋,preconditioner)
 
-        # construct initial guess for solution to linear system
-        copyto!(u,O⁻¹ϕ₋)
-        @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
-        copyto!(O⁻¹ϕ₋′,u)
-
-        # fill!(O⁻¹ϕ₋,0.0)
+        if hmc.construct_guess
+            # construct initial guess for solution to linear system
+            copyto!(u,O⁻¹ϕ₋)
+            @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
+            copyto!(O⁻¹ϕ₋′,u)
+        else
+            fill!(O⁻¹ϕ₋,0.0)
+        end
 
         # solve linear system
         holstein.transposed=false

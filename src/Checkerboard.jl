@@ -104,7 +104,7 @@ for the checkerboard decomposition.
 function checkerboard_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2}) where {T1<:Number,T2<:Number}
 
     # iterating over pairs of neighboring sites
-    @fastmath @inbounds for n in 1:length(coshtij)
+    @fastmath @inbounds @simd for n in 1:length(coshtij)
 
         c = coshtij[n]
         s = sinhtij[n]
@@ -178,7 +178,7 @@ for the checkerboard decomposition.
 function checkerboard_transpose_mul!(y::AbstractVector{T1}, neighbor_table_tij::Matrix{Int}, coshtij::Vector{T2}, sinhtij::Vector{T2})  where {T1<:Number,T2<:Number}
 
     # iterating over pairs of neighboring sites
-    @fastmath @inbounds for n in length(coshtij):-1:1
+    @fastmath @inbounds @simd for n in length(coshtij):-1:1
 
         c = coshtij[n]
         s = sinhtij[n]

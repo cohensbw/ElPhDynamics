@@ -7,7 +7,7 @@ using UnsafeArrays
 using ..HolsteinModels: HolsteinModel
 using ..Utilities: get_index
 
-export FourierAccelerator, update_Q!, fourier_accelerate!
+export FourierAccelerator, update_Q!, update_M!, fourier_accelerate!
 
 struct FourierAccelerator{T<:AbstractFloat}
 
@@ -20,8 +20,11 @@ struct FourierAccelerator{T<:AbstractFloat}
     "Vector to store data associated with FFT of single time slice"
     u::Vector{Complex{T}}
 
-    "Vector representing diagonal acceleration matrix."
+    "Vector representing diagonal acceleration matrix using old convention."
     Q::Vector{T}
+
+    "Vector representing c1 matrix using new convetion."
+    M::Vector{T}
 
     "Performs forward fourier transformation"
     pfft::FFTW.cFFTWPlan{Complex{T},-1,false,2}
@@ -42,7 +45,7 @@ struct FourierAccelerator{T<:AbstractFloat}
     """
     Constructor for FourierAccelerator type.
     """
-    function FourierAccelerator(holstein::HolsteinModel{T1,T2}, mass::T1, Δt::T1) where {T1<:AbstractFloat,T2<:Number}
+    function FourierAccelerator(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
 
         # getting number of sites in lattice
         N = holstein.lattice.nsites
@@ -50,9 +53,11 @@ struct FourierAccelerator{T<:AbstractFloat}
         # length of imaginary time axis
         L = holstein.Lτ
 
-        # constructing Q and √(2Q) matrices
+        # constructing Q and M
         Q = zeros(T1,N*L)
-        update_Q!(Q,holstein,mass,Δt,-Inf,Inf)
+
+        # constructing M
+        M = zeros(T1,N*L)
 
         # declaring a temporary vector for storage purpose if input vectors are real
         vin = zeros(Complex{T1},N*L)
@@ -72,7 +77,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         # planning inverse FFT
         pifft = plan_ifft(v, (1,), flags=FFTW.PATIENT)
 
-        new{T1}(vin,vout,u,Q,pfft,pifft,N,L)
+        new{T1}(vin,vout,u,Q,M,pfft,pifft,N,L)
     end
 
 end
@@ -84,7 +89,7 @@ end
 """
 Accelerate vector by multiplying with Q matrix.
 """
-function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccelerator{T}, v::AbstractVector{Complex{T}}, power::T) where {T<:AbstractFloat}
+function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccelerator{T}, v::AbstractVector{Complex{T}}, power::T; use_mass::Bool=false) where {T<:AbstractFloat}
 
     N = fa.N # number of sites in lattice
     L = fa.L # length of imaginary time axis
@@ -100,7 +105,11 @@ function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccele
         mul!(u′,fa.pfft,a)
 
         # apply diagonal acceleration matrix Q^power
-        @. u *= fa.Q^power
+        if use_mass
+            @. u *= fa.M^power
+        else
+            @. u *= fa.Q^power
+        end
 
         # ω → τ
         mul!(a′,fa.pifft,u′)
@@ -108,31 +117,31 @@ function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccele
     return nothing
 end
 
-function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccelerator{T}, v::AbstractVector{T}, power::T) where {T<:AbstractFloat}
+function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccelerator{T}, v::AbstractVector{T}, power::T; use_mass::Bool=false) where {T<:AbstractFloat}
 
     copyto!(fa.vin,v)
-    fourier_accelerate!(v′,fa,fa.vin,power)
+    fourier_accelerate!(v′,fa,fa.vin,power,use_mass=use_mass)
     return nothing
 end
 
-function fourier_accelerate!(v′::AbstractVector{T}, fa::FourierAccelerator{T}, v::AbstractVector{Complex{T}}, power::T) where {T<:AbstractFloat}
+function fourier_accelerate!(v′::AbstractVector{T}, fa::FourierAccelerator{T}, v::AbstractVector{Complex{T}}, power::T; use_mass::Bool=false) where {T<:AbstractFloat}
 
-    fourier_accelerate!(fa.vout,fa,v,power)
+    fourier_accelerate!(fa.vout,fa,v,power,use_mass=use_mass)
     @. v′ = real(fa.vout)
     return nothing
 end
 
-function fourier_accelerate!(v′::AbstractVector{T}, fa::FourierAccelerator{T}, v::AbstractVector{T}, power::T) where {T<:AbstractFloat}
+function fourier_accelerate!(v′::AbstractVector{T}, fa::FourierAccelerator{T}, v::AbstractVector{T}, power::T; use_mass::Bool=false) where {T<:AbstractFloat}
 
     copyto!(fa.vin,v)
-    fourier_accelerate!(fa.vout,fa,fa.vin,power)
+    fourier_accelerate!(fa.vout,fa,fa.vin,power,use_mass=use_mass)
     @. v′ = real(fa.vout)
     return nothing
 end
 
-function fourier_accelerate!(v::AbstractVector, fa::FourierAccelerator{T}, power::T) where {T<:AbstractFloat}
+function fourier_accelerate!(v::AbstractVector, fa::FourierAccelerator{T}, power::T; use_mass::Bool=false) where {T<:AbstractFloat}
 
-    fourier_accelerate!(v,fa,v,power)
+    fourier_accelerate!(v,fa,v,power,use_mass=use_mass)
     return nothing
 end
 
@@ -140,10 +149,22 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
 
     # updating the acceleration matrix for sites with a phonon frequency withing the specified range
-    update_Q!(fa.Q,holstein,mass,Δt,ω_min,ω_max)
+    update_Q!(fa.Q,holstein,ω_min,ω_max,m)
+
+    return nothing
+end
+
+
+"""
+Updates the c1 matrix for sites with phonon frequencies withing the specified range.
+"""
+function update_M!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1=0.0) where {T1<:AbstractFloat,T2<:Number}
+
+    # updating the acceleration matrix for sites with a phonon frequency withing the specified range
+    update_M!(fa.M,holstein,ω_min,ω_max,m0,c)
 
     return nothing
 end
@@ -155,7 +176,7 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1,ω_min::T1,ω_max::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
 
     N  = holstein.nsites::Int
     L  = holstein.Lτ
@@ -170,7 +191,7 @@ function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},mass::T1,Δt::T1
             # get a view into Q matrix for current lattice site
             Qi = @view Q[get_index(1,site,L):get_index(L,site,L)]
             # define Q matrix just for current site
-            construct_Qi!( Qi , ω[site] , λ[site] , μ[site] , Δτ , mass , Δt )
+            construct_Qi!( Qi , ω[site] , λ[site] , μ[site] , Δτ , m )
         end
     end
     return nothing
@@ -178,25 +199,76 @@ end
 
 
 """
-Calculates acceleration matrix for specified phonon frequency `ω`, discretization `Δτ` and `mass`.
+Calculates acceleration matrix for specified phonon frequency `ω`, discretization `Δτ`.
 Obeys the FFTW convention for the ordering of the momentum values.
 """
-function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,mass::T,Δt::T) where {T<:AbstractFloat}
+function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,m::T) where {T<:AbstractFloat}
 
     L = length(Qi)
     for k in 0:L-1
-        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,mass,L,Δt)
+        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,m,L)
     end
     return nothing
 end
 
 
 """
-Calculates a specified matrix element of the acceleration matrix for a given momentum k.
+Calculates a specified matrix element of the acceleration matrix for a given mode k.
 """
-function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,mass::T,L::Int,Δt::T)::T where {T<:Number}
+function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,m::T,L::Int)::T where {T<:Number}
 
-    val = (mass*mass + Δτ*ω*ω + 4.0/Δτ) / (mass*mass + Δτ*ω*ω + (2-2*cos(2*π*k/L))/Δτ)
+    val = (m^2 + Δτ*ω*ω + 4.0/Δτ) / (m^2 + Δτ*ω*ω + (2-2*cos(2*π*k/L))/Δτ)
+    return val
+end
+
+
+"""
+Updates the c1 matrix for sites with phonon frequencies withing the specified range.
+"""
+function update_M!(M::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1) where {T1<:AbstractFloat,T2<:Number}
+
+    N  = holstein.nsites::Int
+    L  = holstein.Lτ
+    Δτ = holstein.Δτ::T1
+    ω  = holstein.ω
+    λ  = holstein.λ
+    μ  = holstein.μ
+    # iterating over site in lattice
+    for site in 1:N
+        # if phonon frequncy on site falls withing specified range
+        if ω_min < ω[site] < ω_max
+            # get a view into M matrix for current lattice site
+            Mi = @view M[get_index(1,site,L):get_index(L,site,L)]
+            # define M matrix just for current site
+            construct_Mi!( Mi , ω[site] , λ[site] , μ[site] , Δτ , m0 , c )
+        end
+    end
+    return nothing
+end
+
+
+"""
+Calculates matrix matrix for specified phonon frequency `ω`, discretization `Δτ`.
+Obeys the FFTW convention for the ordering of the momentum values.
+"""
+function construct_Mi!(Mi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,m0::T,c::T) where {T<:AbstractFloat}
+
+    L = length(Mi)
+    for k in 0:L-1
+        Mi[k+1] = element_Mi(k,ω,λ,μ,Δτ,m0,c,L)
+    end
+    return nothing
+end
+
+
+"""
+Calculates a specified matrix element of the c1 matrix for a given mode k.
+"""
+function element_Mi(k::Int,ω::T,λ::T,μ::T,Δτ::T,m0::T,c::T,L::Int)::T where {T<:Number}
+
+    k′  = min(k,L-k)
+    m   = m0 * exp(-(c*k′/L)^2)
+    val = Δτ * (m^2 + ω^2 + (2-2*cos(2*π*k′/L))/Δτ^2 ) / (m^2 + ω^2)
     return val
 end
 

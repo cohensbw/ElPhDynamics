@@ -226,10 +226,10 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             Mᵀg = zeros(Complex{T},nindices)
 
             # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol)
+            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=max(nindices,1000))
 
             # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart)
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=max(nindices,1000))
 
             new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
@@ -241,10 +241,10 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             Mᵀg = zeros(T,nindices)
 
             # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol)
+            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=max(nindices,1000))
 
             # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart)
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=max(nindices,1000))
 
             new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,

@@ -37,7 +37,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
     c1::T1
 
     "order = c1/phi + c2"
-    c2::T2
+    c2::T1
 
     "minimum order expansion"
     order_min::Int
@@ -85,7 +85,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
     checkerboard_count::Int
 
     function KPMExpansion(holstein::HolsteinModel{T1,T2},
-                          λ_lo::T1, λ_hi::T1, c1::T1, c2::T2,
+                          λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
                           jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
 
         N   = holstein.nsites
@@ -279,10 +279,9 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
         a2T = reshape(v2,(N,L))
 
         transpose!(a1T,a2)
-        fill!(v2,0.0)
 
         # iterating over half the range of frequencies
-        for ω in 1:cld(L,2)
+        @fastmath @inbounds for ω in 1:cld(L,2)
 
             # input vector
             u1 = @view a1T[:,ω]
@@ -341,7 +340,8 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},
+              v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     ω     = op.ω # current frequency
@@ -350,26 +350,33 @@ function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},
     c     = coeff[ω]::Vector{Complex{T1}}
 
     # Recursively build `uₙ = Tₙ(A)⋅v`.
-    fill!(v′,0.0)
     uₙ₋₁ = op.v3
     uₙ   = op.v4
     uₙ₊₁ = op.v5
 
-    copyto!(uₙ,v) # u₁ = v
-    @. v′ += c[1] * uₙ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    @. v′ = c[1] * v
     if order>1
         n = 1 # current order
+        copyto!(uₙ,v) # u₁ = v
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
-        while true
+        @fastmath @inbounds while true
             n += 1 # increment order counter
-            copyto!(uₙ₋₁,uₙ) # uₙ₋₁ = uₙ
-            copyto!(uₙ,uₙ₊₁) # uₙ   = uₙ₊₁
-            @. v′ += c[n] * uₙ # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += c[n] * uₙ
             if n==order
                 break
             end
-            mulA′!(uₙ₊₁,P,uₙ)         # uₙ₊₁ = A′⋅uₙ
-            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁ # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            # uₙ₊₁ = A′⋅uₙ
+            mulA′!(uₙ₊₁,P,uₙ)
+            # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁
         end
     end
 
@@ -389,26 +396,33 @@ function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2}
     c     = coeff[ω]::Vector{Complex{T1}}
 
     # Recursively build `uₙ = Tₙ(A)⋅v`.
-    fill!(v′,0.0)
     uₙ₋₁ = op.v3
     uₙ   = op.v4
     uₙ₊₁ = op.v5
 
-    copyto!(uₙ,v) # u₁ = v
-    @. v′ += conj(c[1]) * uₙ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    @. v′ = conj(c[1]) * v
     if order>1
         n = 1 # current order
+        copyto!(uₙ,v) # u₁ = v
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
-        while true
+        @fastmath @inbounds while true
             n += 1 # increment order counter
-            copyto!(uₙ₋₁,uₙ) # uₙ₋₁ = uₙ
-            copyto!(uₙ,uₙ₊₁) # uₙ   = uₙ₊₁
-            @. v′ += conj(c[n]) * uₙ # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += conj(c[n]) * uₙ
             if n==order
                 break
             end
-            mulA′!(uₙ₊₁,P,uₙ)         # uₙ₊₁ = A′⋅uₙ
-            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁ # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            # uₙ₊₁ = A′⋅uₙ
+            mulA′!(uₙ₊₁,P,uₙ)
+            # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁
         end
     end
 
@@ -437,17 +451,21 @@ function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1
     ##########################
 
     P.transposed = true
-    copyto!(uₙ,v) # u₁ = v
-    fill!(v′,0.0)
-    @. v′ += conj(c[1]) * uₙ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    @. v′ = conj(c[1]) * v # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
     if order>1
         n = 1 # current order
+        copyto!(uₙ,v) # u₁ = v
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
-        while true
+        @fastmath @inbounds while true
             n += 1 # increment order counter
-            copyto!(uₙ₋₁,uₙ) # uₙ₋₁ = uₙ
-            copyto!(uₙ,uₙ₊₁) # uₙ   = uₙ₊₁
-            @. v′ += conj(c[n]) * uₙ # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += conj(c[n]) * uₙ
             if n==order
                 break
             end
@@ -462,16 +480,20 @@ function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1
 
     P.transposed = false
     copyto!(uₙ,v′) # u₁ = v
-    fill!(v′,0.0)
-    @. v′ += c[1] * uₙ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    @. v′ = c[1] * uₙ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
     if order>1
         n = 1 # current order
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
-        while true
+        @fastmath @inbounds while true
             n += 1 # increment order counter
-            copyto!(uₙ₋₁,uₙ) # uₙ₋₁ = uₙ
-            copyto!(uₙ,uₙ₊₁) # uₙ   = uₙ₊₁
-            @. v′ += c[n] * uₙ # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += c[n] * uₙ
             if n==order
                 break
             end

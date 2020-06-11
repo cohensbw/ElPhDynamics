@@ -26,10 +26,6 @@ include("TightBindingFFTs.jl")
 
 include("HolsteinModels.jl")
 
-include("BlockPreconditioners.jl")
-
-include("PerturbativePreconditioners.jl")
-
 include("KPMPreconditioners.jl")
 
 include("InitializePhonons.jl")

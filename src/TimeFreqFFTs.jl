@@ -33,7 +33,7 @@ struct TimeFreqFFT{T<:AbstractFloat}
 
         N        = lattice.nsites
         vtemp    = zeros(Complex{T},L,N)
-        utemp    = zeros(Complex{T},L*N)
+        utemp    = zeros(Complex{T},N*L)
         Θ        = [exp(-π*im*(τ-1)/L) for τ = 1:L]
         fftplan  = plan_fft(vtemp, (1,), flags=FFTW.PATIENT)
         ifftplan = plan_ifft(vtemp, (1,), flags=FFTW.PATIENT)
@@ -107,17 +107,32 @@ function ω_to_τ!(vout::AbstractVector{Complex{T}},op::TimeFreqFFT{T},vin::Abst
     return nothing
 end
 
+function ω_to_τ!(vout::AbstractVector{T},op::TimeFreqFFT{T},vin::AbstractVector{Complex{T}}) where {T<:AbstractFloat}
+
+    L     = op.L::Int
+    N     = op.N::Int
+    Θ     = op.Θ::Vector{Complex{T}}
+    vtemp = op.vtemp::Array{Complex{T},2}
+    @uviews vin vout begin
+        # apply (ω ⟶ τ) FFT
+        uin  = reshape(vin, L,N)
+        mul!(vtemp,op.ifftplan,uin)
+        # apply unitary transformation to restore anitperiodic boundary conditions
+        # imaginary time direciton.
+        uout = reshape(vout,L,N)
+        @fastmath @inbounds for i in 1:N
+            for τ in 1:L
+                uout[τ,i] = real( conj(Θ[τ]) * vtemp[τ,i] )
+            end
+        end
+    end
+    return nothing
+end
+
 function ω_to_τ!(vout::AbstractVector{T2},op::TimeFreqFFT{T1},vin::AbstractVector{T1};thresh::T1=1e-12) where {T1<:AbstractFloat,T2<:Complex}
 
     copyto!(op.vtemp,vin)
     ω_to_τ!(vout,op,op.vtemp)
-    return nothing
-end
-
-function ω_to_τ!(vout::AbstractVector{T1},op::TimeFreqFFT{T1},vin::AbstractVector{T2};thresh::T1=1e-12) where {T1<:AbstractFloat,T2<:Complex}
-
-    ω_to_τ!(op.utemp,op,vin)
-    @. vout = real(op.utemp)
     return nothing
 end
 

@@ -179,7 +179,7 @@ Measurements will be stored in arrays with 6 indices where the indices correspon
 `measurement[ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1, τ+1]`, where ΔLi is a displacement
 in unit cells in the direction of the i'th lattice vector.
 """
-function make_nonlocal_measurements!(container::Dict{String,Array{Complex{T1},6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T2}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
+function make_nonlocal_measurements!(container::Dict{String,Array{Complex{T1},6}}, holstein::HolsteinModel{T1,T2}, Gr1::EstimateGreensFunction{T1}, Gr2::EstimateGreensFunction{T1}, downsample::Int=1) where {T1<:AbstractFloat,T2<:Number}
 
     # get translationally equivalent sets of points
     trans_equiv_sets = holstein.trans_equiv_sets

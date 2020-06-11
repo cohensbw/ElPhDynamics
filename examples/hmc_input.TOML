@@ -86,7 +86,8 @@ val    = 0.0
 ###################################
 
 [[fourier_acceleration]]
-mass = 0.5
+mass      = 3.0
+c         = 0.0
 omega_min = 0.0
 omega_max = 10.0
 
@@ -106,7 +107,7 @@ write_M_matrix = false
 random_seed = 38923
 
 # langevin time step
-dt = 1e-3
+dt = 5e-2
 
 # tolerace used in iterative solvers
 tol = 1e-4
@@ -133,16 +134,22 @@ c1 = 1.0
 c2 = 1.0
 
 # thermalization time
-burnin_time = 10_000.0
+burnin_time = 100_000.0
 
 # simulation time
-simulation_time = 50_000.0
+simulation_time = 500_000.0
 
-# time between the velocity v and auxialary variables phi being refreshed.
-# this is also the time between measurements being made.
-# refresh frequencies less than 1.0 result in partial momentum refreshes occuring.
-# strandard hybrid monte carlo assumes refresh_time=1.0
-refresh_time = 1.0
+# The duration of trajectories used in Hybrid Monte Carlo trajectory.
+# Also the time between the velocity v and auxialary variables phi being refreshed.
+# Also the time between measurements.
+trajectory_time = 5.0
+
+# Partial momentum refresh parameter. For "standard" HMC set this value to 1.0.
+# Requirement: 0 < momentum_refresh_fraction <= 1
+momentum_refresh_fraction = 1.0
+
+# construct an initial guess of linear system based on previous solutions
+construct_guess = true
 
 # number of bins ie the number of times measurements will
 # be written to file.
