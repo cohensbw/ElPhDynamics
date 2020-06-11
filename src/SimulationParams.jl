@@ -2,15 +2,12 @@ module SimulationParams
 
 export SimulationParameters
 
-struct SimulationParameters{T<:AbstractFloat}
+struct SimulationParameters
 
-    "Langevin time step"
-    Δt::T
-
-    "Number of thermalization steps time steps."
+    "Number of thermalization updates."
     burnin::Int
 
-    "Number of time steps in main simulation."
+    "Number of simulation updates."
     nsteps::Int
 
     "Measurement frequncy."
@@ -40,7 +37,7 @@ struct SimulationParameters{T<:AbstractFloat}
     "filepath + foldername"
     datafolder::String
 
-    function SimulationParameters(Δt::T, burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String) where {T<:AbstractFloat}
+    function SimulationParameters(burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String)
 
         # sanity check
         @assert nsteps >= meas_freq * num_bins
@@ -88,7 +85,7 @@ struct SimulationParameters{T<:AbstractFloat}
             datafolder *= "/"
         end
 
-        new{T}(Δt,burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
+        new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
     end
 end
 

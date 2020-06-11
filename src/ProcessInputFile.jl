@@ -18,7 +18,7 @@ using ..HMC: HybridMonteCarlo
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 
-using ..KPMPreconditioners: LeftKPMPreconditioner, LeftRightKPMPreconditioner
+using ..KPMPreconditioners: LeftRightKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
 
@@ -31,49 +31,31 @@ function process_input_file(filename::String)
     
     input = TOML.parsefile(filename)
 
+    # Input file must describe either a Langevin or a Hyrbid Monte Carlo Simulation but not both.
+    @assert haskey(input,"hmc") ⊻ haskey(input,"langevin")
+
     ##################################
     ## DEFINE SIMULATION PARAMETERS ##
     ##################################
 
-    # default to langevin simulation
-    if !haskey(input["simulation"],"is_hybrid_monte_carlo")
-        input["simulation"] = false
-    end
-
-    # For Hybrid Monte Carlo simulation
-    if input["simulation"]["is_hybrid_monte_carlo"]
-
-        burnin_time     = input["simulation"]["burnin_time"]
-        simulation_time = input["simulation"]["simulation_time"]
-        trajectory_time = input["simulation"]["trajectory_time"]
-
-        burnin = round(Int,burnin_time/trajectory_time)
-        nsteps = round(Int,simulation_time/trajectory_time)
+    if haskey(input,"hmc")
         meas_freq = 1
-
-        # construct simulation parameters object.
-        sim_params = SimulationParameters(input["simulation"]["dt"],
-                                          burnin,
-                                          nsteps,
-                                          meas_freq,
-                                          input["simulation"]["num_bins"],
-                                          input["simulation"]["downsample"],
-                                          input["simulation"]["filepath"],
-                                          input["simulation"]["foldername"])
-
-    # For Langevin simulation
+        nsteps    = input["hmc"]["simulation_updates"]
+        burnin    = input["hmc"]["burnin_updates"]
     else
-
-        # construct simulation parameters object.
-        sim_params = SimulationParameters(input["simulation"]["dt"],
-                                          input["simulation"]["burnin"],
-                                          input["simulation"]["nsteps"],
-                                          input["simulation"]["meas_freq"],
-                                          input["simulation"]["num_bins"],
-                                          input["simulation"]["downsample"],
-                                          input["simulation"]["filepath"],
-                                          input["simulation"]["foldername"])
+        meas_freq = input["langevin"]["meas_freq"]
+        nsteps    = input["langevin"]["simulation_timesteps"]
+        burnin    = input["langevin"]["burnin_timesteps"]
     end
+
+    # construct simulation parameters object.
+    sim_params = SimulationParameters(burnin,
+                                      nsteps,
+                                      meas_freq,
+                                      input["simulation"]["num_bins"],
+                                      input["simulation"]["downsample"],
+                                      input["simulation"]["filepath"],
+                                      input["simulation"]["foldername"])
 
     # make direcotory data will be written to
     mkdir(sim_params.datafolder)
@@ -93,7 +75,7 @@ function process_input_file(filename::String)
     logger      = SimpleLogger(logio)
     global_logger(logger)
     
-    # write git commit of code to log file
+    # write current git commit tag of code to log file
     @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
     flush(logio)
 
@@ -114,21 +96,15 @@ function process_input_file(filename::String)
     ## DEFINE PRECONDITIONER ##
     ###########################
 
-    # default Identity preconditioner
+    # default preconditioner to Identity operator
     preconditioner = I
 
-    if input["simulation"]["use_preconditioner"] && input["simulation"]["is_hybrid_monte_carlo"]
+    if input["solver"]["use_preconditioner"]
         λ_lo = input["simulation"]["lambda_lo"]
         λ_hi = input["simulation"]["lambda_hi"]
         c1   = input["simulation"]["c1"]
         c2   = input["simulation"]["c2"]
         preconditioner = LeftRightKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
-    elseif input["simulation"]["use_preconditioner"]
-        λ_lo = input["simulation"]["lambda_lo"]
-        λ_hi = input["simulation"]["lambda_hi"]
-        c1   = input["simulation"]["c1"]
-        c2   = input["simulation"]["c2"]
-        preconditioner = LeftKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
     end
     
     #################################
@@ -141,36 +117,38 @@ function process_input_file(filename::String)
     # set the mass used to construct fourier acceleration matrix
     for d in input["fourier_acceleration"]
         mass = d["mass"]
-        c = 0.0
         if haskey(d,"c")
             c = d["c"]
+        else
+            c = 0.0
         end
         update_Q!(fa, holstein, d["omega_min"], d["omega_max"], mass)
         update_M!(fa, holstein, d["omega_min"], d["omega_max"], mass, c)
     end
 
-    ################################
-    ## DEFINE DYNAMICS TO BE USED ##
-    ################################
+    #####################
+    ## DEFINE DYNAMICS ##
+    #####################
 
-    Δt = input["simulation"]["dt"]
+    # number of degrees of freedom (phonon fields) to simulate
     NL = length(holstein)
 
-    dynamics = nothing
-    if input["simulation"]["is_hybrid_monte_carlo"]
-        construct_guess           = input["simulation"]["construct_guess"]
-        momentum_refresh_fraction = input["simulation"]["momentum_refresh_fraction"]
-        @assert 0.0 < momentum_refresh_fraction <= 1.0
-        α = 1.0 - momentum_refresh_fraction
+    if haskey(input,"hmc")
+        Δt              = input["hmc"]["dt"]
+        trajectory_time = input["hmc"]["trajectory_time"]
+        construct_guess = input["hmc"]["construct_guess"]
+        α               = 1.0 - input["hmc"]["momentum_refresh_fraction"]
+        @assert 0.0 <= α < 1.0
         dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,α,construct_guess)
-    elseif input["simulation"]["update_method"]==1
+    elseif input["langevin"]["update_method"]==1
+        Δt       = input["langevin"]["dt"]
         dynamics = EulerDynamics(NL,Δt)
-    elseif input["simulation"]["update_method"]==2
+    elseif input["langevin"]["update_method"]==2
+        Δt       = input["langevin"]["dt"]
         dynamics = RungeKuttaDynamics(NL,Δt)
-    elseif input["simulation"]["update_method"]==3
+    elseif input["langevin"]["update_method"]==3
+        Δt       = input["langevin"]["dt"]
         dynamics = HeunsDynamics(NL,Δt)
-    else
-        error("Did not specify a valid dynamics option.")
     end
 
     #########################
@@ -214,9 +192,9 @@ function initialize_holstein_model(filename::String)
                              input["holstein"]["beta"],
                              input["holstein"]["dtau"],
                              is_complex=false,
-                             tol=input["simulation"]["tol"],
-                             mul_by_M=input["simulation"]["use_preconditioner"],
-                             restart=input["simulation"]["restart"])
+                             tol=input["solver"]["tol"],
+                             mul_by_M=input["solver"]["use_preconditioner"],
+                             restart=input["solver"]["restart"])
     
     # adding phonon frequencies
     for d in input["holstein"]["omega"]

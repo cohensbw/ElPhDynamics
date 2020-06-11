@@ -26,7 +26,7 @@ export run_simulation!
 """
 Run Langevin simulation.
 """
-function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, dynamics::Dynamics, fa::FourierAccelerator{T1},
+function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters, dynamics::Dynamics, fa::FourierAccelerator{T1},
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
 
     ###############################################################
@@ -133,7 +133,7 @@ end
 """
 Run Hybrid Monte Carlo simulation.
 """
-function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters{T1}, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1},
+function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationParameters, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1},
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner) where {T1<:AbstractFloat, T2<:Number}
 
     ###############################################################

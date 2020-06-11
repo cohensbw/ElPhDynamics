@@ -6,6 +6,7 @@ using Pkg.TOML
 
 using ..SimulationParams: SimulationParameters
 using ..HolsteinModels: HolsteinModel, write_phonons, write_M_matrix
+using ..Lattices: Lattice
 
 export write_simulation_summary
 
@@ -13,7 +14,7 @@ export write_simulation_summary
 """
 Writes a simulation summary file after a simulation completes.
 """
-function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters{T},
+function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters,
                                   unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String},
                                   simulation_time::T, measurement_time::T, write_time::T, iters::T, acceptance_rate::T,
                                   nbins::Int=10) where {T<:Number}
@@ -85,7 +86,7 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
         write(outfile,  "## LOCAL MEASUREMENTS ##\n")
         write(outfile,  "########################\n\n")
 
-        write_local_data(outfile, sim_params, holstein.lattice.norbits, nbins)
+        write_local_data(outfile, sim_params, holstein.lattice, nbins)
         
         ######################################
         ## WRITE NON-LOCAL MEASUREMENT DATA ##
@@ -143,7 +144,10 @@ end
 """
 Write local measurements to file.
 """
-function write_local_data(outfile, sim_params::SimulationParameters{T}, norbits::Int, nbins::Int) where {T<:Number}
+function write_local_data(outfile, sim_params::SimulationParameters, lattice::Lattice{T}, nbins::Int) where {T<:Number}
+
+    # num orbitals per unit cell
+    norbits = lattice.norbits
 
     # data filename
     datafile = sim_params.datafolder*"local_measurements.out"

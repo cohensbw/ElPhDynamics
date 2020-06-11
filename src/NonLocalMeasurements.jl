@@ -257,7 +257,7 @@ Process the real-space and momentum-space measurements.
 This includes first performing the fourier transform to get the momentum space
 values and then normalzing the measured values by the number of measurement made per bin.
 """
-function process_nonlocal_measurements!(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T}) where {T<:AbstractFloat}
+function process_nonlocal_measurements!(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters) where {T<:AbstractFloat}
 
     # iterate over measurements
     for key in keys(container_kspace)
@@ -281,7 +281,7 @@ end
 """
 Initializes files (including header) that each measurement will be written to.
 """
-function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters{T})  where {T<:AbstractFloat}
+function initialize_nonlocal_measurement_files(container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}, sim_params::SimulationParameters)  where {T<:AbstractFloat}
 
     # iterating over real space measurements
     for key in keys(container_rspace)

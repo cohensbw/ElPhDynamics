@@ -1,12 +1,6 @@
 # NOTE: COMMAND TO RUN SIMULATION
 # julia -O3 -e "using Langevin; simulate(ARGS)" -- hmc_input.TOML
 
-##################################
-## SPECIFY INPUT FORMAT VERSION ##
-##################################
-
-input_format_version = "0.1.0"
-
 ######################
 ## DEFINING LATTICE ##
 ######################
@@ -49,7 +43,7 @@ beta = 2.0
 
 # define hopping in lattice
 [[holstein.t]]
-val    = 1.0     # mean value
+val    = 1.0       # mean value
 stddev = 0.0       # (optional) standard deviation
 orbit  = [1, 1]    # orbital types being connected
 dL     = [1, 0, 0] # displacement vector in unit cells
@@ -86,83 +80,94 @@ val    = 0.0
 ###################################
 
 [[fourier_acceleration]]
-mass      = 3.0
-c         = 0.0
 omega_min = 0.0
 omega_max = 10.0
+mass      = 3.0
+c         = 0.0
 
-####################################
-## DEFINING SIMULATION PARAMETERS ##
-####################################
+###################################
+## HYBRID MONTE CARLO PARAMETERS ##
+###################################
 
-[simulation]
+[hmc]
 
-# whether this is a hybrid monte carlo simulation
-is_hybrid_monte_carlo = true
+# thermalization updates
+burnin_updates = 10_000
 
-# whether to write final M matrix to file or not
-write_M_matrix = false
+# simulation updates
+simulation_updates = 100_000
 
-# random number generator seed
-random_seed = 38923
-
-# langevin time step
+# timestep size
 dt = 5e-2
 
-# tolerace used in iterative solvers
-tol = 1e-4
-
-# flag to determine whether or not to use block preconditioner.
-# if true then GMRES is used.
-# if false then Conjugate Gradient is used.
-use_preconditioner = false
-
-# restart for GMRES solver.
-# this parameter only matters if use_block_preconditioner = true
-restart = 30
-
-# preconditioner parameter
-lambda_lo = 0.3
-
-# preconditioner parameter
-lambda_hi = 1.7
-
-# preconditioner parameter
-c1 = 1.0
-
-# preconditioner parameter
-c2 = 1.0
-
-# thermalization time
-burnin_time = 100_000.0
-
-# simulation time
-simulation_time = 500_000.0
-
-# The duration of trajectories used in Hybrid Monte Carlo trajectory.
-# Also the time between the velocity v and auxialary variables phi being refreshed.
-# Also the time between measurements.
+# The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 5.0
 
-# Partial momentum refresh parameter. For "standard" HMC set this value to 1.0.
+# Partial momentum refresh parameter ie what fraction of the momentum is refreshed.
+# For "standard" HMC set this value to 1.0 ie momentum is entirely refreshed before each trajectory.
 # Requirement: 0 < momentum_refresh_fraction <= 1
 momentum_refresh_fraction = 1.0
 
-# construct an initial guess of linear system based on previous solutions
+# construct an initial guess for solution to linear system based on previous solutions.
 construct_guess = true
 
-# number of bins ie the number of times measurements will
-# be written to file.
-num_bins = 100
+###########################
+## SIMULATION PARAMETERS ##
+###########################
 
-# downsampling of non-local measurements in imaginary time direction
-downsample = 1
+[simulation]
 
 # filepath to where to write data
 filepath = "."
 
 # name of folder for data to get dumped into
 foldername = "test"
+
+# (optional) random number generator seed.
+random_seed = 38923
+
+# number of times measurements will be written to file.
+num_bins = 100
+
+# downsampling of non-local measurements in imaginary time direction
+downsample = 1
+
+# whether to write final M matrix to file or not at end of simulation
+write_M_matrix = false
+
+##############################
+## LINEAR SOLVER PARAMETERS ##
+##############################
+
+[solver]
+
+# tolerace used in iterative solvers
+tol = 1e-4
+
+# flag to determine whether or not to use preconditioner.
+# if true then GMRES is used.
+# if false then Conjugate Gradient is used.
+use_preconditioner = false
+
+# restart for GMRES solver.
+# this parameter is ignored unless use_preconditioner = true
+restart = 30
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_lo = 0.3
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_hi = 1.7
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c1 = 1.0
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c2 = 1.0
 
 ##################
 ## MEASUREMENTS ##

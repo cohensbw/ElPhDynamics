@@ -101,7 +101,7 @@ end
 """
 Process Local Measurements.
 """
-function process_local_measurements!(container::Dict{String,Vector{T}}, sim_params::SimulationParameters{T}, holstein::HolsteinModel,
+function process_local_measurements!(container::Dict{String,Vector{T}}, sim_params::SimulationParameters, holstein::HolsteinModel,
                                      container_rspace::Dict{String,Array{Complex{T},6}}, container_kspace::Dict{String,Array{Complex{T},6}}) where {T<:Number}
     
     # normalizing measurements
@@ -139,7 +139,7 @@ end
 """
 Initializes file that will contain local measurement data, with header included.
 """
-function initialize_local_measurements_file(container::Dict{String,Vector{T}}, sim_params::SimulationParameters{T}) where {T<:Number}
+function initialize_local_measurements_file(container::Dict{String,Vector{T}}, sim_params::SimulationParameters) where {T<:Number}
 
     open(sim_params.datafolder*"local_measurements.out", "w") do file
         write(file, "orbit")
@@ -155,7 +155,7 @@ end
 """
 Write non-local measurements to file.
 """
-function write_local_measurements(container::Dict{String,Vector{T}}, sim_params::SimulationParameters{T}, holstein::HolsteinModel) where {T<:Number}
+function write_local_measurements(container::Dict{String,Vector{T}}, sim_params::SimulationParameters, holstein::HolsteinModel) where {T<:Number}
 
     open(sim_params.datafolder*"local_measurements.out", "a") do file
         for orbit in 1:holstein.lattice.norbits
