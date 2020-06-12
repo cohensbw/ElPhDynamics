@@ -37,8 +37,11 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
 
         # shift levy path by ammount corresponding to an
         # electron density of 1 on the site
-        @. path += -λ/(ω*ω)
+        @. path += -λ/ω^2
     end
+
+    # udpate exponentiated interaction matrix
+    construct_expnΔτV!(holstein)
 
     return nothing
 end
