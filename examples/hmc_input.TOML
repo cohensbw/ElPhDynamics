@@ -83,7 +83,6 @@ val    = 0.0
 omega_min = 0.0
 omega_max = 10.0
 mass      = 3.0
-c         = 0.0
 
 ###################################
 ## HYBRID MONTE CARLO PARAMETERS ##
