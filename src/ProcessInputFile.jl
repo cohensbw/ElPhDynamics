@@ -242,7 +242,7 @@ function initialize_holstein_model(filename::String)
                 stddev = tij["stddev"]
             end
             assign_tij!(holstein, tij["val"], stddev,
-                        tij["orbit"][1], tij["orbit"][2], tij["dL"])
+                        tij["orbit"][1], tij["orbit"][2], Vector{Int}(tij["dL"]))
         end
     end
 
