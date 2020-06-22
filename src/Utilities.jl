@@ -1,7 +1,5 @@
 module Utilities
 
-using UnsafeArrays
-
 ##############################
 ## INDEX MAPPTING FUNCTIONS ##
 ##############################
@@ -55,36 +53,45 @@ end
 #########################
 
 """
-Simposon integration rule.
+Simposon integration rule on periodic vector.
 """
-function simpson(f::AbstractVector{T1}, dx::T2, pbc::Bool)::T1  where {T1<:Number,T2<:AbstractFloat}
-
-    # length of array
-    n = length(f)
+function simpson_periodic(f::AbstractVector{T1}, dx::T2)::T1  where {T1<:Number,T2<:AbstractFloat}
 
     # number of intervals
-    N = n-1
-
-    # if periodic boundary conditions
-    if pbc
-        N += 1
-    end
+    N = length(f)
 
     # integrated value
     F = T1(0.0)
 
     @inbounds @fastmath for i in 2:2:N
-        F += f[i-1]   * 1.0/3.0 * dx
-        F += f[i]     * 4.0/3.0 * dx
-        F += f[i%n+1] * 1.0/3.0 * dx
+        F += f[i-1]         * 1.0/3.0 * dx
+        F += f[i]           * 4.0/3.0 * dx
+        F += f[mod1(i+1,N)] * 1.0/3.0 * dx
     end
 
-    if (N+1)%2==0
-        F -= f[N-1]   * 1.0/12.0 * dx
-        F += f[N]     * 2.0/3.0  * dx
-        F += f[N%n+1] * 5.0/12.0 * dx
+    if isodd(N)
+        F -= f[N-1] * 1.0/12.0 * dx
+        F += f[N]   * 2.0/3.0  * dx
+        F += f[1]   * 5.0/12.0 * dx
     end
 
+    return F
+end
+
+"""
+Trapezoid Integration.
+"""
+function trapezoid(f::AbstractVector{T1}, dx::T2; extrapolate::Bool=false)::T1  where {T1<:Number,T2<:AbstractFloat}
+
+    N = length(f)
+    F = T1(0.0)
+    @inbounds @fastmath for i in 2:N
+        F += (f[i-1]+f[i])/2 * dx
+    end
+    if extrapolate
+        df = f[N] - f[N-1]
+        F += (2*f[N]+df)/2 * dx
+    end
     return F
 end
 

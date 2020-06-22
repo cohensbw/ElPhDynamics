@@ -30,7 +30,7 @@ Measure time-ordered single-particle electron Green's function ⟨T⋅cᵢ(τ₂
     Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
     Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
 
-    # takes care of time-ordering with heavey-side step function
+    # takes care of time-ordering with Heaviside step function
     return (1-2*θ(τ₁-τ₂))*(Gᵢⱼτ₂τ₁1+Gᵢⱼτ₂τ₁2)/2
 end
 
@@ -79,8 +79,7 @@ end
 
 
 """
-Measure pair Green's function ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+h.c.⟩=⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁)+Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩
-where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
+Measure pair Green's function ⟨Δᵢ(τ₂) Δ⁺ⱼ(τ₁)⟩ where Δᵢ(τ₂) = cᵢ₊(τ₂)cᵢ₋(τ₂).
 """
 function measure_PairGreens(i,j,τ₂,τ₁,Gr1,Gr2)
 
@@ -88,13 +87,9 @@ function measure_PairGreens(i,j,τ₂,τ₁,Gr1,Gr2)
     Gᵢⱼτ₂τ₁1 = estimate(Gr1,i,j,τ₂,τ₁)
     Gᵢⱼτ₂τ₁2 = estimate(Gr2,i,j,τ₂,τ₁)
 
-    # estimate ⟨cⱼ(τ₁)c⁺ᵢ(τ₂)⟩
-    Gⱼᵢτ₁τ₂1 = estimate(Gr1,j,i,τ₁,τ₂)
-    Gⱼᵢτ₁τ₂2 = estimate(Gr2,j,i,τ₁,τ₂)
-
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁) + cⱼ₊(τ₁)cⱼ₋(τ₁)c⁺ᵢ₊(τ₂)c⁺ᵢ₋(τ₂)⟩
-    # ⟨Δᵢ(τ₂)Δ⁺ⱼ(τ₁) + Δⱼ(τ₁)Δ⁺ᵢ(τ₂)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩ + ⟨cⱼ₊(τ₁)c⁺ᵢ₊(τ₂)⟩⋅⟨cⱼ₋(τ₁)c⁺ᵢ₋(τ₂)⟩
-    return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2 + Gⱼᵢτ₁τ₂1*Gⱼᵢτ₁τ₂2
+    # ⟨Δᵢ(τ₂) Δ⁺ⱼ(τ₁)⟩ = ⟨cᵢ₊(τ₂)cᵢ₋(τ₂)   c⁺ⱼ₊(τ₁)c⁺ⱼ₋(τ₁)⟩
+    # ⟨Δᵢ(τ₂) Δ⁺ⱼ(τ₁)⟩ = ⟨cᵢ₊(τ₂)c⁺ⱼ₊(τ₁)⟩⋅⟨cᵢ₋(τ₂)c⁺ⱼ₋(τ₁)⟩
+    return Gᵢⱼτ₂τ₁1*Gᵢⱼτ₂τ₁2
 end
 
 
@@ -142,14 +137,14 @@ for measurement in [ :Greens , :DenDen , :PairGreens ]
                                     j = trans_equiv_sets[1,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
                                     i = trans_equiv_sets[2,pair,ΔL1+1,ΔL2+1,ΔL3+1,orbit2,orbit1]
 
-                                    # iterating over time slices
-                                    for τ₁ in 1:downsample:Gr1.β
+                                    # iterate over possible time seperations
+                                    for τ in 0:Lτ-1
 
-                                        # iterate over possible time seperations
-                                        for τ in 0:Lτ-1
+                                        # iterating over time slices
+                                        for τ₁ in 1:downsample:Lτ
                                             
                                             # getting second time slice τ₂=τ₁+τ accounting for boundary conditions
-                                            τ₂ = (τ₁+τ-1)%Gr1.β+1
+                                            τ₂ = mod1(τ₁+τ,Lτ)
 
                                             # making measurement
                                             container[ τ+1, ΔL1+1, ΔL2+1, ΔL3+1, orbit2, orbit1 ] += $measure(i,j,τ₂,τ₁,Gr1,Gr2) / normalization

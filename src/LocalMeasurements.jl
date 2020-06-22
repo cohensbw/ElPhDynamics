@@ -1,7 +1,7 @@
 module LocalMeasurements
 
 using Printf
-using ..Utilities: get_index, get_site, get_τ, simpson
+using ..Utilities: get_index, get_site, get_τ, trapezoid
 using ..HolsteinModels: HolsteinModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
@@ -49,7 +49,7 @@ function make_local_measurements!(container::Dict{String,Vector{T}}, holstein::H
         # iterating over orbits of the current type
         for site in orbit:norbits:nsites
             # iterating over time slices
-            @simd for τ in 1:Lτ
+            for τ in 1:Lτ
                 # getting current index
                 index = get_index(τ,site,Lτ)
                 # estimate ⟨cᵢ(τ)c⁺ᵢ(τ)⟩
@@ -115,7 +115,7 @@ function process_local_measurements!(container::Dict{String,Vector{T}}, sim_para
             # getting pair greens function correspond to the k=0 k-point in momentum space
             pair_greens = @view container_kspace["PairGreens"][:,1,1,1,orbit,orbit]
             # integrating from 0 to β to get the susceptibility
-            container["swave_susc"][orbit] = real( simpson(pair_greens, holstein.Δτ, true) )/2
+            container["swave_susc"][orbit] = real( trapezoid(pair_greens, holstein.Δτ, extrapolate=true) )
         end
     end
 

@@ -140,13 +140,13 @@ write_M_matrix = false
 
 [solver]
 
-# tolerace used in iterative solvers
-tol = 1e-4
-
 # flag to determine whether or not to use preconditioner.
 # if true then GMRES is used.
 # if false then Conjugate Gradient is used.
 use_preconditioner = false
+
+# tolerace used in iterative solvers
+tol = 1e-4
 
 # restart for GMRES solver.
 # this parameter is ignored unless use_preconditioner = true

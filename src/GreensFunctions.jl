@@ -88,7 +88,7 @@ function update!(Gr::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2},
 end
 
 """
-Returns ⟨cᵢ(τ₂)⋅c⁺ⱼ(τ₁)⟩ where 1⩽τ₁⩽β, 1⩽τ₂⩽β and 1⩽(i,j)⩽N.
+Returns M⁻¹[(j,τ₁),(i,τ₂)]=⟨cᵢ(τ₂)⋅c⁺ⱼ(τ₁)⟩ where 1⩽τ₁⩽β, 1⩽τ₂⩽β and 1⩽(i,j)⩽N.
 Note that no time ordering is considered here.
 """
 function estimate(Gr::EstimateGreensFunction{T},i::Int,j::Int,τ₂::Int,τ₁::Int)::T where {T<:Number}
