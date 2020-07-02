@@ -203,7 +203,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             measurement_time += @elapsed update!(Gr,holstein,preconditioner)
 
             # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr, sim_params.downsample)
+            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr)
 
             # make local measurements
             measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr)
