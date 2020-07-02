@@ -53,7 +53,6 @@ function process_input_file(filename::String)
                                       nsteps,
                                       meas_freq,
                                       input["simulation"]["num_bins"],
-                                      input["simulation"]["downsample"],
                                       input["simulation"]["filepath"],
                                       input["simulation"]["foldername"])
 
@@ -102,10 +101,10 @@ function process_input_file(filename::String)
     preconditioner = I
 
     if input["solver"]["use_preconditioner"]
-        λ_lo = input["simulation"]["lambda_lo"]
-        λ_hi = input["simulation"]["lambda_hi"]
-        c1   = input["simulation"]["c1"]
-        c2   = input["simulation"]["c2"]
+        λ_lo = input["solver"]["lambda_lo"]
+        λ_hi = input["solver"]["lambda_hi"]
+        c1   = input["solver"]["c1"]
+        c2   = input["solver"]["c2"]
         preconditioner = LeftRightKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
     end
     

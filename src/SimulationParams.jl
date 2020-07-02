@@ -25,9 +25,6 @@ struct SimulationParameters
     "Number of langevin steps per bin."
     bin_steps::Int
 
-    "Down sampling in imaginary time direction when making measurement."
-    downsample::Int
-
     "path to where the data should be written"
     filepath::String
 
@@ -37,7 +34,7 @@ struct SimulationParameters
     "filepath + foldername"
     datafolder::String
 
-    function SimulationParameters(burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, downsample::Int, filepath::String, foldername::String)
+    function SimulationParameters(burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, filepath::String, foldername::String)
 
         # sanity check
         @assert nsteps >= meas_freq * num_bins
@@ -52,8 +49,6 @@ struct SimulationParameters
         
         # calculating the number of langevin time steps per bin
         bin_steps = meas_freq*bin_size
-
-        @assert downsample > 0
 
         # formatting filepath
         if !endswith(filepath,"/")
@@ -85,7 +80,7 @@ struct SimulationParameters
             datafolder *= "/"
         end
 
-        new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,downsample,filepath,foldername,datafolder)
+        new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername,datafolder)
     end
 end
 

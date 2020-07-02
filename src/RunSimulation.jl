@@ -34,8 +34,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     ###############################################################
 
     # declare two electron greens function estimators
-    Gr1 = EstimateGreensFunction(holstein)
-    Gr2 = EstimateGreensFunction(holstein)
+    Gr = EstimateGreensFunction(holstein)
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space
@@ -92,14 +91,13 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             end
 
             # update stochastic estimates of the Green's functions
-            measurement_time += @elapsed update!(Gr1,holstein,preconditioner)
-            measurement_time += @elapsed update!(Gr2,holstein,preconditioner)
+            measurement_time += @elapsed update!(Gr,holstein,preconditioner)
 
             # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr1, Gr2, sim_params.downsample)
+            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr)
 
             # make local measurements
-            measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr1, Gr2)
+            measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr)
         end
 
         # process non-local measurements. This includes normalizing the real-space measurements
@@ -141,8 +139,7 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
     ###############################################################
 
     # declare two electron greens function estimators
-    Gr1 = EstimateGreensFunction(holstein)
-    Gr2 = EstimateGreensFunction(holstein)
+    Gr = EstimateGreensFunction(holstein)
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space
@@ -203,14 +200,13 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
             accepted_updates += accepted
 
             # update stochastic estimates of the Green's functions
-            measurement_time += @elapsed update!(Gr1,holstein,preconditioner)
-            measurement_time += @elapsed update!(Gr2,holstein,preconditioner)
+            measurement_time += @elapsed update!(Gr,holstein,preconditioner)
 
             # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr1, Gr2, sim_params.downsample)
+            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, holstein, Gr, sim_params.downsample)
 
             # make local measurements
-            measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr1, Gr2)
+            measurement_time += @elapsed make_local_measurements!(local_meas_container, holstein, Gr)
         end
 
         # process non-local measurements. This includes normalizing the real-space measurements

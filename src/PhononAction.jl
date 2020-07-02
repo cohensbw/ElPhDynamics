@@ -132,8 +132,8 @@ function calc_dSbosedx!(dSbose::Vector{T2}, holstein::HolsteinModel{T1,T2})  whe
                 indx_j = get_index(τ,j,Lτ)
                 # updating partial derivative
                 Δ = Δτωij² * ( x[indx_i] + sgn*x[indx_j] )
-                dSbose[offset_τ+i] += Δ
-                dSbose[offset_τ+j] += sgn*Δ
+                dSbose[indx_i] += Δ
+                dSbose[indx_j] += sgn*Δ
             end
         end
     end
