@@ -125,9 +125,6 @@ random_seed = 38923
 # Number of times measurements will be written to file.
 num_bins = 100
 
-# downsampling of non-local measurements in imaginary time direction
-downsample = 1
-
 # whether to write final M matrix to file or not at end of simulation
 write_M_matrix = false
 

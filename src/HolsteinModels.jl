@@ -379,8 +379,11 @@ for param in [ :tij , :ωij ]
     @eval begin
         function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Number}
 
-            # getting new neighbors
-            newneighbors = holstein.trans_equiv_sets[:,:,displacement[1]+1,displacement[2]+1,displacement[3]+1,orbit2,orbit1]
+            # getting new neighbors accounting for periodic boundary conditions
+            dL1 = mod(displacement[1], holstein.lattice.L1)
+            dL2 = mod(displacement[2], holstein.lattice.L2)
+            dL3 = mod(displacement[3], holstein.lattice.L3)
+            newneighbors = holstein.trans_equiv_sets[:,:,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
 
             # getting number of new neighbors
             nnewneighbors = size(newneighbors,2)

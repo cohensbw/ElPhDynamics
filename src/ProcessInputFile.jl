@@ -53,7 +53,6 @@ function process_input_file(filename::String)
                                       nsteps,
                                       meas_freq,
                                       input["simulation"]["num_bins"],
-                                      input["simulation"]["downsample"],
                                       input["simulation"]["filepath"],
                                       input["simulation"]["foldername"])
 

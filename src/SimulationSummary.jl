@@ -241,10 +241,7 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
     bin_size = div( sim_params.num_bins , nbins )
 
     # number of unique displacement vectors for which the measuremnt was made
-    nvectors = Lτ*L1*L2*L3
-    if norbits>1
-        nvectors *= ( binomial(norbits,2) + norbits )
-    end
+    nvectors = Lτ*L1*L2*L3*norbits^2
 
     # empty container
     fill!(container,0.0)
@@ -290,7 +287,7 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
 
     # iterate over displacement vector
     for orbit1 in 1:norbits
-        for orbit2 in orbit1:norbits
+        for orbit2 in 1:norbits
             for dL3 in 0:L3-1
                 for dL2 in 0:L2-1
                     for dL1 in 0:L1-1
