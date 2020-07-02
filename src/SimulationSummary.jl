@@ -152,73 +152,82 @@ function write_local_data(outfile, sim_params::SimulationParameters, lattice::La
     # data filename
     datafile = sim_params.datafolder*"local_measurements.out"
 
+    # write local stats to own file as well
+    statsfile = sim_params.datafolder*"local_measurements_stats.out"
+
     # open data file for local measurements
     open(datafile,"r") do fin
+        open(statsfile,"w") do fout
 
-        # write header associated with local data
-        write(outfile,"measurement orbit avg std\n")
+            # write header associated with local data
+            header = "measurement orbit avg std\n"
+            write(outfile,header)
+            write(fout,header)
 
-        # declared array for calculating binned statistics
-        bins = zeros(T,nbins)
+            # declared array for calculating binned statistics
+            bins = zeros(T,nbins)
 
-        # get header line
-        header = readline(fin)
+            # get header line
+            header = readline(fin)
 
-        # get columns
-        columns = split(header,",")
+            # get columns
+            columns = split(header,",")
 
-        # get measurements
-        measurements = [String(columns[i]) for i in 2:length(columns)]
+            # get measurements
+            measurements = [String(columns[i]) for i in 2:length(columns)]
 
-        # get number of unique measurements
-        nmeasurements = length(measurements)
+            # get number of unique measurements
+            nmeasurements = length(measurements)
 
-        # dictionary for containing data
-        container = Dict( m => zeros(T,nbins,norbits) for m in measurements )
+            # dictionary for containing data
+            container = Dict( m => zeros(T,nbins,norbits) for m in measurements )
 
-        # number of measurements per bin
-        bin_size = div( sim_params.num_bins , nbins )
+            # number of measurements per bin
+            bin_size = div( sim_params.num_bins , nbins )
 
-        # line counter
-        line_count = 0
+            # line counter
+            line_count = 0
 
-        # iterate over lines
-        for line in eachline(fin)
+            # iterate over lines
+            for line in eachline(fin)
 
-            # split line apart
-            atoms = split(line,",")
+                # split line apart
+                atoms = split(line,",")
 
-            # get orbit
-            orbit = parse(Int,atoms[1])
+                # get orbit
+                orbit = parse(Int,atoms[1])
 
-            # getting current bin
-            bin = div( line_count , norbits * bin_size ) + 1
+                # getting current bin
+                bin = div( line_count , norbits * bin_size ) + 1
 
-            # iterate over measurements
-            for i in 1:nmeasurements
+                # iterate over measurements
+                for i in 1:nmeasurements
 
-                # incrementing value in container
-                container[measurements[i]][bin,orbit] += parse(T,atoms[i+1]) / bin_size
+                    # incrementing value in container
+                    container[measurements[i]][bin,orbit] += parse(T,atoms[i+1]) / bin_size
+                end
+
+                # increment line count
+                line_count += 1
             end
 
-            # increment line count
-            line_count += 1
-        end
+            # iterate over measurements
+            for measurement in measurements
 
-        # iterate over measurements
-        for measurement in measurements
+                # iterate over orbits
+                for orbit in 1:norbits
 
-            # iterate over orbits
-            for orbit in 1:norbits
+                    # get data
+                    data = @view container[measurement][:,orbit]
 
-                # get data
-                data = @view container[measurement][:,orbit]
+                    # calcualte average and standard deviation measreument
+                    avg, sd = binned_statistics(data,bins)
 
-                # calcualte average and standard deviation measreument
-                avg, sd = binned_statistics(data,bins)
-
-                # writing measurement to file
-                write( outfile, measurement, "  ", @sprintf("%d  %.6f  %.6f",orbit,avg,sd), "\n" )
+                    # writing measurement to file
+                    line = measurement*@sprintf(" %d  %.6f  %.6f\n",orbit,avg,sd)
+                    write(outfile, line)
+                    write(fout, line)
+                end
             end
         end
     end
@@ -282,33 +291,42 @@ function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7
         end
     end
 
-    # write header for table
-    write(outfile, "orbit1  orbit2  dL1  dL2  dL3  tau  ", measurement*"_avg  ", measurement*"_std", "\n")
+    # additionally, right measurement statistics to own file as well
+    statsfilename = sim_params.datafolder*datafile[1:end-4]*"_stats.out"
+    open(statsfilename,"w") do statsfile
 
-    # iterate over displacement vector
-    for orbit1 in 1:norbits
-        for orbit2 in 1:norbits
-            for dL3 in 0:L3-1
-                for dL2 in 0:L2-1
-                    for dL1 in 0:L1-1
-                        for τ in 0:Lτ-1
-                            data   = @view container[:,τ+1,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
-                            avg    = mean(data)
-                            stddev = std(data)/sqrt(nbins)
-                            if !iszero(avg)
-                                # write displacement info to file
-                                write(outfile,@sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",
-                                                       orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev))
+        # write header for table
+        header = "orbit1  orbit2  dL1  dL2  dL3  tau  "*measurement*"_avg  "*measurement*"_std\n"
+        write(statsfile, header)
+        write(outfile, header)
+
+        # iterate over displacement vector
+        for orbit1 in 1:norbits
+            for orbit2 in 1:norbits
+                for dL3 in 0:L3-1
+                    for dL2 in 0:L2-1
+                        for dL1 in 0:L1-1
+                            for τ in 0:Lτ-1
+                                data   = @view container[:,τ+1,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
+                                avg    = mean(data)
+                                stddev = std(data)/sqrt(nbins)
+                                if !iszero(avg)
+                                    # write displacement info to file
+                                    line = @sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev)
+                                    write(statsfile,line)
+                                    write(outfile,line)
+                                end
                             end
                         end
                     end
                 end
             end
         end
-    end
 
-    # add an additional line break
-    write(outfile,"\n")
+        # add an additional line break
+        write(outfile,"\n")
+
+    end
 
     return nothing
 end
