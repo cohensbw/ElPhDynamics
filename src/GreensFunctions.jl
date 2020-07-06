@@ -268,7 +268,7 @@ function measure_GΔ0_G0Δ(estimator::EstimateGreensFunction,l₁::Int,l₂::Int
 end
 
 """
-Measure time ordered Green's function Gᵢ-ⱼ(τ₂-τ₁)=⟨T⋅cᵢ(τ₂)⋅cᵀᵢ(τ₁)⟩ where -β<(τ₂-τ₁)<β
+Measure time ordered Green's function Gᵢ-ⱼ(τ₂-τ₁)=⟨T⋅cᵢ(τ₂)⋅cᵀⱼ(τ₁)⟩ where -β<(τ₂-τ₁)<β
 """
 function estimate(estimator::EstimateGreensFunction,i::Int,j::Int,τ₂::Int,τ₁::Int,σ::Int)
 
