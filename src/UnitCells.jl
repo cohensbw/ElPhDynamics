@@ -1,13 +1,13 @@
-module Geometries
+module UnitCells
 
 using LinearAlgebra
 
-export Geometry, monkhorst_pack_mesh, calc_cell_pos!, calc_cell_pos, calc_site_pos!, calc_site_pos
+export UnitCell, monkhorst_pack_mesh, calc_cell_pos!, calc_cell_pos, calc_site_pos!, calc_site_pos
 
 """
 Represents a specfied lattice geometry.
 """
-struct Geometry{T<:AbstractFloat}
+struct UnitCell{T<:AbstractFloat}
 
     "ndim: the number of dimensions that the geometry lives in."
     ndim::Int
@@ -28,11 +28,11 @@ struct Geometry{T<:AbstractFloat}
     ## INNER CONSTRUCTOR ##
     #######################
     """
-        Geometry(ndim::Int,norbits::Int,lvecs::Matrix{T},bvecs::Matrix{T}) where {T<:AbstractFloat}
+        UnitCell(ndim::Int,norbits::Int,lvecs::Matrix{T},bvecs::Matrix{T}) where {T<:AbstractFloat}
 
-    Constructor for Geometry type.
+    Constructor for UnitCell type.
     """
-    function Geometry(ndim::Int,norbits::Int,lvecs::Matrix{T},bvecs::Matrix{T}) where {T<:AbstractFloat}
+    function UnitCell(ndim::Int,norbits::Int,lvecs::Matrix{T},bvecs::Matrix{T}) where {T<:AbstractFloat}
 
         # constructing matrix containing lattice vectors
         nrows = size(lvecs,1)
@@ -57,16 +57,16 @@ end
 ## OUTER CONSTRUCTORS ##
 ########################
 
-function Geometry(ndim::Int, norbits::Int, lvecs::Matrix{T}, bvecs::Vector{Vector{T}}) where {T<:AbstractFloat}
-    Geometry(ndim, norbits, lvecs, hcat(bvecs...))
+function UnitCell(ndim::Int, norbits::Int, lvecs::Matrix{T}, bvecs::Vector{Vector{T}}) where {T<:AbstractFloat}
+    UnitCell(ndim, norbits, lvecs, hcat(bvecs...))
 end
 
-function Geometry(ndim::Int, norbits::Int, lvecs::Vector{Vector{T}}, bvecs::Matrix{T}) where {T<:AbstractFloat}
-    Geometry(ndim, norbits, hcat(lvecs...), bvecs)
+function UnitCell(ndim::Int, norbits::Int, lvecs::Vector{Vector{T}}, bvecs::Matrix{T}) where {T<:AbstractFloat}
+    UnitCell(ndim, norbits, hcat(lvecs...), bvecs)
 end
 
-function Geometry(ndim::Int, norbits::Int, lvecs::Vector{Vector{T}}, bvecs::Vector{Vector{T}}) where {T<:AbstractFloat}
-    Geometry(ndim, norbits, hcat(lvecs...), hcat(bvecs...))
+function UnitCell(ndim::Int, norbits::Int, lvecs::Vector{Vector{T}}, bvecs::Vector{Vector{T}}) where {T<:AbstractFloat}
+    UnitCell(ndim, norbits, hcat(lvecs...), hcat(bvecs...))
 end
 
 
@@ -74,30 +74,10 @@ end
 ## DEFINING METHODS THAT USE GEOMETRY TYPE ##
 #############################################
 
-# Defining pretty-print functionality
-function Base.show(io::IO, geom::Geometry)
-
-  printstyled("Geometry{",typeof(geom.lvecs[1,1]),"}\n";bold=true)
-  print('\n')
-  println("ndim (# dimensions) = ",geom.ndim)
-  println("norbits (# orbits per unit cell) = ",geom.norbits)
-  print('\n')
-  println("lvecs [Lattice Vectors] =")
-  show(IOContext(stdout), "text/plain", geom.lvecs)
-  print('\n')
-  print('\n')
-  println("rlvecs [Recip. Latt. Vectors] =")
-  show(IOContext(stdout), "text/plain", geom.rlvecs)
-  print('\n')
-  print('\n')
-  println("bvecs [Basis Vectors] =")
-  show(IOContext(stdout), "text/plain", geom.bvecs)
-end
-
 """
 Calculates the position of a unit cell in a lattice.
 """
-function calc_cell_pos!(pos::AbstractVector{T},geom::Geometry,l1::Int,l2::Int=0,l3::Int=0) where {T<:AbstractFloat}
+function calc_cell_pos!(pos::AbstractVector{T},geom::UnitCell,l1::Int,l2::Int=0,l3::Int=0) where {T<:AbstractFloat}
 
     @assert length(pos)==3
     lv1 = @view geom.lvecs[:,1] # first lattice vector
@@ -107,7 +87,7 @@ function calc_cell_pos!(pos::AbstractVector{T},geom::Geometry,l1::Int,l2::Int=0,
     return nothing
 end
 
-function calc_cell_pos(geom::Geometry,l1::Int,l2::Int=0,l3::Int=0)::Vector{T} where {T<:AbstractFloat}
+function calc_cell_pos(geom::UnitCell,l1::Int,l2::Int=0,l3::Int=0)::Vector{T} where {T<:AbstractFloat}
 
     pos = zeros(3)
     calc_cell_pos!(pos,geom,l1,l2,l3)
@@ -118,7 +98,7 @@ end
 """
 Calculates the position of a site in a lattice.
 """
-function calc_site_pos!(pos::AbstractVector{T},geom::Geometry,orbit::Int,l1::Int,l2::Int=0,l3::Int=0) where {T<:AbstractFloat}
+function calc_site_pos!(pos::AbstractVector{T},geom::UnitCell,orbit::Int,l1::Int,l2::Int=0,l3::Int=0) where {T<:AbstractFloat}
 
     @assert orbit>0
     # calculating position of unit cell that site lives in
@@ -128,7 +108,7 @@ function calc_site_pos!(pos::AbstractVector{T},geom::Geometry,orbit::Int,l1::Int
     return nothing
 end
 
-function calc_site_pos(geom::Geometry{T},orbit::Int,l1::Int,l2::Int=0,l3::Int=0)::Vector{T}  where {T<:AbstractFloat}
+function calc_site_pos(geom::UnitCell{T},orbit::Int,l1::Int,l2::Int=0,l3::Int=0)::Vector{T}  where {T<:AbstractFloat}
 
     pos = zeros(3)
     calc_site_pos!(pos,geom,orbit,l1,l2,l3)
@@ -137,11 +117,11 @@ end
 
 
 """
-    monkhorst_pack_mesh(geom::Geometry, L1::Int, L2::Int=1, L3::Int=1)::Matrix{AbstractFloat}
+    monkhorst_pack_mesh(geom::UnitCell, L1::Int, L2::Int=1, L3::Int=1)::Matrix{AbstractFloat}
 
 Returns a matrix where each column is a k-point vector in a Monkhort-Pack meshgrid over the full Brillouin Zone.
 """
-function monkhorst_pack_mesh(geom::Geometry{T}, L1::Int, L2::Int=1, L3::Int=1)::Matrix{T}  where {T<:AbstractFloat}
+function monkhorst_pack_mesh(geom::UnitCell{T}, L1::Int, L2::Int=1, L3::Int=1)::Matrix{T}  where {T<:AbstractFloat}
 
     kpoints = zeros(T,3,L1*L2*L3)
     v1 = @view geom.rlvecs[:,1]

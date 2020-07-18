@@ -142,6 +142,9 @@ use_preconditioner = false
 # tolerace used in iterative solvers
 tol = 1e-4
 
+# maximum iteration for iterative solver
+max_iter = 20_000
+
 # restart for GMRES solver.
 # this parameter is ignored unless use_preconditioner = true
 restart = 30

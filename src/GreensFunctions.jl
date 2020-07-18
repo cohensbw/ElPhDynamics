@@ -139,7 +139,7 @@ struct EstimateGreensFunction{T<:AbstractFloat}
         L₃      = holstein.lattice.L3
         L₂      = holstein.lattice.L2
         L₁      = holstein.lattice.L1
-        nₛ      = holstein.lattice.norbits
+        nₛ      = holstein.lattice.unit_cell.norbits
         r₁      = zeros(T1,NL)
         r₂      = zeros(T1,NL)
         M⁻¹r₁   = zeros(T1,NL)

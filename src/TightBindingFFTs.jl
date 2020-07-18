@@ -4,7 +4,7 @@ using LinearAlgebra
 using FFTW
 using UnsafeArrays
 
-using ..Geometries: Geometry
+using ..UnitCells: UnitCell
 using ..Lattices: Lattice, calc_neighbor_table
 
 export TightBindingFFT, add_bond!, calc_basis!, r_to_k!, k_to_r!
@@ -35,11 +35,6 @@ end
 
 
 mutable struct TightBindingFFT{T<:AbstractFloat}
-    
-    """
-    Geometry object to represent unit cell.
-    """
-    geom::Geometry{T}
     
     """
     Lattice object to represent finite periodic lattice.
@@ -86,7 +81,7 @@ mutable struct TightBindingFFT{T<:AbstractFloat}
     """
     z2::Vector{Complex{T}}
     
-    function TightBindingFFT(geom::Geometry{T},lattice::Lattice{T}) where {T<:AbstractFloat}
+    function TightBindingFFT(lattice::Lattice{T}) where {T<:AbstractFloat}
         
         # declaring empty array to contain bonds
         bonds = Vector{Bond{Complex{T}}}()
@@ -95,7 +90,7 @@ mutable struct TightBindingFFT{T<:AbstractFloat}
         L1 = lattice.L1
         L2 = lattice.L2
         L3 = lattice.L3
-        norbits = lattice.norbits
+        norbits = lattice.unit_cell.norbits::Int
         nsites  = lattice.nsites
         
         λk    = zeros(T,norbits,L1,L2,L3)
@@ -108,7 +103,7 @@ mutable struct TightBindingFFT{T<:AbstractFloat}
         fftplan  = plan_fft(ztemp, (2, 3, 4), flags=FFTW.PATIENT)
         ifftplan = plan_ifft(ztemp,(2, 3, 4), flags=FFTW.PATIENT)
         
-        return new{T}(geom,lattice,bonds,λk,Uk,invUk,fftplan,ifftplan,z1,z2)
+        return new{T}(lattice,bonds,λk,Uk,invUk,fftplan,ifftplan,z1,z2)
     end
 end
 
@@ -131,8 +126,8 @@ function calc_basis!(op::TightBindingFFT{T}) where {T<:AbstractFloat}
         L1      = op.lattice.L1::Int
         L2      = op.lattice.L2::Int
         L3      = op.lattice.L3::Int
-        ndim    = op.lattice.ndim::Int
-        norbits = op.lattice.norbits::Int
+        ndim    = op.lattice.unit_cell.ndim::Int
+        norbits = op.lattice.unit_cell.norbits::Int
         N       = op.lattice.nsites::Int
         λk      = op.λk
         Uk      = op.Uk
@@ -189,7 +184,7 @@ function r_to_k!(zk::AbstractVector{Complex{T}},op::TightBindingFFT{T},zr::Abstr
     L1 = op.lattice.L1
     L2 = op.lattice.L2
     L3 = op.lattice.L3
-    norbits = op.lattice.norbits
+    norbits = op.lattice.unit_cell.norbits::Int
     nsites  = op.lattice.nsites
     
     Uk = op.Uk
@@ -242,7 +237,7 @@ function k_to_r!(zr::AbstractVector{Complex{T}},op::TightBindingFFT{T},zk::Abstr
     L1 = op.lattice.L1
     L2 = op.lattice.L2
     L3 = op.lattice.L3
-    norbits = op.lattice.norbits
+    norbits = op.lattice.unit_cell.norbits::Int
     nsites  = op.lattice.nsites
     
     invUk = op.invUk

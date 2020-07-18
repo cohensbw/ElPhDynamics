@@ -102,10 +102,16 @@ dt = 5e-2
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 5.0
 
+# Number of smaller timestep to evolve Sbose by
+num_multitimesteps = 1
+
+# number of hybrid monte carlo updates between measurements being made
+meas_freq = 1
+
 # Partial momentum refresh parameter ie what fraction of the momentum is refreshed.
 # For "standard" HMC set this value to 1.0 ie momentum is entirely refreshed before each trajectory.
 # Requirement: 0 < momentum_refresh_fraction <= 1
-momentum_refresh_fraction = 1.0
+momentum_conservation_fraction = 0.0
 
 # construct an initial guess for solution to linear system based on previous solutions.
 construct_guess = true
@@ -144,6 +150,9 @@ use_preconditioner = false
 
 # tolerace used in iterative solvers
 tol = 1e-4
+
+# maximum iteration for iterative solver
+maxiter = 20_000
 
 # restart for GMRES solver.
 # this parameter is ignored unless use_preconditioner = true

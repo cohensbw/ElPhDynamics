@@ -41,6 +41,16 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     Nt::Int
 
     """
+    Smaller timestep used to evolve Sb for multi-timestep algorithm.
+    """
+    Δt′::T
+
+    """
+    Number of steps for Sb per one timestep of Sf for multi-timestep algorithm.
+    """
+    Nb::Int
+
+    """
     Partial momentum refresh parameter.
     """
     α::T
@@ -125,7 +135,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     u::Vector{T}
 
-    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T,α::T,construct_guess::Bool=true) where {T<:AbstractFloat}
+    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool=true) where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
         @assert 0.0 <= α < 1.0
@@ -155,7 +165,10 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # number of timesteps
         Nt = round(Int,tr/Δt)
 
-        return new{T}(Ndof, x, tr, Δt, Nt, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
+        # size of smaller timestep for Sb
+        Δt′ = Δt/Nb
+
+        return new{T}(Ndof, x, tr, Δt, Nt, Δt′, Nb, α, H, dSdx, v, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
     end
 end
 
@@ -164,6 +177,19 @@ end
 Do a Hybrid Monte Carlo update to the phonon fields.
 """
 function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Tuple{Bool,T1}  where {T1<:AbstractFloat,T2<:Number}
+    
+    if hmc.Nb==1
+        accepted, iters = standard_update!(holstein,hmc,fa,preconditioner)
+    else
+        accepted, iters = multitimestep_update!(holstein,hmc,fa,preconditioner)
+    end
+    return accepted, iters
+end
+
+"""
+Standard HMC update.
+"""
+function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Tuple{Bool,T1}  where {T1<:AbstractFloat,T2<:Number}
 
     x     = holstein.x
     x0    = hmc.x
@@ -183,11 +209,11 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
     refresh_ϕ!(hmc,holstein,fa)
 
     # calculate the initial dS/dx value
-    iters_0 = calc_dSdx!(hmc, holstein, preconditioner)
+    iter_t = calc_dSdx!(hmc, holstein, preconditioner)
+    iters  = iter_t
 
     # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
     fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
-    # fourier_accelerate!(QdSdx,fa,dSdx,1.0,use_mass=false)
 
     # calculate the total energy H
     H0 = calc_H(hmc, holstein, fa)
@@ -214,10 +240,127 @@ function update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
         fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
-        # fourier_accelerate!(QdSdx,fa,dSdx,1.0,use_mass=false)
 
-        # v(t+Δt) = v(t+⋅Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
+        # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
         @. v = v - Δt/2*QdSdx
+    end
+
+    # calculate the final energy
+    H = calc_H(hmc, holstein, fa)
+
+    # calculate probability of acceptance
+    P = min(1.0, exp(H0-H))
+
+    # get the number of iterations
+    iters = cld(iters,Nt)
+
+    # Metropolis-Hasting Accept/Reject Step
+    if rand() < P # if accepted
+
+        return true, T1(iters)
+
+    else # if rejected
+
+        # reset to original phonon field
+        copyto!(x,x0)
+
+        # update exp{-Δτ⋅V[x]}
+        construct_expnΔτV!(holstein)
+
+        # reflect velocity
+        @. v = -v
+
+        return false, T1(iters)
+    end
+end
+
+
+"""
+Multi-timestepping HMC update.
+"""
+function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Tuple{Bool,T1}  where {T1<:AbstractFloat,T2<:Number}
+
+    x      = holstein.x
+    x0     = hmc.x
+    dSbdx  = hmc.dSdx
+    QdSbdx = hmc.dSdx
+    dSfdx  = hmc.dSdx
+    QdSfdx = hmc.dSdx
+    v      = hmc.v
+    Nt     = hmc.Nt
+    Δt     = hmc.Δt
+    Nb     = hmc.Nb
+    Δt′    = hmc.Δt′
+
+    # update exp{-Δτ⋅V[x]}
+    construct_expnΔτV!(holstein)
+
+    # refresh the velocity v
+    refresh_v!(hmc,fa)
+
+    # refresh ϕ
+    refresh_ϕ!(hmc,holstein,fa)
+
+    # calculate the initial dSf/dx value
+    iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
+    iters  = iter_t
+
+    # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
+    fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
+
+    # calculate the total energy H
+    H0 = calc_H(hmc, holstein, fa)
+
+    # record intial phonon configuration
+    copyto!(x0,x)
+
+    # iterate over timesteps
+    for t in 1:Nt
+
+        # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
+        @. v = v - Δt/2*QdSfdx
+
+        # calculate the initial dSb/dx value
+        fill!(dSbdx,0.0)
+        calc_dSbosedx!(dSbdx,holstein)
+
+        # dSb/dx(t+Δt) ==> Q⋅dSb/dx(t+Δt)
+        fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
+
+        # evolve Sb using Nb smaller timesteps of size Δt′=Δt/Nb
+        for t′ in 1:Nb
+
+            # v(t+Δt/2) = v(t) - Δt′/2⋅Q⋅dSb/dx(t)
+            @. v = v - Δt′/2*QdSbdx
+
+            # x(t+Δt) = x(t) + Δt⋅v(t+Δt/2)
+            @. x = x + Δt′*v
+
+            # calculate dSb/dx(t+Δt) value
+            fill!(dSbdx,0.0)
+            calc_dSbosedx!(dSbdx,holstein)
+
+            # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
+            fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
+
+            # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dSb/dx(t+Δt)
+            @. v = v - Δt′/2*QdSbdx
+        end
+
+        # update exp{-Δτ⋅V[x]}
+        construct_expnΔτV!(holstein)
+
+        # calculate dSf/dx(t+Δt) value
+        iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
+        iters += iter_t
+
+        H = calc_H(hmc, holstein, fa)
+
+        # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
+        fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
+
+        # v(t+Δt) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
+        @. v = v - Δt/2*QdSfdx
     end
 
     # calculate the final energy
@@ -265,7 +408,6 @@ function refresh_v!(hmc::HybridMonteCarlo{T},fa::FourierAccelerator{T}) where {T
 
     randn!(R)
     fourier_accelerate!(sqrtQR,fa,R,-0.5,use_mass=true)
-    # fourier_accelerate!(sqrtQR,fa,R,0.5,use_mass=false)
     @. v = α*v + sqrt(1.0-α^2)*sqrtQR
 
     return nothing
@@ -341,7 +483,6 @@ function calc_K(hmc::HybridMonteCarlo{T}, fa::FourierAccelerator{T})::T where {T
     v    = hmc.v
     Q⁻¹v = hmc.u
     fourier_accelerate!(Q⁻¹v,fa,v,1.0,use_mass=true)
-    # fourier_accelerate!(Q⁻¹v,fa,v,-1.0,use_mass=false)
     K = dot(v,Q⁻¹v)/2
 
     return K

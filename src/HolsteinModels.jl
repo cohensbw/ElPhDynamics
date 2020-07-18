@@ -3,8 +3,8 @@ module HolsteinModels
 using Statistics
 using Printf
 
-using ..Geometries: Geometry
-using ..Lattices: Lattice, translationally_equivalent_sets, sort_neighbor_table!, loc_to_site
+using ..UnitCells: UnitCell
+using ..Lattices: Lattice, sort_neighbor_table!, loc_to_site, calc_neighbor_table
 using ..Checkerboard: checkerboard_order, checkerboard_groups
 using ..RestartedGMRES: GMRES, solve!
 using ..ConjugateGradients: ConjugateGradient
@@ -17,7 +17,7 @@ export get_index, get_site, get_τ
 export setup_checkerboard!, construct_expnΔτV!
 export write_phonons, read_phonons
 
-mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Complex{Float32},Complex{Float64}} }
+mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{AbstractFloat,Complex{<:AbstractFloat}} }
 
     ################################
     ## COMPLETE MODEL HAMILTONIAN ##
@@ -52,14 +52,8 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ## FOR REPRESENTING LATTICE GEOMETRY ##
     #######################################
 
-    "represents lattice geometry"
-    geom::Geometry{T1}
-
     "represents lattice"
     lattice::Lattice{T1}
-
-    "stores sets of translationally equivalent pairs of sites in lattice."
-    trans_equiv_sets::Array{Int,7}
 
     ############################
     ## HOLSTEIN PHONON FIELDS ##
@@ -117,7 +111,7 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     ###################################
 
     "extended holstein frequency of the form ωij(xᵢ±xⱼ)²"
-    ωij::Vector{T2}
+    ωij::Vector{T1}
 
     "specifies which two sites i,j that are coupled in ωij(xᵢ±xⱼ)²"
     neighbor_table_ωij::Matrix{Int}
@@ -128,9 +122,6 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     #################################################
     ## VARIBALES FOR SOLVING M⋅x=g VIA ITERATIVELY ##
     #################################################
-
-    "Tolerace when solve M⋅x=g iteratively."
-    tol::T1
 
     "A vector of length `ninidces` to temporarily store data."
     ytemp::Vector{T2}
@@ -159,8 +150,8 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
     """
     Constructor for Holstein type.
     """
-    function HolsteinModel(geom::Geometry{T}, lattice::Lattice{T}, β::T, Δτ::T;
-                           is_complex::Bool=false, tol::T=1e-4, mul_by_M::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
+    function HolsteinModel(lattice::Lattice{T}, β::T, Δτ::T;
+                           is_complex::Bool=false, tol::T=1e-4, maxiter::Int=10000, mul_by_M::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
 
         # calculating length of imaginary time axis
         Lτ = round(Int,β/Δτ)
@@ -170,9 +161,6 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
 
         # size of D+1 dimensional lattice
         nindices = nsites*Lτ
-
-        # constructing translationally equivalent sets of sites
-        trans_equiv_sets = translationally_equivalent_sets(lattice)
 
         # initialize ineraction matrix, which is diagonal so stored as vector
         expnΔτV = zeros(T,nindices)
@@ -226,30 +214,30 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{Float32,Float64,Comp
             Mᵀg = zeros(Complex{T},nindices)
 
             # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=max(nindices,1000))
+            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
 
             # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=max(nindices,1000))
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
 
-            new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
+            new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
                               ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                              tol, ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
+                              ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
         else
 
             # temporary vectors
             Mᵀg = zeros(T,nindices)
 
             # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=max(nindices,1000))
+            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
 
             # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=max(nindices,1000))
+            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
 
-            new{T,T}(β, Δτ, Lτ, nsites, nindices, geom, lattice, trans_equiv_sets, x, expnΔτV,
+            new{T,T}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
                      ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                     tol, ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
+                     ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
         end
     end
 
@@ -258,40 +246,6 @@ end
 #####################
 ## PRETTY PRINTING ##
 #####################
-
-function Base.show(io::IO, holstein::HolsteinModel)
-
-    type1 = typeof(holstein.ω).parameters[1]
-    type2 = typeof(holstein.tij).parameters[1]
-    printstyled( "HolsteinModel{" , type1 , "," , type2 , "}\n" ; bold=true , color=:cyan )
-    print('\n')
-    println("β = ",holstein.β)
-    println("Δτ = ",holstein.Δτ)
-    println("Lτ = ",holstein.Lτ)
-    println("nsites = ",holstein.nsites)
-    println("nindices = ",holstein.nindices)
-    print('\n')
-    print(holstein.geom)
-    print('\n')
-    print('\n')
-    print(holstein.lattice)
-    print('\n')
-    printstyled("Parameters\n";bold=true)
-    print('\n')
-    println("trans_equiv_sets: ", typeof(holstein.trans_equiv_sets),size(holstein.trans_equiv_sets))
-    print('\n')
-    _print_local_param(holstein.lattice.site_to_orbit,holstein.μ,"μ")
-    _print_local_param(holstein.lattice.site_to_orbit,holstein.ω,"ω")
-    _print_local_param(holstein.lattice.site_to_orbit,holstein.λ,"λ")
-    if length(holstein.tij)>0
-        print('\n')
-        _print_nonlocal_param(holstein.tij,holstein.neighbor_table_tij,"tij")
-    end
-    if length(holstein.ωij)>0
-        print('\n')
-        _print_nonlocal_param(holstein.ωij,holstein.neighbor_table_ωij,"ωij")
-    end
-end
 
 function _print_local_param(orbits::Vector,vals::Vector,param::String)
 
@@ -380,10 +334,7 @@ for param in [ :tij , :ωij ]
         function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Number}
 
             # getting new neighbors accounting for periodic boundary conditions
-            dL1 = mod(displacement[1], holstein.lattice.L1)
-            dL2 = mod(displacement[2], holstein.lattice.L2)
-            dL3 = mod(displacement[3], holstein.lattice.L3)
-            newneighbors = holstein.trans_equiv_sets[:,:,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
+            newneighbors = calc_neighbor_table(holstein.lattice,orbit1,orbit2,displacement)
 
             # getting number of new neighbors
             nnewneighbors = size(newneighbors,2)
@@ -412,7 +363,7 @@ function assign_ωij!(holstein::HolsteinModel, μ0::Number, σ0::Number, sgn::In
     assign_ωij!(holstein,μ0,σ0,orbit1,orbit2,displacement)
 
     # number of new neighbors constructed
-    nnewneighbors = div(holstein.lattice.nsites,holstein.lattice.norbits)
+    nnewneighbors = div(holstein.lattice.nsites,holstein.lattice.unit_cell.norbits)
 
     # modifying holsteinmodel.sign_ωij array
     append!( holstein.sign_ωij , fill(Int,sgn,nnewneighbors) )
@@ -515,7 +466,7 @@ function write_phonons(holstein::HolsteinModel,filename::String)
                 for l1 in 0:lattice.L1-1
 
                     # iterate over orbitals/sites in each unit cell
-                    for orbit in 1:lattice.norbits
+                    for orbit in 1:lattice.unit_cell.norbits
 
                         # get site in lattice
                         site = loc_to_site(lattice,orbit,l1,l2,l3)
