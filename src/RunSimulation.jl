@@ -106,7 +106,8 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params)
 
         # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein, container_rspace, container_kspace)
+        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein,
+                                                                 container_rspace, container_kspace)
 
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
         write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,holstein,real_space=true)
@@ -194,10 +195,14 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         # iterating over the size of each bin i.e. the number of measurements made per bin
         for n in 1:sim_params.bin_size
 
-            # do hybrid monte carlo update
-            simulation_time  += @elapsed accepted, niters = HMC.update!(holstein,hmc,fa,preconditioner)
-            iters            += niters
-            accepted_updates += accepted
+            # iterating over number of HMC updates between measurements
+            for i in 1:sim_params.meas_freq
+
+                # do hybrid monte carlo update
+                simulation_time  += @elapsed accepted, niters = HMC.update!(holstein,hmc,fa,preconditioner)
+                iters            += niters
+                accepted_updates += accepted
+            end
 
             # update stochastic estimates of the Green's functions
             measurement_time += @elapsed update!(Gr,holstein,preconditioner)
@@ -215,7 +220,8 @@ function run_simulation!(holstein::HolsteinModel{T1,T2}, sim_params::SimulationP
         measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params)
 
         # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein, container_rspace, container_kspace)
+        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, holstein,
+                                                                 container_rspace, container_kspace)
 
         # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
         write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,holstein,real_space=true)

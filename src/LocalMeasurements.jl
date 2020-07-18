@@ -1,7 +1,9 @@
 module LocalMeasurements
 
 using Printf
-using ..Utilities: get_index, get_site, get_τ, trapezoid
+using UnsafeArrays
+
+using ..Utilities: get_index, get_site, get_τ, δ
 using ..HolsteinModels: HolsteinModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
@@ -29,7 +31,7 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
     λ = holstein.λ
 
     # getting number of orbitals
-    norbits = holstein.lattice.norbits::Int
+    norbits = holstein.lattice.unit_cell.norbits::Int
 
     # number of physical sites in lattice
     nsites = holstein.nsites::Int
@@ -86,12 +88,12 @@ function construct_local_measurements_container(holstein::HolsteinModel{T1,T2}, 
 
     local_meas_container = Dict()
     for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi")
-        local_meas_container[meas] = zeros(T1,holstein.lattice.norbits)
+        local_meas_container[meas] = zeros(T1,holstein.lattice.unit_cell.norbits)
     end
 
     # only measure S-Wave Susceptibility if Unequal Time Pair Green's Function is being measured
     if "PairGreens" in unequaltime_meas
-        local_meas_container["swave_susc"] = zeros(T1,holstein.lattice.norbits)
+        local_meas_container["swave_susc"] = zeros(T1,holstein.lattice.unit_cell.norbits)
     end
 
     # converting dictionary to named tuple
@@ -112,13 +114,16 @@ function process_local_measurements!(container::NamedTuple, sim_params::Simulati
         container[key] ./= sim_params.bin_size
     end
 
+    # if measuring s-wave susceptibility
     if :swave_susc in keys(container)
-        # calculating s-wave susceptibility
-        for orbit in 1:holstein.lattice.norbits
-            # getting pair greens function correspond to the k=0 k-point in momentum space
-            pair_greens = @view container_kspace.PairGreens[:,orbit,orbit,1,1,1]
-            # integrating from 0 to β to get the susceptibility
-            container.swave_susc[orbit] = real( trapezoid(pair_greens, holstein.Δτ, extrapolate=true) )
+        # iterating over orbitals
+        for orbit in 1:holstein.lattice.unit_cell.norbits
+            # pair green's function
+            Pᵣ = container_rspace.PairGreens
+            # green's function
+            Gᵣ = container_rspace.Greens
+            # calculating s-wave susceptibility
+            container.swave_susc[orbit] = calc_swave_susc(Pᵣ, Gᵣ, holstein.Δτ, orbit)
         end
     end
 
@@ -162,7 +167,7 @@ Write non-local measurements to file.
 function write_local_measurements(container::NamedTuple, sim_params::SimulationParameters, holstein::HolsteinModel) where {T<:Number}
 
     open(sim_params.datafolder*"local_measurements.out", "a") do file
-        for orbit in 1:holstein.lattice.norbits
+        for orbit in 1:holstein.lattice.unit_cell.norbits
             write(file, string(orbit))
             for key in keys(container)
                 write(file, @sprintf(",%.6f", container[key][orbit]))
@@ -172,6 +177,53 @@ function write_local_measurements(container::NamedTuple, sim_params::SimulationP
     end
 
     return nothing
+end
+
+#################################
+## MEASUREMENT IMPLEMENTATIONS ##
+#################################
+
+"""
+Measure S-wave Pair Susceptibility using Simpson's rule for evaluating the numerical integral.
+Pᵣ is Pair Green's Functions and Gᵣ is the real space Green's Functions
+"""
+function calc_swave_susc(Pᵣ::Array{Complex{T},6},Gᵣ::Array{Complex{T},6},Δτ,orbit)::T where {T<:AbstractFloat}
+    
+    L  = size(Pᵣ,1)
+    L₁ = size(Pᵣ,4)
+    L₂ = size(Pᵣ,5)
+    L₃ = size(Pᵣ,6)
+    Pₛ = 0.0im
+    @uviews Pᵣ begin
+        # iterate over unit cell displacements
+        for l₃ in 0:L₃-1
+            for l₂ in 0:L₂-1
+                for l₁ in 0:L₁-1
+                    # calculate Pair Green's Function Pᵣ(β)
+                    pᵣ  = @view Pᵣ[:,orbit,orbit,l₁+1,l₂+1,l₃+1]
+                    Gᵣ0 = Gᵣ[1,orbit,orbit,l₁+1,l₂+1,l₃+1]
+                    pᵣβ = δ(l₁)*δ(l₂)*δ(l₃)*(1.0-2*Gᵣ0) + pᵣ[1]
+                    # iterate over τ to do Simpson integration
+                    for τ in 2:2:L
+                        Pₛ +=     pᵣ[τ-1] * 1.0/3.0 * Δτ
+                        Pₛ +=     pᵣ[τ]   * 4.0/3.0 * Δτ
+                        if τ==L
+                            Pₛ += pᵣβ     * 1.0/3.0 * Δτ
+                        else
+                            Pₛ += pᵣ[τ+1] * 1.0/3.0 * Δτ
+                        end
+                    end
+                    # deal with boundary condition for Simpson integration
+                    if isodd(L)
+                        Pₛ -= pᵣ[L-1] * 1.0/12.0 * Δτ
+                        Pₛ += pᵣ[L]   * 2.0/3.0  * Δτ
+                        Pₛ += pᵣβ     * 5.0/12.0 * Δτ
+                    end
+                end
+            end
+        end
+    end
+    return real(Pₛ)
 end
 
 end

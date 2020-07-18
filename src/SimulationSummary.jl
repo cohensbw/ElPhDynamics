@@ -32,7 +32,7 @@ function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_para
     L1 = holstein.lattice.L1
     L2 = holstein.lattice.L2
     L3 = holstein.lattice.L3
-    norbits = holstein.lattice.norbits
+    norbits = holstein.lattice.unit_cell.norbits
 
     # write final phonon field configuration to file
     write_phonons(holstein,sim_params.datafolder*"phonon_config.out")
@@ -147,7 +147,7 @@ Write local measurements to file.
 function write_local_data(outfile, sim_params::SimulationParameters, lattice::Lattice{T}, nbins::Int) where {T<:Number}
 
     # num orbitals per unit cell
-    norbits = lattice.norbits
+    norbits = lattice.unit_cell.norbits
 
     # data filename
     datafile = sim_params.datafolder*"local_measurements.out"

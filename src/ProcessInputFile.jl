@@ -6,7 +6,7 @@ using LinearAlgebra
 using Logging
 using LibGit2
 
-using ..Geometries: Geometry
+using ..UnitCells: UnitCell
 using ..Lattices: Lattice
 using ..HolsteinModels: HolsteinModel
 using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
@@ -39,7 +39,7 @@ function process_input_file(filename::String)
     ##################################
 
     if haskey(input,"hmc")
-        meas_freq = 1
+        meas_freq = input["hmc"]["meas_freq"]
         nsteps    = input["hmc"]["simulation_updates"]
         burnin    = input["hmc"]["burnin_updates"]
     else
@@ -138,9 +138,10 @@ function process_input_file(filename::String)
         Δt              = input["hmc"]["dt"]
         trajectory_time = input["hmc"]["trajectory_time"]
         construct_guess = input["hmc"]["construct_guess"]
-        α               = 1.0 - input["hmc"]["momentum_refresh_fraction"]
+        α               = input["hmc"]["momentum_conservation_fraction"]
+        Nb              = input["hmc"]["num_multitimesteps"]
         @assert 0.0 <= α < 1.0
-        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,α,construct_guess)
+        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,α,Nb,construct_guess)
     elseif input["langevin"]["update_method"]==1
         Δt       = input["langevin"]["dt"]
         dynamics = EulerDynamics(NL,Δt)
@@ -180,20 +181,21 @@ function initialize_holstein_model(filename::String)
     input = TOML.parsefile(filename)
     
     # define lattice geometry
-    geom = Geometry(input["lattice"]["ndim"],
-                    input["lattice"]["norbits"],
-                    hcat(input["lattice"]["lattice_vectors"]...),
-                    hcat(input["lattice"]["basis_vectors"]...))
+    unit_cell = UnitCell(input["lattice"]["ndim"],
+                         input["lattice"]["norbits"],
+                         hcat(input["lattice"]["lattice_vectors"]...),
+                         hcat(input["lattice"]["basis_vectors"]...))
     
     # define lattice
-    lattice = Lattice(geom, input["lattice"]["L"])
+    lattice = Lattice(unit_cell, input["lattice"]["L"])
     
     # initialize holstein model
-    holstein = HolsteinModel(geom,lattice,
+    holstein = HolsteinModel(lattice,
                              input["holstein"]["beta"],
                              input["holstein"]["dtau"],
                              is_complex=false,
                              tol=input["solver"]["tol"],
+                             maxiter=input["solver"]["maxiter"],
                              mul_by_M=input["solver"]["use_preconditioner"],
                              restart=input["solver"]["restart"])
     

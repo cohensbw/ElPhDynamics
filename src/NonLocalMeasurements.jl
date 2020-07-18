@@ -146,7 +146,7 @@ function construct_nonlocal_measurements_container(holstein::HolsteinModel{T1,T2
     L1 = holstein.lattice.L1
     L2 = holstein.lattice.L2
     L3 = holstein.lattice.L3
-    norbits = holstein.lattice.norbits
+    norbits = holstein.lattice.unit_cell.norbits::Int
 
     container_rspace = Dict()
     container_kspace = Dict()

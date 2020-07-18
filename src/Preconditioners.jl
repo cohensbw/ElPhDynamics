@@ -344,7 +344,7 @@ mutable struct FourierPreconditioner
     
     
     function FourierPreconditioner(holstein)
-        @assert holstein.lattice.norbits == 1 "Only a single orbital per unit cell currently supported"
+        @assert holstein.lattice.unit_cell.norbits == 1 "Only a single orbital per unit cell currently supported"
 
         L = holstein.Lτ
         (N1, N2, N3) = holstein.lattice.dims
