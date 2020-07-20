@@ -110,7 +110,7 @@ meas_freq = 1
 
 # Partial momentum refresh parameter ie what fraction of the momentum is refreshed.
 # For "standard" HMC set this value to 1.0 ie momentum is entirely refreshed before each trajectory.
-# Requirement: 0 < momentum_refresh_fraction <= 1
+# Requirement: 0 <= momentum_conservation_fraction < 1
 momentum_conservation_fraction = 0.0
 
 # construct an initial guess for solution to linear system based on previous solutions.
