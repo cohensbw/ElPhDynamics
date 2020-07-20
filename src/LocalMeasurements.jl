@@ -114,10 +114,13 @@ function process_local_measurements!(container::NamedTuple, sim_params::Simulati
         container[key] ./= sim_params.bin_size
     end
 
+    # number of orbits/sites per unit cell
+    norbits = holstein.lattice.unit_cell.norbits::Int
+
     # if measuring s-wave susceptibility
     if :swave_susc in keys(container)
         # iterating over orbitals
-        for orbit in 1:holstein.lattice.unit_cell.norbits
+        for orbit in 1:norbits
             # pair green's function
             Pᵣ = container_rspace.PairGreens
             # green's function
@@ -166,8 +169,9 @@ Write non-local measurements to file.
 """
 function write_local_measurements(container::NamedTuple, sim_params::SimulationParameters, holstein::HolsteinModel) where {T<:Number}
 
+    norbits = holstein.lattice.unit_cell.norbits::Int
     open(sim_params.datafolder*"local_measurements.out", "a") do file
-        for orbit in 1:holstein.lattice.unit_cell.norbits
+        for orbit in 1:norbits
             write(file, string(orbit))
             for key in keys(container)
                 write(file, @sprintf(",%.6f", container[key][orbit]))
