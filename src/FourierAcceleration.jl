@@ -4,7 +4,7 @@ using FFTW
 using LinearAlgebra
 using UnsafeArrays
 
-using ..HolsteinModels: HolsteinModel
+using ..Models: HolsteinModel
 using ..Utilities: get_index
 
 export FourierAccelerator, update_Q!, update_M!, fourier_accelerate!

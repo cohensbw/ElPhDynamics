@@ -6,12 +6,12 @@ using UnsafeArrays
 
 import LinearAlgebra: ldiv!, mul!, transpose
 
-using ..HolsteinModels: HolsteinModel
+using ..Models: HolsteinModel
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
 
-export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner
+export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, setup!
 
 """
 Object to represent Kenerl Polynomial Expansion.

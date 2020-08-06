@@ -5,7 +5,7 @@ using Printf
 using Pkg.TOML
 
 using ..SimulationParams: SimulationParameters
-using ..HolsteinModels: HolsteinModel, write_phonons, write_M_matrix
+using ..Models: HolsteinModel, write_phonons, write_M_matrix
 using ..Lattices: Lattice
 
 export write_simulation_summary

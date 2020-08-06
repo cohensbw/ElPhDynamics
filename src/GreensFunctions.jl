@@ -6,7 +6,7 @@ using LinearAlgebra
 using FFTW
 using UnsafeArrays
 
-using ..HolsteinModels: HolsteinModel, mulMᵀ!
+using ..Models: AbstractModel, mulMᵀ!
 using ..Utilities: get_index, get_site, get_τ
 
 using ..KPMPreconditioners: setup!
@@ -131,15 +131,15 @@ struct EstimateGreensFunction{T<:AbstractFloat}
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function EstimateGreensFunction(model::AbstractModel{T1}) where {T1<:AbstractFloat}
 
-        NL      = holstein.nindices
-        N       = holstein.nsites
-        L       = holstein.Lτ
-        L₃      = holstein.lattice.L3
-        L₂      = holstein.lattice.L2
-        L₁      = holstein.lattice.L1
-        nₛ      = holstein.lattice.unit_cell.norbits
+        NL      = model.nindices
+        N       = model.nsites
+        L       = model.Lτ
+        L₃      = model.lattice.L3
+        L₂      = model.lattice.L2
+        L₁      = model.lattice.L1
+        nₛ      = model.lattice.unit_cell.norbits
         r₁      = zeros(T1,NL)
         r₂      = zeros(T1,NL)
         M⁻¹r₁   = zeros(T1,NL)
@@ -161,8 +161,7 @@ end
 """
 Updates the estimate of the Green's Function based on current phonon field configuration.
 """
-function update!(estimator::EstimateGreensFunction{T1}, holstein::HolsteinModel{T1,T2},
-                 preconditioner=I) where {T1<:AbstractFloat,T2<:Number}
+function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) where {T<:AbstractModel}
     
     r₁    = estimator.r₁
     r₂    = estimator.r₂
@@ -179,19 +178,19 @@ function update!(estimator::EstimateGreensFunction{T1}, holstein::HolsteinModel{
     fill!(M⁻¹r₁,0.0)
     fill!(M⁻¹r₂,0.0)
     setup!(preconditioner)
-    if holstein.mul_by_M
-        holstein.transposed = false
+    if model.mul_by_M
+        model.transposed = false
         # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-        iters = ldiv!(M⁻¹r₁, holstein, r₁, preconditioner)
+        iters = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
         # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
-        iters = ldiv!(M⁻¹r₂, holstein, r₂, preconditioner)
+        iters = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
     else
         # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₁
-        mulMᵀ!(holstein.Mᵀg, holstein, r₁)
-        iters = ldiv!(M⁻¹r₁, holstein, holstein.Mᵀg, preconditioner)
+        mulMᵀ!(model.Mᵀg, model, r₁)
+        iters = ldiv!(M⁻¹r₁, model, model.Mᵀg, preconditioner)
         # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₂
-        mulMᵀ!(holstein.Mᵀg, holstein, r₂)
-        iters = ldiv!(M⁻¹r₂, holstein, holstein.Mᵀg, preconditioner)
+        mulMᵀ!(model.Mᵀg, model, r₂)
+        iters = ldiv!(M⁻¹r₂, model, model.Mᵀg, preconditioner)
     end
 
     # vector to be convolved together

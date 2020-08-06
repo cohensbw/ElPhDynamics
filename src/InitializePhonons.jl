@@ -1,6 +1,6 @@
 module InitializePhonons
 
-using ..HolsteinModels: HolsteinModel, construct_expnΔτV!
+using ..Models: HolsteinModel, construct_expnΔτV!
 using ..Utilities: get_index
 
 export init_phonons_single_site!, init_phonons_half_filled!, sample_qho

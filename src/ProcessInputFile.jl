@@ -8,10 +8,10 @@ using LibGit2
 
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice
-using ..HolsteinModels: HolsteinModel
-using ..HolsteinModels: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
-using ..HolsteinModels: assign_tij!, assign_ωij!
-using ..HolsteinModels: setup_checkerboard!, construct_expnΔτV!, read_phonons
+using ..Models: HolsteinModel
+using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
+using ..Models: assign_tij!, assign_ωij!
+using ..Models: setup_checkerboard!, construct_expnΔτV!, read_phonons
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo

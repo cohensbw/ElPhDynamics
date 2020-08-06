@@ -5,7 +5,7 @@ using UnsafeArrays
 using LinearAlgebra
 
 using ..Utilities: get_index
-using ..HolsteinModels: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
+using ..Models: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
 using ..PhononAction: calc_dSbosedx!
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 

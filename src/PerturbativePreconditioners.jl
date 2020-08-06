@@ -4,7 +4,7 @@ using  UnsafeArrays
 using  LinearAlgebra
 import LinearAlgebra: ldiv!, mul!, transpose
 
-using ..HolsteinModels: HolsteinModel
+using ..Models: HolsteinModel
 using ..Checkerboard: checkerboard_mul!, checkerboard_inverse_mul!
 using ..Checkerboard: checkerboard_transpose_mul!, checkerboard_inverse_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!

@@ -4,7 +4,7 @@ using Printf
 using UnsafeArrays
 
 using ..Utilities: get_index, get_site, get_τ, δ
-using ..HolsteinModels: HolsteinModel
+using ..Models: HolsteinModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
 

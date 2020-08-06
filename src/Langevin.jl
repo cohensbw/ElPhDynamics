@@ -16,15 +16,13 @@ include("Lattices.jl")
 
 include("Checkerboard.jl")
 
-include("RestartedGMRES.jl")
-
-include("ConjugateGradients.jl")
+include("IterativeSolvers.jl")
 
 include("TimeFreqFFTs.jl")
 
 include("TightBindingFFTs.jl")
 
-include("HolsteinModels.jl")
+include("Models.jl")
 
 include("KPMPreconditioners.jl")
 
@@ -40,8 +38,6 @@ include("HMC.jl")
 
 include("GreensFunctions.jl")
 
-# include("FourierTransforms.jl")
-
 include("SimulationParams.jl")
 
 include("NonLocalMeasurements.jl")
@@ -54,8 +50,6 @@ include("ProcessInputFile.jl")
 
 include("SimulationSummary.jl")
 
-# include("Preconditioners.jl")
-
 ####################################
 ## DEFINING HIGHET LEVEL FUNCTION ##
 ##     TO RUN A SIMULATION        ##
@@ -64,7 +58,7 @@ include("SimulationSummary.jl")
 using ..RunSimulation: run_simulation!
 using ..ProcessInputFile: process_input_file, initialize_holstein_model
 using ..SimulationSummary: write_simulation_summary
-using ..HolsteinModels: read_phonons
+using ..Models: read_phonons
 
 export simulate, load_model
 

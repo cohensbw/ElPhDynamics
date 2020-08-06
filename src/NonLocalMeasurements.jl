@@ -5,7 +5,7 @@ using FFTW
 using LinearAlgebra
 
 using ..Utilities: get_index, get_site, get_τ, θ, δ
-using ..HolsteinModels: HolsteinModel
+using ..Models: HolsteinModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, measure_GΔ0, measure_GΔ0_GΔ0, measure_GΔΔ_G00, measure_GΔ0_G0Δ
 

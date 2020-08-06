@@ -9,57 +9,48 @@ using Random
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..Utilities: get_index
 
-import ..ConjugateGradients
-using  ..ConjugateGradients: ConjugateGradient
-
-import ..RestartedGMRES
-using  ..RestartedGMRES: GMRES
+using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, solve!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix
 
 
 # overload `eltype` from Base
-function eltype(holstein::HolsteinModel{T1,T2})::DataType where {T1<:AbstractFloat,T2<:Number}
+function eltype(holstein::HolsteinModel{T1,T2,T3})::DataType where {T1<:AbstractFloat,T2<:Number,T3<:IterativeSolver}
 
     return T2
 end
 
 # overloading `size` from Base
-function length(holstein::HolsteinModel{T1,T2})::Int where {T1<:AbstractFloat,T2<:Number}
+function length(holstein::HolsteinModel)::Int
 
     return holstein.nindices
 end
 
 
 # overloading `size` from Base
-function size(holstein::HolsteinModel{T1,T2})::Tuple{Int,Int} where {T1<:AbstractFloat,T2<:Number}
+function size(holstein::HolsteinModel)::Tuple{Int,Int}
 
     return holstein.nindices, holstein.nindices
 end
 
-function size(holstein::HolsteinModel{T1,T2},dim::Int)::Int where {T1<:AbstractFloat,T2<:Number}
+function size(holstein::HolsteinModel,dim::Int)::Int
 
     return holstein.nindices
 end
 
 
 """
-Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b
+Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b.
 """
-function ldiv!(x::AbstractVector{T2}, holstein::HolsteinModel{T1,T3}, b::AbstractVector{T2}, P=I)::Int where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function ldiv!(x::AbstractVector, holstein::HolsteinModel, b::AbstractVector, P)::Int
 
-    # keeps track of number of iterations for iterative solver to execute.
-    iters = 0
+    iters = solve!(x, holstein, b, holstein.solver, P)
+    return iters
+end
 
-    if holstein.mul_by_M
-        # Solve M⋅x=b  ==> x=M⁻¹⋅b using GMRES + Preconditioning (transposed=false) OR
-        # Solve Mᵀ⋅x=b ==> x=M⁻ᵀ⋅b using GMRES + Preconditioning (transposed=true)
-        flag, iters, Δ = RestartedGMRES.solve!(x, holstein, b, holstein.gmres, P)
-    else
-        # Solve MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b using Conjugate Gradient
-        iters = ConjugateGradients.solve!(x, holstein, b, holstein.cg)
-    end
+function ldiv!(x::AbstractVector, holstein::HolsteinModel, b::AbstractVector)::Int
 
+    iters = solve!(x, holstein, b, holstein.solver)
     return iters
 end
 

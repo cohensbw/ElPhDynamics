@@ -1,13 +1,10 @@
-module HolsteinModels
-
 using Statistics
 using Printf
 
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice, sort_neighbor_table!, loc_to_site, calc_neighbor_table
 using ..Checkerboard: checkerboard_order, checkerboard_groups
-using ..RestartedGMRES: GMRES, solve!
-using ..ConjugateGradients: ConjugateGradient
+using ..IterativeSolvers: GMRES, ConjugateGradient
 using ..Utilities: get_index
 
 export HolsteinModel
@@ -17,7 +14,7 @@ export get_index, get_site, get_τ
 export setup_checkerboard!, construct_expnΔτV!
 export write_phonons, read_phonons
 
-mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{AbstractFloat,Complex{<:AbstractFloat}} }
+mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
     ################################
     ## COMPLETE MODEL HAMILTONIAN ##
@@ -136,12 +133,10 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{AbstractFloat,Comple
     "If true multiply by Mᵀ instead of M."
     transposed::Bool
 
-    "Stores state vectors for Conjugate Gradient algorithm so as to avoid
-    extra memory allocations."
-    cg::ConjugateGradient{T2,T1}
-
-    "GMRES type that preallocates memory for algorithm."
-    gmres::GMRES{T1,T2}
+    """
+    Iterative Solver
+    """
+    solver::T3
 
     #######################
     ## INNER CONSTRUCTOR ##
@@ -213,57 +208,38 @@ mutable struct HolsteinModel{ T1<:AbstractFloat , T2<:Union{AbstractFloat,Comple
             # temporary vectors
             Mᵀg = zeros(Complex{T},nindices)
 
-            # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            if mul_by_M
+                # GMRES type
+                solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+            else
+                # conjugate gradient state variables
+                solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            end
 
-            # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
-
-            new{T,Complex{T}}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
+            new{T,Complex{T},typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                               μ, tij, coshtij, sinhtij, neighbor_table_tij,
                               ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                              ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
+                              ytemp, Mᵀg, mul_by_M, transposed, solver)
         else
 
             # temporary vectors
             Mᵀg = zeros(T,nindices)
 
-            # conjugate gradient state variables
-            cg = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            if mul_by_M
+                # GMRES type
+                solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+            else
+                # conjugate gradient state variables
+                solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            end
 
-            # GMRES type
-            gmres = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
-
-            new{T,T}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
+            new{T,T,typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                      μ, tij, coshtij, sinhtij, neighbor_table_tij,
                      ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                     ytemp, Mᵀg, mul_by_M, transposed, cg, gmres)
+                     ytemp, Mᵀg, mul_by_M, transposed, solver)
         end
     end
 
-end
-
-#####################
-## PRETTY PRINTING ##
-#####################
-
-function _print_local_param(orbits::Vector,vals::Vector,param::String)
-
-    for orbit in 1:maximum(orbits)
-        avg = mean(vals[orbits.==orbit])
-        sd = std(vals[orbits.==orbit])
-        println(param, ", orbit = ", orbit, ", mean = ",avg,", std = ",sd)
-    end
-    return nothing
-end
-
-function _print_nonlocal_param(vals::Vector,neighbor_table::Matrix{Int},param::String)
-
-    println(param,": ", typeof(vals),size(vals), ", mean = ", mean(vals), ", std = ", std(vals))
-    println("neighbor_table_", param, ": ", typeof(neighbor_table), size(neighbor_table))
-    # show(IOContext(stdout, :limit => true), "text/plain", neighbor_table)
-    print('\n')
-    return nothing
 end
 
 #############################################################################
@@ -278,10 +254,11 @@ for param in [ :μ , :ω , :λ, :ω4 ]
 
     # defining functions
     @eval begin
-        function $op(holstein::HolsteinModel{T},μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+        function $op(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
             if orbit==0 # assigning parameter values for all sites
-                holstein.$param .= μ0 .+ σ0 .* randn(length(holstein.$param))
+                R = randn(length(holstein.$param))
+                @. holstein.$param = μ0 + σ0 * R
             else # assigning paramerter values for only sites of certain kind of orbital
                 for i in 1:length(holstein.$param)
                     if holstein.lattice.site_to_orbit[i]==orbit
@@ -308,7 +285,7 @@ for param in [ :tij , :ωij ]
 
     # defining functions when parameter value is complex
     @eval begin
-        function $op(holstein::HolsteinModel{T1,T2}, μ0::T2, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Complex}
+        function $op(holstein::HolsteinModel, μ0::T2, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Complex}
 
             # phase of μ0
             phase = angle(μ0)
@@ -331,7 +308,7 @@ for param in [ :tij , :ωij ]
 
     # defining functions when parameter value is real
     @eval begin
-        function $op(holstein::HolsteinModel{T1,T2}, μ0::T1, σ0::T1, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T1<:AbstractFloat,T2<:Number}
+        function $op(holstein::HolsteinModel, μ0::T, σ0::T, orbit1::Int, orbit2::Int, displacement::Vector{Int}) where {T<:AbstractFloat}
 
             # getting new neighbors accounting for periodic boundary conditions
             newneighbors = calc_neighbor_table(holstein.lattice,orbit1,orbit2,displacement)
@@ -382,7 +359,7 @@ Function for sorting the hopping parameters in HolsteinModel and calculating the
 cosh and sinh of the hopping parameters so that the checkerboard decomposition
 is ready to go.
 """
-function setup_checkerboard!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+function setup_checkerboard!(holstein::HolsteinModel)
 
     if length(holstein.tij)>0
 
@@ -409,21 +386,21 @@ function setup_checkerboard!(holstein::HolsteinModel{T1,T2}) where {T1<:Abstract
 end
 
 """
-    function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function construct_expnΔτV!(holstein::HolsteinModel)
 
 Constructs the exponentiated interaction matrix for the Holstein Model
 exp(-Δτ⋅V[x]) based on the current phonon fields x. Note that the matrix
 exp(-Δτ⋅V[x]) is stored as a vector as it is a diagonal matrix.
 """
-function construct_expnΔτV!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+function construct_expnΔτV!(holstein::HolsteinModel)
 
-    expnΔτV  = holstein.expnΔτV::Vector{T2}
-    λ        = holstein.λ::Vector{T1}
-    μ        = holstein.μ::Vector{T1}
-    x        = holstein.x::Vector{T1}
-    Δτ       = holstein.Δτ::T1
-    Lτ       = holstein.Lτ::Int
-    nsites   = holstein.nsites::Int
+    expnΔτV  = holstein.expnΔτV
+    λ        = holstein.λ
+    μ        = holstein.μ
+    x        = holstein.x
+    Δτ       = holstein.Δτ
+    Lτ       = holstein.Lτ
+    nsites   = holstein.nsites
 
     # iterating over time slices
     @inbounds @fastmath for i in 1:nsites
@@ -495,7 +472,7 @@ end
 """
 Read phonon config from file.
 """
-function read_phonons(holstein::HolsteinModel{T1,T2},filename::String) where {T1<:AbstractFloat,T2<:Number}
+function read_phonons(holstein::HolsteinModel{T1,T2,T3},filename::String) where {T1<:AbstractFloat,T2<:Number,T3<:IterativeSolver}
 
     # open file
     open(filename,"r") do file
@@ -535,12 +512,4 @@ function read_phonons(holstein::HolsteinModel{T1,T2},filename::String) where {T1
     construct_expnΔτV!(holstein)
 
     return nothing
-end
-
-##############################################
-## Include Functionality to Handle M Matrix ##
-##############################################
-
-include("HolsteinModelMatrix.jl")
-
 end
