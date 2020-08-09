@@ -7,6 +7,7 @@ using ..Utilities: get_index, get_site, get_τ, δ
 using ..Models: HolsteinModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
+using ..NonLocalMeasurements: measure_Greens, measure_DenDen
 
 export make_local_measurements!
 export construct_local_measurements_container
@@ -47,7 +48,11 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
     normalization = div(nsites,norbits)*Lτ
 
     # iterating over orbital types
-    @fastmath @inbounds for orbit in 1:norbits
+    for orbit in 1:norbits
+        # measure density
+        container.density[orbit] += 2.0 * (1.0-real(measure_Greens(Gr,0,0,0,orbit,orbit,0)))
+        # measure double occupancy
+        container.double_occ[orbit] += real(measure_DenDen(Gr,0,0,0,orbit,orbit,0))
         # iterating over orbits of the current type
         for site in orbit:norbits:nsites
             # iterating over time slices
@@ -57,10 +62,6 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
                 # estimate ⟨cᵢ(τ)c⁺ᵢ(τ)⟩
                 G1 = estimate(Gr,site,site,τ,τ,1)
                 G2 = estimate(Gr,site,site,τ,τ,2)
-                # measure density
-                container.density[orbit] += (2.0-G1-G2) / normalization
-                # measure double occupancy
-                container.double_occ[orbit] += (1.0-G1)*(1.0-G2) / normalization
                 # measuring phonon kinetic energy such that
                 # ⟨KE⟩ = 1/(2Δτ) - ⟨(1/2)[xᵢ(τ+1)-xᵢ(τ)]²/Δτ²⟩
                 Δx = x[get_index(τ%Lτ+1,site,Lτ)]-x[index]

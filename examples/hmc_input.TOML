@@ -180,6 +180,9 @@ c2 = 1.0
 
 [measurements]
 
+# number of random vectors used to make stochastic measurements
+num_random_vectors = 1
+
 # Electron Green's Function Measurement
 [measurements.Greens]
 measure        = true # whether or not to measure the quantity

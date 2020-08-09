@@ -26,15 +26,12 @@ export run_simulation!
 """
 Run Langevin simulation.
 """
-function run_simulation!(model::AbstractModel, sim_params::SimulationParameters, dynamics::Dynamics, fa::FourierAccelerator,
+function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_params::SimulationParameters, dynamics::Dynamics, fa::FourierAccelerator,
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
-
-    # declare two electron greens function estimators
-    Gr = EstimateGreensFunction(model)
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space
@@ -132,15 +129,12 @@ end
 """
 Run Hybrid Monte Carlo simulation.
 """
-function run_simulation!(model::AbstractModel, sim_params::SimulationParameters, hmc::HybridMonteCarlo, fa::FourierAccelerator,
+function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_params::SimulationParameters, hmc::HybridMonteCarlo, fa::FourierAccelerator,
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
-
-    # declare two electron greens function estimators
-    Gr = EstimateGreensFunction(model)
 
     # declare container for storing non-local measurements in both
     # position-space and momentum-space

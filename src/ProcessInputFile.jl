@@ -12,6 +12,7 @@ using ..Models: HolsteinModel
 using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..Models: assign_tij!, assign_ωij!
 using ..Models: setup_checkerboard!, construct_expnΔτV!, read_phonons
+using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
@@ -162,16 +163,26 @@ function process_input_file(filename::String)
     unequaltime_meas = Vector{String}()
     equaltime_meas   = Vector{String}()
     for k in keys(measurements)
-        if measurements[k]["measure"]
-            if measurements[k]["time_dependent"]
-                push!(unequaltime_meas,k)
-            else
-                push!(equaltime_meas,k)
+        if k != "num_random_vectors"
+            if measurements[k]["measure"]
+                if measurements[k]["time_dependent"]
+                    push!(unequaltime_meas,k)
+                else
+                    push!(equaltime_meas,k)
+                end
             end
         end
     end
+
+    # construct object of estimating Green's function
+    if haskey(input["measurements"],"num_random_vectors")
+        num_random_vectors = input["measurements"]["num_random_vectors"]
+    else
+        num_random_vectors = 1
+    end
+    Gr = EstimateGreensFunction(holstein,num_random_vectors)
     
-    return holstein, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return holstein, Gr, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
 
 

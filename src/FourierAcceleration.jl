@@ -9,7 +9,7 @@ using ..Utilities: get_index
 
 export FourierAccelerator, update_Q!, update_M!, fourier_accelerate!
 
-struct FourierAccelerator{T<:AbstractFloat}
+struct FourierAccelerator{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
 
     "Copy of input vector if input vector is real."
     vin::Vector{Complex{T}}
@@ -27,10 +27,10 @@ struct FourierAccelerator{T<:AbstractFloat}
     M::Vector{T}
 
     "Performs forward fourier transformation"
-    pfft::FFTW.cFFTWPlan{Complex{T},-1,false,2}
+    pfft::Tfft
 
     "Performs forward fourier transformation"
-    pifft::AbstractFFTs.ScaledPlan{Complex{T},FFTW.cFFTWPlan{Complex{T},1,false,2},T}
+    pifft::Tifft
 
     "Number of sites in lattice getting acclerated."
     N::Int
@@ -45,7 +45,7 @@ struct FourierAccelerator{T<:AbstractFloat}
     """
     Constructor for FourierAccelerator type.
     """
-    function FourierAccelerator(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function FourierAccelerator(holstein::HolsteinModel{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3}
 
         # getting number of sites in lattice
         N = holstein.lattice.nsites
@@ -77,7 +77,7 @@ struct FourierAccelerator{T<:AbstractFloat}
         # planning inverse FFT
         pifft = plan_ifft(v, (1,), flags=FFTW.PATIENT)
 
-        new{T1}(vin,vout,u,Q,M,pfft,pifft,N,L)
+        new{T1,typeof(pfft),typeof(pifft)}(vin,vout,u,Q,M,pfft,pifft,N,L)
     end
 
 end

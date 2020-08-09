@@ -6,7 +6,7 @@ using FFTW
 
 using ..Lattices:   Lattice
 
-struct TimeFreqFFT{T<:AbstractFloat}
+struct TimeFreqFFT{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
 
     "Number of site in lattice."
     N::Int
@@ -18,10 +18,10 @@ struct TimeFreqFFT{T<:AbstractFloat}
     Θ::Vector{Complex{T}}
 
     "FFT plan."
-    fftplan::FFTW.cFFTWPlan{Complex{T},-1,false,2}
+    fftplan::Tfft
 
     "Inverse FFT plan."
-    ifftplan::AbstractFFTs.ScaledPlan{Complex{T},FFTW.cFFTWPlan{Complex{T},1,false,2},T}
+    ifftplan::Tifft
 
     "Temporary storage vector."
     vtemp::Array{Complex{T},2}
@@ -38,7 +38,7 @@ struct TimeFreqFFT{T<:AbstractFloat}
         fftplan  = plan_fft(vtemp, (1,), flags=FFTW.PATIENT)
         ifftplan = plan_ifft(vtemp, (1,), flags=FFTW.PATIENT)
 
-        return new{T}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
+        return new{T,typeof(fftplan),typeof(ifftplan)}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
     end
 end
 

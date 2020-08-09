@@ -28,6 +28,18 @@ maps index in vector ==> τ imaginary time slice
     return (index-1)%Lτ + 1
 end
 
+"""
+Reshapes with zero allocations, returns an instance of Base.ReshapedArray.
+Discussion found at: https://github.com/JuliaLang/julia/issues/24237
+"""
+function reshaped(a::Array{T,M}, dims::NTuple{N,Int}) where {T,N,M}
+    return reshape(view(a, :), dims)
+end
+
+function reshaped(a::AbstractArray{T,M}, dims::NTuple{N,Int}) where {T,N,M}
+    return reshape(a, dims)
+end
+
 ####################
 ## MATH FUNCTIONS ##
 ####################

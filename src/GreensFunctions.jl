@@ -20,7 +20,12 @@ export EstimateGreensFunction, update!, measure_GΔ0, measure_GΔ0_G0Δ, measure
 """
 A type for facilitating the stochastic estimation needed to make measurements
 """
-struct EstimateGreensFunction{T<:AbstractFloat}
+struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
+
+    """
+    Number of random vector to use for making estimates.
+    """
+    n::Int
 
     """
     Number of degrees of freedom.
@@ -101,27 +106,32 @@ struct EstimateGreensFunction{T<:AbstractFloat}
     """
     Forward FFT plan.
     """
-    pfft::FFTW.cFFTWPlan{Complex{T},-1,false,5}
+    pfft::Tfft
 
     """
     Inverse FFT plan.
     """
-    pifft::AbstractFFTs.ScaledPlan{Complex{T},FFTW.cFFTWPlan{Complex{T},1,false,6},T}
+    pifft::Tifft
 
     """
-    Array of dimension [2L,n,L₁,L₂,L₃] to be used in convolution.
+    Array of dimension [2L,n,L₁,L₂,L₃] used for performing convolution.
     """
     a::Array{Complex{T},5}
 
     """
-    Array of dimension [2L,n,L₁,L₂,L₃] to be used in convolution.
+    Array of dimension [2L,n,L₁,L₂,L₃] used for preforming convolution.
     """
     b::Array{Complex{T},5}
 
     """
-    Array of dimension [2L,n,n,L₁,L₂,L₃] to store convolution a⋆b.
+    Array of dimension [2L,n,n,L₁,L₂,L₃] used for preforming convolution.
     """
-    ab::Array{Complex{T},6}
+    ab′::Array{Complex{T},6}
+
+    """
+    Array of dimension [2L,n,n,L₁,L₂,L₃] used for preforming convolution.
+    """
+    ab″::Array{Complex{T},6}
 
     """
     Temporary storage array of dimension [2L,n,L₁,L₂,L₃].
@@ -131,7 +141,7 @@ struct EstimateGreensFunction{T<:AbstractFloat}
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(model::AbstractModel{T1}) where {T1<:AbstractFloat}
+    function EstimateGreensFunction(model::AbstractModel{T},n::Int=1) where {T<:AbstractFloat}
 
         NL      = model.nindices
         N       = model.nsites
@@ -140,21 +150,24 @@ struct EstimateGreensFunction{T<:AbstractFloat}
         L₂      = model.lattice.L2
         L₁      = model.lattice.L1
         nₛ      = model.lattice.unit_cell.norbits
-        r₁      = zeros(T1,NL)
-        r₂      = zeros(T1,NL)
-        M⁻¹r₁   = zeros(T1,NL)
-        M⁻¹r₂   = zeros(T1,NL)
-        GΔ0     = zeros(Complex{T1},2L,nₛ,nₛ,L₁,L₂,L₃)
-        GΔΔ_G00 = zeros(Complex{T1},2L,nₛ,nₛ,L₁,L₂,L₃)
-        GΔ0_GΔ0 = zeros(Complex{T1},2L,nₛ,nₛ,L₁,L₂,L₃)
-        GΔ0_G0Δ = zeros(Complex{T1},2L,nₛ,nₛ,L₁,L₂,L₃)
-        a       = zeros(Complex{T1},2L,nₛ,L₁,L₂,L₃)
-        b       = zeros(Complex{T1},2L,nₛ,L₁,L₂,L₃)
-        ab      = zeros(Complex{T1},2L,nₛ,nₛ,L₁,L₂,L₃)
-        z       = zeros(Complex{T1},2L,nₛ,L₁,L₂,L₃)
+        r₁      = zeros(T,NL)
+        r₂      = zeros(T,NL)
+        M⁻¹r₁   = zeros(T,NL)
+        M⁻¹r₂   = zeros(T,NL)
+        GΔ0     = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        GΔΔ_G00 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        GΔ0_GΔ0 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        GΔ0_G0Δ = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        a       = zeros(Complex{T},2L,nₛ,L₁,L₂,L₃)
+        b       = zeros(Complex{T},2L,nₛ,L₁,L₂,L₃)
+        ab′     = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        ab″     = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
+        z       = zeros(Complex{T},2L,nₛ,L₁,L₂,L₃)
         pfft    = plan_fft(a, (1,3,4,5), flags=FFTW.PATIENT)
-        pifft   = plan_ifft(ab, (1,4,5,6), flags=FFTW.PATIENT)
-        return new{T1}(NL,L,N,L₃,L₂,L₁,nₛ,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab,z)
+        pifft   = plan_ifft(ab′, (1,4,5,6), flags=FFTW.PATIENT)
+        Tfft    = typeof(pfft)
+        Tifft   = typeof(pifft)
+        return new{T,Tfft,Tifft}(n,NL,L,N,L₃,L₂,L₁,nₛ,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab′,ab″,z)
     end
 end
 
@@ -168,59 +181,70 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
     M⁻¹r₁ = estimator.M⁻¹r₁
     M⁻¹r₂ = estimator.M⁻¹r₂
     L     = estimator.L
+    n     = estimator.n
+
+    # initialize measured values to zero
+    fill!(estimator.GΔ0,0.0)
+    fill!(estimator.GΔ0_GΔ0,0.0)
+    fill!(estimator.GΔ0_G0Δ,0.0)
+    fill!(estimator.GΔΔ_G00,0.0)
+
+    # iterate over number of random vectors used to make measurements
+    for i in 1:n
     
-    # initialize random vectors
-    randn!(estimator.r₁)
-    randn!(estimator.r₂)
+        # initialize random vectors
+        randn!(estimator.r₁)
+        randn!(estimator.r₂)
 
-    # solve linear system to get M⁻¹⋅r₁ and M⁻¹⋅r₂
-    iters = 0
-    fill!(M⁻¹r₁,0.0)
-    fill!(M⁻¹r₂,0.0)
-    setup!(preconditioner)
-    if model.mul_by_M
-        model.transposed = false
-        # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-        iters = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
-        # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
-        iters = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
-    else
-        # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₁
-        mulMᵀ!(model.Mᵀg, model, r₁)
-        iters = ldiv!(M⁻¹r₁, model, model.Mᵀg, preconditioner)
-        # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₂
-        mulMᵀ!(model.Mᵀg, model, r₂)
-        iters = ldiv!(M⁻¹r₂, model, model.Mᵀg, preconditioner)
+        # solve linear system to get M⁻¹⋅r₁ and M⁻¹⋅r₂
+        iters = 0
+        fill!(M⁻¹r₁,0.0)
+        fill!(M⁻¹r₂,0.0)
+        setup!(preconditioner)
+        if model.mul_by_M
+            model.transposed = false
+            # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
+            iters = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
+            # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
+            iters = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
+        else
+            # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₁
+            mulMᵀ!(model.Mᵀg, model, r₁)
+            iters = ldiv!(M⁻¹r₁, model, model.Mᵀg, preconditioner)
+            # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₂
+            mulMᵀ!(model.Mᵀg, model, r₂)
+            iters = ldiv!(M⁻¹r₂, model, model.Mᵀg, preconditioner)
+        end
+
+        # vector to be convolved together
+        a = estimator.a
+        b = estimator.b
+
+        # calcualte G[Δ,0]
+        z = estimator.z
+        antiperiodic_copy!(a,r₁,L)
+        antiperiodic_copy!(z,r₂,L)
+        @. a = (a+z)/sqrt(2.0)
+        antiperiodic_copy!(b,M⁻¹r₁,L)
+        antiperiodic_copy!(z,M⁻¹r₂,L)
+        @. b = (b+z)/sqrt(2.0)
+        convolve!(estimator.GΔ0,a,b,estimator,n)
+
+        # calculate G[Δ,0]⋅G[Δ,0]
+        periodic_product!(a,r₁,r₂,L)
+        periodic_product!(b,M⁻¹r₁,M⁻¹r₂,L)
+        convolve!(estimator.GΔ0_GΔ0,a,b,estimator,n)
+
+        # calculate G[Δ,Δ]⋅G[0,0]
+        periodic_product!(a,r₁,M⁻¹r₁,L)
+        periodic_product!(b,r₂,M⁻¹r₂,L)
+        convolve!(estimator.GΔΔ_G00,a,b,estimator,n)
+
+        # calculate G[Δ,0]⋅G[0,Δ]
+        periodic_product!(a,r₁,M⁻¹r₂,L)
+        periodic_product!(b,r₂,M⁻¹r₁,L)
+        convolve!(estimator.GΔ0_G0Δ,a,b,estimator,n)
     end
-
-    # vector to be convolved together
-    a = estimator.a
-    b = estimator.b
-
-    # calcualte G[Δ,0]
-    z = estimator.z
-    antiperiodic_copy!(a,r₁,L)
-    antiperiodic_copy!(z,r₂,L)
-    @. a = (a+z)/sqrt(2.0)
-    antiperiodic_copy!(b,M⁻¹r₁,L)
-    antiperiodic_copy!(z,M⁻¹r₂,L)
-    @. b = (b+z)/sqrt(2.0)
-    convolve!(estimator.GΔ0,a,b,estimator)
-
-    # calculate G[Δ,0]⋅G[Δ,0]
-    periodic_product!(a,r₁,r₂,L)
-    periodic_product!(b,M⁻¹r₁,M⁻¹r₂,L)
-    convolve!(estimator.GΔ0_GΔ0,a,b,estimator)
-
-    # calculate G[Δ,Δ]⋅G[0,0]
-    periodic_product!(a,r₁,M⁻¹r₁,L)
-    periodic_product!(b,r₂,M⁻¹r₂,L)
-    convolve!(estimator.GΔΔ_G00,a,b,estimator)
-
-    # calculate G[Δ,0]⋅G[0,Δ]
-    periodic_product!(a,r₁,M⁻¹r₂,L)
-    periodic_product!(b,r₂,M⁻¹r₁,L)
-    convolve!(estimator.GΔ0_G0Δ,a,b,estimator)
 
     return nothing
 end
@@ -288,10 +312,11 @@ end
 """
 Calculate convolution a⋆b. Note that the vectors `a` and `b` are left modified.
 """
-function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator::EstimateGreensFunction)
+function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator::EstimateGreensFunction,n::Int=1)
 
     b′  = estimator.z
-    ab′ = estimator.ab
+    ab′ = estimator.ab′
+    ab″ = estimator.ab″
     L   = estimator.L
     N   = estimator.N
     L₃  = estimator.L₃
@@ -330,7 +355,10 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
     end
 
     # perform inverse FFT
-    mul!(ab,estimator.pifft,ab′)
+    mul!(ab″,estimator.pifft,ab′)
+
+    # add result to output vector
+    @. ab += ab″ / n
 
     return nothing
 end
