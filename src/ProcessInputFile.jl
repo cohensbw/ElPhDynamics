@@ -2,6 +2,7 @@ module ProcessInputFile
 
 using Pkg.TOML
 using Random
+using Statistics
 using LinearAlgebra
 using Logging
 using LibGit2
@@ -9,6 +10,7 @@ using LibGit2
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice
 using ..Models: HolsteinModel
+using ..MuFinder: MuTuner, update_μ!
 using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..Models: assign_tij!, assign_ωij!
 using ..Models: setup_checkerboard!, construct_expnΔτV!, read_phonons
@@ -44,6 +46,7 @@ function process_input_file(filename::String)
         nsteps    = input["hmc"]["simulation_updates"]
         burnin    = input["hmc"]["burnin_updates"]
     else
+        @assert input["langevin"]["burnin_timesteps"]%input["langevin"]["meas_freq"]==0
         meas_freq = input["langevin"]["meas_freq"]
         nsteps    = input["langevin"]["simulation_timesteps"]
         burnin    = input["langevin"]["burnin_timesteps"]
@@ -92,6 +95,20 @@ function process_input_file(filename::String)
         cp(filename, sim_params.datafolder * phononfile)
     else
         init_phonons_half_filled!(holstein)
+    end
+
+    #####################################
+    ## TUNE DENSITY/CHEMICAL POTENTIAL ##
+    #####################################
+
+    if haskey(input,"tune_density")
+        targed_density = input["tune_density"]["density"]
+        memory         = input["tune_density"]["memory"]
+        buffer         = input["tune_density"]["buffer"]
+        κ₀             = input["tune_density"]["init_compresibility"]
+        μ_tuner = MuTuner(true, mean(holstein.μ), targed_density*holstein.nsites, holstein.β, holstein.Δτ, κ₀, memory, buffer)
+    else
+        μ_tuner = MuTuner(false, mean(holstein.μ), 1.0*holstein.nsites, holstein.β, holstein.Δτ, 1.0, 0.75, 10)
     end
 
     ###########################
@@ -182,7 +199,7 @@ function process_input_file(filename::String)
     end
     Gr = EstimateGreensFunction(holstein,num_random_vectors)
     
-    return holstein, Gr, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return holstein, Gr, μ_tuner, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
 
 

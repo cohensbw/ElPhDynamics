@@ -74,6 +74,8 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
                 container.phi[orbit] += x[index] / normalization
                 # measure ⟨x²⟩
                 container.phi_squared[orbit] += x[index]*x[index] / normalization
+                # measure chemical potential
+                container.mu[orbit] += holstein.μ[site] / normalization
             end
         end
     end
@@ -88,7 +90,7 @@ Construct a dictionary to hold local measurement data.
 function construct_local_measurements_container(holstein::HolsteinModel{T1,T2}, unequaltime_meas::AbstractVector{String})::NamedTuple where {T1<:AbstractFloat,T2<:Number}
 
     local_meas_container = Dict()
-    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi")
+    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi","mu")
         local_meas_container[meas] = zeros(T1,holstein.lattice.unit_cell.norbits)
     end
 

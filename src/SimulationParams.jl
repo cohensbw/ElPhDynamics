@@ -41,6 +41,7 @@ struct SimulationParameters
 
         # calculating the number of measurements that will be made in the simulation
         @assert nsteps%max(1,meas_freq)==0
+        @assert burnin%max(1,meas_freq)==0
         num_meas = div(nsteps, max(1,meas_freq) )
 
         # calculating the number of measurements that will be averaged over in each bin

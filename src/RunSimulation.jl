@@ -6,6 +6,7 @@ using Random
 using ..Models: AbstractModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!
+using ..MuFinder: MuTuner, update_μ!
 using ..FourierAcceleration: FourierAccelerator
 using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
@@ -26,7 +27,7 @@ export run_simulation!
 """
 Run Langevin simulation.
 """
-function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_params::SimulationParameters, dynamics::Dynamics, fa::FourierAccelerator,
+function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters, dynamics::Dynamics, fa::FourierAccelerator,
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
 
     ###############################################################
@@ -60,10 +61,22 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_p
     ## RUNNING SIMULATION: THERMALIZATION STEPS ##
     ##############################################
 
-    # thermalizing system
-    for timestep in 1:sim_params.burnin
+    # frequency with which to update μ if tuning the denisty
+    μ_update_freq = max(sim_params.meas_freq,1)
 
-        simulation_time += @elapsed iters += evolve!(model, dynamics, fa, preconditioner)
+    # thermalizing system
+    for interval in 1:div(sim_params.burnin,μ_update_freq)
+
+        # evolve phonon fields according to dynamics
+        for t in 1:μ_update_freq
+            simulation_time += @elapsed iters += evolve!(model, dynamics, fa, preconditioner)
+        end
+
+        # update chemical potential
+        if μ_tuner.active
+            simulation_time += @elapsed update!(Gr,model,preconditioner)
+            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+        end
     end
 
     ###########################################
@@ -95,6 +108,11 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_p
 
             # make local measurements
             measurement_time += @elapsed make_local_measurements!(local_meas_container, model, Gr)
+
+            # update chemical potential
+            if μ_tuner.active
+                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            end
         end
 
         # process non-local measurements. This includes normalizing the real-space measurements
@@ -129,7 +147,7 @@ end
 """
 Run Hybrid Monte Carlo simulation.
 """
-function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_params::SimulationParameters, hmc::HybridMonteCarlo, fa::FourierAccelerator,
+function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters, hmc::HybridMonteCarlo, fa::FourierAccelerator,
                          unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
 
     ###############################################################
@@ -166,12 +184,24 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_p
     ## RUNNING SIMULATION: THERMALIZATION STEPS ##
     ##############################################
 
-    # thermalizing system
-    for n in 1:sim_params.burnin
+    # frequency with which to update μ if tuning the denisty
+    μ_update_freq = max(sim_params.meas_freq,1)
 
-        simulation_time  += @elapsed accepted, niters = HMC.update!(model,hmc,fa,preconditioner)
-        iters            += niters
-        accepted_updates += accepted
+    # thermalizing system
+    for i in 1:div(sim_params.burnin,μ_update_freq)
+
+        # update phonon fields with HMC udpates
+        for j in 1:μ_update_freq
+            simulation_time  += @elapsed accepted, niters = HMC.update!(model,hmc,fa,preconditioner)
+            iters            += niters
+            accepted_updates += accepted
+        end
+
+        # update chemical potential
+        if μ_tuner.active
+            simulation_time += @elapsed update!(Gr,model,preconditioner)
+            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+        end
     end
 
     ###########################################
@@ -206,6 +236,11 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, sim_p
 
             # make local measurements
             measurement_time += @elapsed make_local_measurements!(local_meas_container, model, Gr)
+
+            # update chemical potential
+            if μ_tuner.active
+                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            end
         end
 
         # process non-local measurements. This includes normalizing the real-space measurements

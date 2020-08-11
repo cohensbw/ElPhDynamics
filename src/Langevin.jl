@@ -24,6 +24,8 @@ include("TightBindingFFTs.jl")
 
 include("Models.jl")
 
+include("MuFinder.jl")
+
 include("KPMPreconditioners.jl")
 
 include("InitializePhonons.jl")
@@ -59,6 +61,7 @@ using ..RunSimulation: run_simulation!
 using ..ProcessInputFile: process_input_file, initialize_holstein_model
 using ..SimulationSummary: write_simulation_summary
 using ..Models: read_phonons
+using ..MuFinder: MuTuner, update_μ!
 
 export simulate, load_model
 
@@ -77,13 +80,13 @@ function simulate(args)
     input_file = args[1]
 
     # precoessing input file
-    holstein, Gr, sim_params, dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
+    holstein, Gr, μ_tuner, sim_params, dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
 
     ########################
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(holstein, Gr, sim_params, dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
+    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(holstein, Gr, μ_tuner, sim_params, dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##

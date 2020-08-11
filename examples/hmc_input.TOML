@@ -75,6 +75,24 @@ val   = -1.0
 orbit  = [1]
 val    = 0.0
 
+################################################
+## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
+################################################
+
+[tune_density]
+
+# target density
+density = 1.0
+
+# what fraction of density history to use when updating chemical potential
+memory  = 0.75
+
+# how many values of history to buffer
+buffer = 10
+
+# intial value to initialize compresibillity to
+init_compresibility = 1.0
+
 ###################################
 ## DEFINING FOURIER ACCELERATION ##
 ###################################
