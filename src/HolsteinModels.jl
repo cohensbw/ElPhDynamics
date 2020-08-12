@@ -4,7 +4,7 @@ using Printf
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice, sort_neighbor_table!, loc_to_site, calc_neighbor_table
 using ..Checkerboard: checkerboard_order, checkerboard_groups
-using ..IterativeSolvers: GMRES, ConjugateGradient
+using ..IterativeSolvers: GMRES, ConjugateGradient, BiCGStab
 using ..Utilities: get_index
 
 export HolsteinModel
@@ -209,34 +209,32 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
             Mᵀg = zeros(Complex{T},nindices)
 
             if mul_by_M
-                # GMRES type
                 solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+                # solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
             else
-                # conjugate gradient state variables
                 solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
             end
 
             new{T,Complex{T},typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
-                              μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                              ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                              ytemp, Mᵀg, mul_by_M, transposed, solver)
+                                             μ, tij, coshtij, sinhtij, neighbor_table_tij,
+                                             ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
+                                             ytemp, Mᵀg, mul_by_M, transposed, solver)
         else
 
             # temporary vectors
             Mᵀg = zeros(T,nindices)
 
             if mul_by_M
-                # GMRES type
                 solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+                # solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
             else
-                # conjugate gradient state variables
                 solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
             end
 
             new{T,T,typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
-                     μ, tij, coshtij, sinhtij, neighbor_table_tij,
-                     ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                     ytemp, Mᵀg, mul_by_M, transposed, solver)
+                                    μ, tij, coshtij, sinhtij, neighbor_table_tij,
+                                    ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
+                                    ytemp, Mᵀg, mul_by_M, transposed, solver)
         end
     end
 

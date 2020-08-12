@@ -120,6 +120,9 @@ dt = 5e-2
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 5.0
 
+# BDP thermostat time scale
+tau = 5.0
+
 # Number of smaller timestep to evolve Sbose by
 num_multitimesteps = 1
 

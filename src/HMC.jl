@@ -31,6 +31,11 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     tr::T
 
     """
+    BDP thermostat timescale
+    """
+    τ::T
+
+    """
     Timestep.
     """
     Δt::T
@@ -140,7 +145,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     u::Vector{T}
 
-    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool=true) where {T<:AbstractFloat}
+    function HybridMonteCarlo(Ndof::Int,Δt::T,tr::T,τ::T,α::T,Nb::Int,construct_guess::Bool=true) where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
         @assert 0.0 <= α < 1.0
@@ -174,7 +179,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # size of smaller timestep for Sb
         Δt′ = Δt/Nb
 
-        return new{T}(Ndof, x0, tr, Δt, Nt, Δt′, Nb, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
+        return new{T}(Ndof, x0, tr, τ, Δt, Nt, Δt′, Nb, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
     end
 end
 
@@ -222,8 +227,8 @@ function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{
     # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
     fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
 
-    # calculate the total energy H
-    H0 = calc_H(hmc, holstein, fa)
+    # keeps track of change in effective energy
+    ΔH̃ = 0.0
 
     # record intial state
     copyto!(x0,x)
@@ -232,6 +237,9 @@ function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{
     # iterate over time steps, doing leapfrog updates to the phonon fields
     iters = 0
     for t in 1:Nt
+
+        # calculate energy
+        H₀, S, K = calc_H(hmc, holstein, fa)
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dS/dx(t)
         @. v = v - Δt/2*QdSdx
@@ -251,13 +259,19 @@ function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{
 
         # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
         @. v = v - Δt/2*QdSdx
+
+        # calculate energy
+        H₁, S, K = calc_H(hmc, holstein, fa)
+
+        # update change in energy
+        ΔH̃ += H₁-H₀
+
+        # apply BDP Thermostat
+        bdp_thermostat!(v,hmc.u,K,hmc.τ,hmc.Δt)
     end
 
-    # calculate the final energy
-    H = calc_H(hmc, holstein, fa)
-
     # calculate probability of acceptance
-    P = min(1.0, exp(H0-H))
+    P = min(1.0, exp(-ΔH̃))
 
     # get the number of iterations
     iters = cld(iters,Nt)
@@ -314,12 +328,13 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # calculate the initial dSf/dx value
     iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
     iters  = iter_t
+    # println("Iters = ",iter_t)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
 
-    # calculate the total energy H
-    H0 = calc_H(hmc, holstein, fa)
+    # keeps track of change in effective energy
+    ΔH̃ = 0.0
 
     # record intial phonon configuration
     copyto!(x0,x)
@@ -327,6 +342,11 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
     # iterate over timesteps
     for t in 1:Nt
+        # println("t = ",t)
+
+        # calculate energy
+        H₀, S, K = calc_H(hmc, holstein, fa)
+        # println("H = ",H₀)
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
@@ -364,21 +384,27 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # calculate dSf/dx(t+Δt) value
         iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
         iters += iter_t
-
-        H = calc_H(hmc, holstein, fa)
+        # println("Iters = ",iter_t)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
 
         # v(t+Δt) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
+
+        # calculate energy
+        H₁, S, K = calc_H(hmc, holstein, fa)
+
+        # update change in energy
+        ΔH̃ += H₁-H₀
+        # println("dH = ",ΔH̃)
+
+        # apply BDP Thermostat
+        bdp_thermostat!(v,hmc.u,K,hmc.τ,hmc.Δt)
     end
 
-    # calculate the final energy
-    H = calc_H(hmc, holstein, fa)
-
     # calculate probability of acceptance
-    P = min(1.0, exp(H0-H))
+    P = min(1.0, exp(-ΔH̃))
 
     # get the number of iterations
     iters = cld(iters,Nt)
@@ -386,6 +412,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
+        # println("Accepted")
         return true, T1(iters)
 
     else # if rejected
@@ -400,6 +427,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # update exp{-Δτ⋅V[x]}
         construct_expnΔτV!(holstein)
 
+        # println("Rejected")
         return false, T1(iters)
     end
 end
@@ -478,12 +506,13 @@ end
 """
 Calculate the total energy `H = K + S`.
 """
-function calc_H(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1})::T1 where {T1<:AbstractFloat,T2<:Number}
+function calc_H(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, fa::FourierAccelerator{T1}) where {T1<:AbstractFloat,T2<:Number}
     
-    H  = calc_S(hmc, holstein)
-    H += calc_K(hmc,fa)
+    S = calc_S(hmc, holstein)
+    K = calc_K(hmc,fa)
+    H = S + K
 
-    return H
+    return H, S, K
 end
 
 
@@ -725,6 +754,24 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2
     iters = cld(iters,2)
 
     return iters
+end
+
+"""
+Apply the BDP thermostat as defined in equation A7 of the appendix of the paper
+"Canonical sampling through velocity rescaling"
+"""
+function bdp_thermostat!(v::AbstractVector{T},R::AbstractVector{T},K::T,τ::T,Δt::T) where {T<:AbstractFloat}
+
+    randn!(R)
+    R² = norm(R)^2
+    R₁ = R[1]
+    N  = length(v)
+    K̄  = N/2
+    c  = exp(-Δt/τ)
+    α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
+    @. v = sqrt(α²) * v
+
+    return nothing
 end
 
 end

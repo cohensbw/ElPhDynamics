@@ -9,7 +9,7 @@ using Random
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..Utilities: get_index
 
-using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, solve!
+using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, BiCGStab, solve!
 
 export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix
 

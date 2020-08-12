@@ -49,7 +49,7 @@ function update_μ!(μ::AbstractVector{T}, tuner::MuTuner{T},
         # length of imaginary time axis
         L  = tuner.L
 
-        # number of sites in lattice
+        # dimension of matrix
         NL = length(R₁)
 
         # measure ⟨N⟩= (2/L)Tr[I-M⁻¹]

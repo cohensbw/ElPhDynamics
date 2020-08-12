@@ -155,11 +155,12 @@ function process_input_file(filename::String)
     if haskey(input,"hmc")
         Δt              = input["hmc"]["dt"]
         trajectory_time = input["hmc"]["trajectory_time"]
+        τ               = input["hmc"]["tau"]
         construct_guess = input["hmc"]["construct_guess"]
         α               = input["hmc"]["momentum_conservation_fraction"]
         Nb              = input["hmc"]["num_multitimesteps"]
         @assert 0.0 <= α < 1.0
-        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,α,Nb,construct_guess)
+        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,τ,α,Nb,construct_guess)
     elseif input["langevin"]["update_method"]==1
         Δt       = input["langevin"]["dt"]
         dynamics = EulerDynamics(NL,Δt)
