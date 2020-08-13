@@ -343,7 +343,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # calculate the initial dSf/dx value
     iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
     iters  = iter_t
-    println("Iters = ",iter_t)
+    # println("Iters = ",iter_t)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -357,11 +357,11 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
     # iterate over timesteps
     for t in 1:Nt
-        println("t = ",t)
+        # println("t = ",t)
 
         # calculate energy
         H₀, S, K = calc_H(hmc, holstein, fa)
-        println("S = ",S)
+        # println("S = ",S)
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
@@ -399,7 +399,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # calculate dSf/dx(t+Δt) value
         iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
         iters += iter_t
-        println("Iters = ",iter_t)
+        # println("Iters = ",iter_t)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -409,7 +409,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
         # calculate energy
         H₁, S, K = calc_H(hmc, holstein, fa)
-        println("S = ",S)
+        # println("S = ",S)
 
         # update change in energy
         ΔH̃ += H₁-H₀
@@ -427,7 +427,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
-        println("Accepted")
+        # println("Accepted")
         return true, T1(iters)
 
     else # if rejected
@@ -442,7 +442,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # update exp{-Δτ⋅V[x]}
         construct_expnΔτV!(holstein)
 
-        println("Rejected")
+        # println("Rejected")
         return false, T1(iters)
     end
 end
