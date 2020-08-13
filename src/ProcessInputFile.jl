@@ -156,11 +156,26 @@ function process_input_file(filename::String)
 
         Δt              = input["hmc"]["dt"]
         tr              = input["hmc"]["trajectory_time"]
-        τ               = input["hmc"]["tau"]
         construct_guess = input["hmc"]["construct_guess"]
         α               = input["hmc"]["momentum_conservation_fraction"]
         Nb              = input["hmc"]["num_multitimesteps"]
+        if haskey(input["hmc"],"tau")
+            τ = input["hmc"]["tau"]
+        else
+            # default value is infinity, recovering normal hamiltonian dynamics
+            τ = Inf
+        end
+        # if τ is meant to be infinity, recovering normal hamiltonian dynamics
+        if typeof(τ)==String
+            if startswith(lowercase(τ),"inf")
+                τ = Inf
+            else
+                throw(DomainError(τ,"invalid value for tau"))
+            end
+        end
+        @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
+        @assert !((α>0)&(isfinite(τ)))
         simulation_dynamics = HybridMonteCarlo(NL,Δt,tr,τ,α,Nb,construct_guess)
 
         if haskey(input["hmc"], "burnin")
@@ -172,6 +187,14 @@ function process_input_file(filename::String)
             end
             if haskey(input["hmc"]["burnin"],"tau")
                 τ = input["hmc"]["burnin"]["tau"]
+                # if τ is meant to be infinity, recovering normal hamiltonian dynamics
+                if typeof(τ)==String
+                    if startswith(lowercase(τ),"inf")
+                        τ = Inf
+                    else
+                        throw(DomainError(τ,"invalid value for tau"))
+                    end
+                end
             end
             if haskey(input["hmc"]["burnin"],"construct_guess")
                 construct_guess = input["hmc"]["burnin"]["construct_guess"]
@@ -182,6 +205,9 @@ function process_input_file(filename::String)
             if haskey(input["hmc"]["burnin"],"num_multitimesteps")
                 Nb = input["hmc"]["burnin"]["num_multitimesteps"]
             end
+            @assert τ >= 0.0
+            @assert 0.0 <= α < 1.0
+            @assert !((α>0)&(isfinite(τ)))
         end
         burnin_dyanmics = HybridMonteCarlo(simulation_dynamics,Δt=Δt,tr=tr,τ=τ,α=α,Nb=Nb,construct_guess=construct_guess)
 

@@ -113,6 +113,13 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     ## PERFORM MULTIPLICATION y = M⋅v ##
     ####################################
 
+    #     |   1 -B[2]  0    0    0    0   0 |
+    #     |   0   1  -B[2]  0    0    0   0 |
+    # M = |   0   0    1  -B[3]  0    0   0 |
+    #     |   0   0    0    1  -B[4]  0   0 |
+    #     |   0   0    0    0    1  -B[5] 0 |
+    #     | +B[1] 0    0    0    0    0   1 | 
+
     # Notes:
     # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
     # • y(τ) = [M⋅v](τ) = v(τ) + B(τ+1)⋅v(τ+1) for τ = Lτ

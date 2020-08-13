@@ -180,6 +180,11 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # size of smaller timestep for Sb
         Δt′ = Δt/Nb
 
+        # checking conditions on parameters
+        @assert τ >= 0.0
+        @assert 0.0 <= α < 1.0
+        @assert !((α>0)&(isfinite(τ)))
+
         return new{T}(Ndof, x0, tr, τ, Δt, Nt, Δt′, Nb, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
     end
 
@@ -338,7 +343,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # calculate the initial dSf/dx value
     iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
     iters  = iter_t
-    # println("Iters = ",iter_t)
+    println("Iters = ",iter_t)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -352,11 +357,11 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
     # iterate over timesteps
     for t in 1:Nt
-        # println("t = ",t)
+        println("t = ",t)
 
         # calculate energy
         H₀, S, K = calc_H(hmc, holstein, fa)
-        # println("H = ",H₀)
+        println("S = ",S)
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
@@ -394,7 +399,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # calculate dSf/dx(t+Δt) value
         iter_t = calc_dSfdx!(hmc, holstein, preconditioner)
         iters += iter_t
-        # println("Iters = ",iter_t)
+        println("Iters = ",iter_t)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -404,10 +409,10 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
         # calculate energy
         H₁, S, K = calc_H(hmc, holstein, fa)
+        println("S = ",S)
 
         # update change in energy
         ΔH̃ += H₁-H₀
-        # println("dH = ",ΔH̃)
 
         # apply BDP Thermostat
         bdp_thermostat!(v,hmc.u,K,hmc.τ,hmc.Δt)
@@ -422,7 +427,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
-        # println("Accepted")
+        println("Accepted")
         return true, T1(iters)
 
     else # if rejected
@@ -437,7 +442,7 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # update exp{-Δτ⋅V[x]}
         construct_expnΔτV!(holstein)
 
-        # println("Rejected")
+        println("Rejected")
         return false, T1(iters)
     end
 end
@@ -772,14 +777,16 @@ Apply the BDP thermostat as defined in equation A7 of the appendix of the paper
 """
 function bdp_thermostat!(v::AbstractVector{T},R::AbstractVector{T},K::T,τ::T,Δt::T) where {T<:AbstractFloat}
 
-    randn!(R)
-    R² = norm(R)^2
-    R₁ = R[1]
-    N  = length(v)
-    K̄  = N/2
-    c  = exp(-Δt/τ)
-    α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
-    @. v = sqrt(α²) * v
+    if isfinite(τ)
+        randn!(R)
+        R² = norm(R)^2
+        R₁ = R[1]
+        N  = length(v)
+        K̄  = N/2
+        c  = exp(-Δt/τ)
+        α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
+        @. v = sqrt(α²) * v
+    end
 
     return nothing
 end
