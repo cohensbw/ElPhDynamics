@@ -174,7 +174,7 @@ end
 """
 Updates the estimate of the Green's Function based on current phonon field configuration.
 """
-function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) where {T<:AbstractModel}
+function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I, partial_update::Bool=false) where {T<:AbstractModel}
     
     r₁    = estimator.r₁
     r₂    = estimator.r₂
@@ -184,10 +184,12 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
     n     = estimator.n
 
     # initialize measured values to zero
-    fill!(estimator.GΔ0,0.0)
-    fill!(estimator.GΔ0_GΔ0,0.0)
-    fill!(estimator.GΔ0_G0Δ,0.0)
-    fill!(estimator.GΔΔ_G00,0.0)
+    if !partial_update
+        fill!(estimator.GΔ0,0.0)
+        fill!(estimator.GΔ0_GΔ0,0.0)
+        fill!(estimator.GΔ0_G0Δ,0.0)
+        fill!(estimator.GΔΔ_G00,0.0)
+    end
 
     # iterate over number of random vectors used to make measurements
     for i in 1:n
@@ -214,6 +216,11 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
             # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₂
             mulMᵀ!(model.Mᵀg, model, r₂)
             iters = ldiv!(M⁻¹r₂, model, model.Mᵀg, preconditioner)
+        end
+
+        # if only doing a partial ppdates
+        if partial_update
+            break
         end
 
         # vector to be convolved together

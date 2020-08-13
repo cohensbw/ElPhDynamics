@@ -4,6 +4,7 @@ using Random
 using UnsafeArrays
 using LinearAlgebra
 using Printf
+using Parameters
 
 using ..Utilities: get_index
 using ..Models: HolsteinModel, construct_expnΔτV!, mulM!, muldMdx!, mulMᵀ!
@@ -179,6 +180,15 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # size of smaller timestep for Sb
         Δt′ = Δt/Nb
 
+        return new{T}(Ndof, x0, tr, τ, Δt, Nt, Δt′, Nb, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
+    end
+
+    function HybridMonteCarlo(hmc::HybridMonteCarlo{T};Δt,tr,τ,α,Nb,construct_guess) where {T<:AbstractFloat}
+
+        @unpack Ndof, x0, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u = hmc
+        Nt  = round(Int,tr/Δt)
+        Δt′ = Δt/Nb
+    
         return new{T}(Ndof, x0, tr, τ, Δt, Nt, Δt′, Nb, α, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u)
     end
 end

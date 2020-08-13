@@ -108,23 +108,23 @@ mass      = 3.0
 
 [hmc]
 
+# Number of smaller timesteps to evolve Sbose by
+num_multitimesteps = 1
+
 # thermalization updates
 burnin_updates = 10_000
 
 # simulation updates
 simulation_updates = 100_000
 
-# timestep size
-dt = 5e-2
-
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 5.0
 
+# timestep size
+dt = 5e-2
+
 # BDP thermostat time scale
 tau = 5.0
-
-# Number of smaller timestep to evolve Sbose by
-num_multitimesteps = 1
 
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
@@ -164,10 +164,9 @@ write_M_matrix = false
 
 [solver]
 
-# flag to determine whether or not to use preconditioner.
-# if true then GMRES is used.
-# if false then Conjugate Gradient is used.
-use_preconditioner = false
+# select linear solver algorithm to use.
+# the options are "CG", "GMRES" and "BiCGStab"
+type = "GMRES"
 
 # tolerace used in iterative solvers
 tol = 1e-4
@@ -175,9 +174,11 @@ tol = 1e-4
 # maximum iteration for iterative solver
 maxiter = 20_000
 
-# restart for GMRES solver.
-# this parameter is ignored unless use_preconditioner = true
+# restart parameter for GMRES solver.
 restart = 30
+
+# define preconditioner
+[solver.preconditioner]
 
 # preconditioner parameter
 # this parameter is ignored unless use_preconditioner = true

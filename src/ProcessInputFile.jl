@@ -115,16 +115,16 @@ function process_input_file(filename::String)
     ## DEFINE PRECONDITIONER ##
     ###########################
 
-    # default preconditioner to Identity operator
-    preconditioner = I
-
-    if input["solver"]["use_preconditioner"]
-        λ_lo = input["solver"]["lambda_lo"]
-        λ_hi = input["solver"]["lambda_hi"]
-        c1   = input["solver"]["c1"]
-        c2   = input["solver"]["c2"]
+    if lowercase(input["solver"]["type"])=="cg"
+        preconditioner = I
+    else
+        λ_lo = input["solver"]["preconditioner"]["lambda_lo"]
+        λ_hi = input["solver"]["preconditioner"]["lambda_hi"]
+        c1   = input["solver"]["preconditioner"]["c1"]
+        c2   = input["solver"]["preconditioner"]["c2"]
         preconditioner = LeftRightKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,false)
     end
+    
     
     #################################
     ## DEFINE FOURIER ACCELERATION ##
@@ -153,23 +153,56 @@ function process_input_file(filename::String)
     NL = length(holstein)
 
     if haskey(input,"hmc")
+
         Δt              = input["hmc"]["dt"]
-        trajectory_time = input["hmc"]["trajectory_time"]
+        tr              = input["hmc"]["trajectory_time"]
         τ               = input["hmc"]["tau"]
         construct_guess = input["hmc"]["construct_guess"]
         α               = input["hmc"]["momentum_conservation_fraction"]
         Nb              = input["hmc"]["num_multitimesteps"]
         @assert 0.0 <= α < 1.0
-        dynamics = HybridMonteCarlo(NL,Δt,trajectory_time,τ,α,Nb,construct_guess)
+        simulation_dynamics = HybridMonteCarlo(NL,Δt,tr,τ,α,Nb,construct_guess)
+
+        if haskey(input["hmc"], "burnin")
+            if haskey(input["hmc"]["burnin"],"dt")
+                Δt = input["hmc"]["burnin"]["dt"]
+            end
+            if haskey(input["hmc"]["burnin"],"trajectory_time")
+                tr = input["hmc"]["burnin"]["trajectory_time"]
+            end
+            if haskey(input["hmc"]["burnin"],"tau")
+                τ = input["hmc"]["burnin"]["tau"]
+            end
+            if haskey(input["hmc"]["burnin"],"construct_guess")
+                construct_guess = input["hmc"]["burnin"]["construct_guess"]
+            end
+            if haskey(input["hmc"]["burnin"],"momentum_conservation_fraction")
+                α = input["hmc"]["burnin"]["momentum_conservation_fraction"]
+            end
+            if haskey(input["hmc"]["burnin"],"num_multitimesteps")
+                Nb = input["hmc"]["burnin"]["num_multitimesteps"]
+            end
+        end
+        burnin_dyanmics = HybridMonteCarlo(simulation_dynamics,Δt=Δt,tr=tr,τ=τ,α=α,Nb=Nb,construct_guess=construct_guess)
+
     elseif input["langevin"]["update_method"]==1
+
         Δt       = input["langevin"]["dt"]
-        dynamics = EulerDynamics(NL,Δt)
+        simulation_dynamics = EulerDynamics(NL,Δt)
+        burnin_dyanmics = simulation_dynamics
+
     elseif input["langevin"]["update_method"]==2
+
         Δt       = input["langevin"]["dt"]
-        dynamics = RungeKuttaDynamics(NL,Δt)
+        simulation_dynamics = RungeKuttaDynamics(NL,Δt)
+        burnin_dyanmics = simulation_dynamics
+
     elseif input["langevin"]["update_method"]==3
+
         Δt       = input["langevin"]["dt"]
-        dynamics = HeunsDynamics(NL,Δt)
+        simulation_dynamics = HeunsDynamics(NL,Δt)
+        burnin_dyanmics = simulation_dynamics
+
     end
 
     #########################
@@ -200,7 +233,7 @@ function process_input_file(filename::String)
     end
     Gr = EstimateGreensFunction(holstein,num_random_vectors)
     
-    return holstein, Gr, μ_tuner, sim_params, dynamics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return holstein, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dyanmics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
 end
 
 
@@ -217,16 +250,23 @@ function initialize_holstein_model(filename::String)
     
     # define lattice
     lattice = Lattice(unit_cell, input["lattice"]["L"])
+
+    # restart for GMRES solver
+    if haskey(input["solver"],"restart")
+        restart = input["solver"]["restart"]
+    else
+        restart = 20
+    end
     
     # initialize holstein model
     holstein = HolsteinModel(lattice,
                              input["holstein"]["beta"],
                              input["holstein"]["dtau"],
-                             is_complex=false,
-                             tol=input["solver"]["tol"],
-                             maxiter=input["solver"]["maxiter"],
-                             mul_by_M=input["solver"]["use_preconditioner"],
-                             restart=input["solver"]["restart"])
+                             is_complex      = false,
+                             iterativesolver = input["solver"]["type"],
+                             tol             = input["solver"]["tol"],
+                             maxiter         = input["solver"]["maxiter"],
+                             restart         = restart)
     
     # adding phonon frequencies
     for d in input["holstein"]["omega"]

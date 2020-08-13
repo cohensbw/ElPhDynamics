@@ -146,7 +146,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     Constructor for Holstein type.
     """
     function HolsteinModel(lattice::Lattice{T}, β::T, Δτ::T;
-                           is_complex::Bool=false, tol::T=1e-4, maxiter::Int=10000, mul_by_M::Bool=false, restart::Int=-1) where {T<:AbstractFloat}
+                           is_complex::Bool=false, iterativesolver::String="cg", tol::T=1e-4, maxiter::Int=10000, restart::Int=-1) where {T<:AbstractFloat}
 
         # calculating length of imaginary time axis
         Lτ = round(Int,β/Δτ)
@@ -202,35 +202,32 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         # if true multiply by Mᵀ instead of M
         transposed = false
 
+        # temporary vector
+        if is_complex
+            Mᵀg = zeros(Complex{T},nindices)
+        else
+            Mᵀg = zeros(T,nindices)
+        end
+
+        # construct solver
+        if lowercase(iterativesolver)=="cg"
+            mul_by_M = false
+            solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+        elseif lowercase(iterativesolver)=="gmres"
+            mul_by_M = true
+            solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+        elseif lowercase(iterativesolver)=="bicgstab"
+            mul_by_M = true
+            solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
+        end
+
         # constructing holstein model
         if is_complex
-
-            # temporary vectors
-            Mᵀg = zeros(Complex{T},nindices)
-
-            if mul_by_M
-                solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
-                # solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
-            else
-                solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
-            end
-
             new{T,Complex{T},typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                                              μ, tij, coshtij, sinhtij, neighbor_table_tij,
                                              ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
                                              ytemp, Mᵀg, mul_by_M, transposed, solver)
         else
-
-            # temporary vectors
-            Mᵀg = zeros(T,nindices)
-
-            if mul_by_M
-                solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
-                # solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
-            else
-                solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
-            end
-
             new{T,T,typeof(solver)}(β, Δτ, Lτ, nsites, nindices, lattice, x, expnΔτV,
                                     μ, tij, coshtij, sinhtij, neighbor_table_tij,
                                     ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
