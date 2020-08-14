@@ -87,11 +87,8 @@ density = 1.0
 # what fraction of density history to use when updating chemical potential
 memory  = 0.75
 
-# how many values of history to buffer
-buffer = 10
-
-# intial value to initialize compresibillity to
-init_compresibility = 1.0
+# minimum compresibillity value
+kappa_min = 0.1
 
 ###################################
 ## DEFINING FOURIER ACCELERATION ##

@@ -104,11 +104,10 @@ function process_input_file(filename::String)
     if haskey(input,"tune_density")
         targed_density = input["tune_density"]["density"]
         memory         = input["tune_density"]["memory"]
-        buffer         = input["tune_density"]["buffer"]
-        κ₀             = input["tune_density"]["init_compresibility"]
-        μ_tuner = MuTuner(true, mean(holstein.μ), targed_density*holstein.nsites, holstein.β, holstein.Δτ, κ₀, memory, buffer)
+        κ_min          = input["tune_density"]["kappa_min"]
+        μ_tuner = MuTuner(true, mean(holstein.μ), targed_density*holstein.nsites, holstein.β, holstein.Δτ, memory, κ_min)
     else
-        μ_tuner = MuTuner(false, mean(holstein.μ), 1.0*holstein.nsites, holstein.β, holstein.Δτ, 1.0, 0.75, 10)
+        μ_tuner = MuTuner(false, mean(holstein.μ), 1.0*holstein.nsites, holstein.β, holstein.Δτ, 0.75, 0.1)
     end
 
     ###########################
