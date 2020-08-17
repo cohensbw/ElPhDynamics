@@ -361,7 +361,6 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
 
         # calculate energy
         H₀, S, K = calc_H(hmc, holstein, fa)
-        # println("S = ",S)
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
@@ -410,6 +409,8 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
         # calculate energy
         H₁, S, K = calc_H(hmc, holstein, fa)
         # println("S = ",S)
+        # println("K = ",K)
+        # println("H = ",H₁)
 
         # update change in energy
         ΔH̃ += H₁-H₀
