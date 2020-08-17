@@ -30,6 +30,8 @@ mutable struct MuTuner{T<:AbstractFloat}
         N_traj = Vector{T}()
         κ_traj = Vector{T}()
 
+        # println("init Mu = ", init_μ)
+
         return new{T}(active, μ_traj, N_traj, κ_traj, forgetful_c, init_μ, β, Δτ, L, target_N, init_μ, -1.0, 0.0, κ_min)
     end
 end
@@ -91,6 +93,8 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T  where{T<:AbstractFloat}
     new_μ = tuner.μ̄  + (target_N - tuner.N̄) / κ_update
     tuner.μ = new_μ
     push!(μ_traj, new_μ)
+
+    # println("new mu = ",new_μ)
 
     return new_μ
 end

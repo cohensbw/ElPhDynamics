@@ -105,7 +105,7 @@ function process_input_file(filename::String)
         targed_density = input["tune_density"]["density"]
         memory         = input["tune_density"]["memory"]
         κ_min          = input["tune_density"]["kappa_min"]
-        μ_tuner = MuTuner(true, mean(holstein.μ), targed_density*holstein.nsites, holstein.β, holstein.Δτ, memory, κ_min)
+        μ_tuner = MuTuner(true, mean(holstein.μ), targed_density*holstein.nsites, holstein.β, holstein.Δτ, memory, κ_min*holstein.nsites)
     else
         μ_tuner = MuTuner(false, mean(holstein.μ), 1.0*holstein.nsites, holstein.β, holstein.Δτ, 0.75, 0.1)
     end
