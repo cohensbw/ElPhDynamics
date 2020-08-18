@@ -242,6 +242,9 @@ function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{
     # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
     fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
 
+    # calculate energy
+    H₁, S, K = calc_H(hmc, holstein, fa)
+
     # keeps track of change in effective energy
     ΔH̃ = 0.0
 
@@ -253,8 +256,12 @@ function standard_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteCarlo{
     iters = 0
     for t in 1:Nt
 
-        # calculate energy
-        H₀, S, K = calc_H(hmc, holstein, fa)
+        # recalculate energy if BDP thermostat active
+        if !isfinite(hmc.τ) || t==1
+            H₀ = H₁
+        else
+            H₀, S, K = calc_H(hmc, holstein, fa)
+        end
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dS/dx(t)
         @. v = v - Δt/2*QdSdx
@@ -348,6 +355,9 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
 
+    # calculate energy
+    H₁, S, K = calc_H(hmc, holstein, fa)
+
     # keeps track of change in effective energy
     ΔH̃ = 0.0
 
@@ -359,8 +369,12 @@ function multitimestep_update!(holstein::HolsteinModel{T1,T2}, hmc::HybridMonteC
     for t in 1:Nt
         # println("t = ",t)
 
-        # calculate energy
-        H₀, S, K = calc_H(hmc, holstein, fa)
+        # recalculate energy if BDP thermostat active
+        if !isfinite(hmc.τ) || t==1
+            H₀ = H₁
+        else
+            H₀, S, K = calc_H(hmc, holstein, fa)
+        end
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
