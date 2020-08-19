@@ -172,11 +172,28 @@ function process_input_file(filename::String)
                 throw(DomainError(τ,"invalid value for tau"))
             end
         end
+
+        # log file instructions
+        if haskey(input["hmc"],"log")
+            log = input["hmc"]["log"]
+        else
+            log = false
+        end
+        if log & haskey(input["hmc"],"verbose")
+            verbose = input["hmc"]["verbose"]
+        else
+            verbose = false
+        end
+        hmc_simulation_logfile = sim_params.datafolder*"hmc_sim_log.out"
+        hmc_burnin_logfile = sim_params.datafolder*"hmc_burnin_log.out"
+
         @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
         @assert !((α>0)&(isfinite(τ)))
-        simulation_dynamics = HybridMonteCarlo(NL,Δt,tr,τ,α,Nb,construct_guess)
+        simulation_dynamics = HybridMonteCarlo(NL, Δt, tr, τ, α, Nb, construct_guess,
+                                              log=log, verbose=verbose, logfile=hmc_simulation_logfile)
 
+        # defining burnin dynamics
         if haskey(input["hmc"], "burnin")
             if haskey(input["hmc"]["burnin"],"dt")
                 Δt = input["hmc"]["burnin"]["dt"]
@@ -208,7 +225,8 @@ function process_input_file(filename::String)
             @assert 0.0 <= α < 1.0
             @assert !((α>0)&(isfinite(τ)))
         end
-        burnin_dyanmics = HybridMonteCarlo(simulation_dynamics,Δt=Δt,tr=tr,τ=τ,α=α,Nb=Nb,construct_guess=construct_guess)
+        burnin_dyanmics = HybridMonteCarlo(simulation_dynamics, Δt, tr, τ, α, Nb, construct_guess,
+                                           log=log, verbose=verbose, logfile=hmc_burnin_logfile)
 
     elseif input["langevin"]["update_method"]==1
 

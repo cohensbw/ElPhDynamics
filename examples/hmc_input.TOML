@@ -106,22 +106,22 @@ mass      = 3.0
 [hmc]
 
 # Number of smaller timesteps to evolve Sbose by
-num_multitimesteps = 1
+num_multitimesteps = 10
 
 # thermalization updates
-burnin_updates = 10_000
+burnin_updates = 50_000
 
 # simulation updates
 simulation_updates = 100_000
 
 # The duration of trajectories used in Hybrid Monte Carlo.
-trajectory_time = 5.0
+trajectory_time = 1.0
 
 # timestep size
-dt = 5e-2
+dt = 0.1
 
 # BDP thermostat time scale
-tau = 5.0
+tau = "Inf"
 
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
@@ -133,6 +133,13 @@ momentum_conservation_fraction = 0.0
 
 # construct an initial guess for solution to linear system based on previous solutions.
 construct_guess = true
+
+# whether to write a log file for HMC dynamics
+log = false
+
+# if writing a log file, whether to write status at every timestep (true)
+# or just after a HMC update (false)
+verbose = false
 
 ###########################
 ## SIMULATION PARAMETERS ##
@@ -218,5 +225,5 @@ time_dependent = false
 # Note 2: As a side note, it is probably only ever worth
 # measuring the time depedent Pair Green's function.
 [measurements.PairGreens]
-measure        = false
-time_dependent = false
+measure        = true
+time_dependent = true
