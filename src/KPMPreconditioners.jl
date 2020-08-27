@@ -535,11 +535,11 @@ end
 
 """
 Scalar function of x where x has replaced A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K} in
-the expresion M⁻¹[ω,ω] = I - exp{i⋅ϕ(ω)}⋅A
+the expresion M⁻¹[ω,ω] = (I - exp{-i⋅ϕ(ω)}⋅A)⁻¹
 """
 function scalar_invM(x,ϕ)
 
-    return inv(1.0 - exp(im * ϕ) * x)
+    return inv(1.0 - exp(-im * ϕ) * x)
 end
 
 end
