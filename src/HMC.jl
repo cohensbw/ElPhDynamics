@@ -746,7 +746,6 @@ More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to th
 function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, preconditioner=I)::Int where {T1<:AbstractFloat,T2<:Number}
     
     dSdx     = hmc.dSdx
-    dSdx′    = hmc.R
     dMdxO⁻¹ϕ = hmc.R
     MO⁻¹ϕ    = hmc.u
     
@@ -772,23 +771,7 @@ function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, holstein::HolsteinModel{T1,T2}, 
     mulM!(MO⁻¹ϕ,holstein,O⁻¹ϕ₋)
 
     # calculate -ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ = -[M⋅O⁻¹⋅ϕ₋]ᵀ⋅[dM/dx⋅O⁻¹⋅ϕ₋]
-    @. dSdx′ = dSdx - MO⁻¹ϕ * dMdxO⁻¹ϕ
-
-    # In the section of code below there is a subtle detail that is addressed that results from defining
-    # our M matrix with the -B[τ] matrices on the upper diagonal instead of the lower diagonal.
-    # After doing matrix-vector multiplies by all the  dM/dx's, the expectation value for the partial
-    # derivatives corresponding to the τ time slice lives in the array indices corresponding to τ-1.
-    # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
-    # and storing the ∂Sf/∂xᵢ(τ) partial derivative values in the vector dSdx′, and then copying a properly
-    # shifted version into the final vector dSdx.
-    @inbounds @fastmath for site in 1:holstein.nsites
-        for τ in 1:holstein.Lτ
-            τp1           = τ%holstein.Lτ+1
-            idx_τ         = get_index(τ,   site, holstein.Lτ)
-            idx_τp1       = get_index(τp1, site, holstein.Lτ)
-            dSdx[idx_τp1] = dSdx′[idx_τ]
-        end
-    end
+    @. dSdx = dSdx - MO⁻¹ϕ * dMdxO⁻¹ϕ
 
     return iters
 end

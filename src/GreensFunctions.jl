@@ -305,19 +305,15 @@ function estimate(estimator::EstimateGreensFunction,i::Int,j::Int,τ₂::Int,τ�
     m = get_index(τ₁,j,estimator.L)
     n = get_index(τ₂,i,estimator.L)
     if σ==1
-        Gᵢⱼτ₁τ₂ = estimator.r₁[n] * estimator.M⁻¹r₁[m]
+        Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₁[n] * estimator.r₁[m]
     else
-        Gᵢⱼτ₁τ₂ = estimator.r₂[n] * estimator.M⁻¹r₂[m]
+        Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₂[n] * estimator.r₂[m]
     end
     return Gᵢⱼτ₁τ₂
 end
 
-#####################
-## PRIVATE METHODS ##
-#####################
-
 """
-Calculate convolution a⋆b. Note that the vectors `a` and `b` are left modified.
+Calculate convolution a⋆b.
 """
 function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator::EstimateGreensFunction,n::Int=1)
 
@@ -353,7 +349,7 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
                             nk₂ = mod1(-k₂+2,L₂)
                             nk₁ = mod1(-k₁+2,L₁)
                             nω  = mod1(-ω+2,2L)
-                            ab′[nω,s₂,s₁,nk₁,nk₂,nk₃] = a′[nω,s₂,nk₁,nk₂,nk₃] * b′[ω,s₁,k₁,k₂,k₃] / V
+                            ab′[ω,s₂,s₁,k₁,k₂,k₃] = a′[nω,s₂,nk₁,nk₂,nk₃] * b′[ω,s₁,k₁,k₂,k₃] / V
                         end
                     end
                 end
@@ -371,7 +367,8 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
 end
 
 """
-Copy so that vector x=[x(1),...,x(τ),...,x(L)] to y=[x(1),-x(1),...,x(τ),-x(τ),...,x(L),-x(L)]
+Copy so the vector x=[ x(1) , ... , x(τ) , ... , x(L) ] to a vector y so that
+y=[ x(1) , ... , x(τ) , ... , x(L) , -x(1) , ... , -x(τ) , ... , -x(L) ]
 """
 function antiperiodic_copy!(y::AbstractArray,x::AbstractArray,L::Int)
 
@@ -390,8 +387,8 @@ function antiperiodic_copy!(y::AbstractArray,x::AbstractArray,L::Int)
 end
 
 """
-Multiply so that for x=[x(1),...,x(τ),...,x(L)] and y=[y(1),...,y(τ),...,y(L)] then
-z=[x(1)⋅y(1),x(1)⋅y(1),...,x(τ)⋅y(τ),x(τ)⋅y(τ),...,x(L)⋅y(L),x(L)⋅y(L)]
+Multiply so that for x=[ x(1) , ... , x(τ) , ... , x(L) ] and y=[ y(1) , ... , y(τ) , ... , y(L) ] then
+z=[ x(1)⋅y(1) , x(2)⋅y(2) , ... , x(L)⋅y(L) , x(1)⋅y(1) , ... , x(L)⋅y(L) , x(L)⋅y(L) ]
 """
 function periodic_product!(z::AbstractArray,y::AbstractArray,x::AbstractArray,L::Int)
 

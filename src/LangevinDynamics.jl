@@ -351,23 +351,7 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T3},M⁻¹g::Ab
     muldMdx!( dSfdx , holstein , M⁻¹g )
 
     # ∂Sf/∂xᵢ(τ) = -2gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g
-    @. g *= -2.0 * dSfdx
-    # iterate over sites
-    @inbounds @fastmath for site in 1:holstein.nsites
-        # iterate over time slices
-        for τ in 1:holstein.Lτ
-            idx_τ   = get_index(τ,               site, holstein.Lτ)
-            idx_τp1 = get_index(τ%holstein.Lτ+1, site, holstein.Lτ)
-            # shifting values one time slice forward
-            dSfdx[idx_τp1] = real(g[idx_τ])
-        end
-    end
-    # In the lines of code above there is a subtle detail that is addressed.
-    # After doing the element-wise multiplication, the expectation value for the partial
-    # derivatives corresponding to the τ time slice live in the array indices corresponding to τ-1.
-    # Therefore, the values need to be shifted one time slice forward. This is done by first calculating
-    # and storing the ∂Sf/∂xᵢ(τ) derivative values in the vector g, and then copying a proper shifted
-    # version into the vector dSdx.
+    @. dSfdx = -2.0 * g * dSfdx
 
     return iters
 end

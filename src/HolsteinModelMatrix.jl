@@ -113,16 +113,17 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     ## PERFORM MULTIPLICATION y = M⋅v ##
     ####################################
 
-    #     |   1 -B[2]  0    0    0    0   0 |
-    #     |   0   1  -B[2]  0    0    0   0 |
-    # M = |   0   0    1  -B[3]  0    0   0 |
-    #     |   0   0    0    1  -B[4]  0   0 |
-    #     |   0   0    0    0    1  -B[5] 0 |
-    #     | +B[1] 0    0    0    0    0   1 | 
+    #           EXAMPLE OF M MATRIX CONVENTION
+    #     |   1     0      0      0      0   +B(1) |
+    #     | -B(2)   1      0      0      0     0   |
+    # M = |   0   -B(2)    1      0      0     0   |
+    #     |   0     0    -B(3)    1      0     0   |
+    #     |   0     0      0    -B(4)    1     0   |
+    #     |   0     0      0      0    -B(5)   1   | 
 
     # Notes:
-    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ < Lτ
-    # • y(τ) = [M⋅v](τ) = v(τ) + B(τ+1)⋅v(τ+1) for τ = Lτ
+    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1) for τ < Lτ
+    # • y(1) = [M⋅v](1) = v(1) + B(1)⋅v(Lτ)  for τ = 1
     # • B(τ) = exp{-Δτ⋅V[x(τ)]} exp{-Δτ⋅K}
     # • exp{-Δτ⋅V[x(τ)]} is the exponentiated interaction matrix and is diagonal,
     #   and as such is stored as a vector
@@ -137,22 +138,22 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     # iterating over sites in lattice
     @fastmath @inbounds for i in 1:holstein.nsites
 
-        # y(Lτ) = v(Lτ) + B(1)⋅v(1)
-        idx_L = get_index(holstein.Lτ, i,  holstein.Lτ)
-        idx_1 = get_index(1,           i,  holstein.Lτ)
-        yL_temp = v[idx_L] + holstein.expnΔτV[idx_1] * y[idx_1]
+        # y(1) = v(1) + B(1)⋅v(Lτ)
+        idx_L   = get_index(holstein.Lτ, i,  holstein.Lτ)
+        idx_1   = get_index(1,           i,  holstein.Lτ)
+        y1_temp = v[idx_1] + holstein.expnΔτV[idx_1] * y[idx_L]
 
         # iterating over time slices
-        for τ in 1:(holstein.Lτ-1)
+        for τ in holstein.Lτ:-1:2
 
-            # y(τ) = v(τ) - B(τ+1)⋅v(τ+1) for τ<Lτ
-            idx_τ  = get_index(τ,   i, holstein.Lτ)
-            idx_τp = get_index(τ+1, i, holstein.Lτ)
-            y[idx_τ] = v[idx_τ] - holstein.expnΔτV[idx_τp] * y[idx_τp]
+            # y(τ) = v(τ) - B(τ)⋅v(τ-1) for τ>1
+            idx_τ    = get_index(τ,   i, holstein.Lτ)
+            idx_τm   = get_index(τ-1, i, holstein.Lτ)
+            y[idx_τ] = v[idx_τ] - holstein.expnΔτV[idx_τ] * y[idx_τm]
         end
 
-        # y(Lτ) = v(Lτ) + B(1)⋅v(1)
-        y[idx_L] = yL_temp
+        # y(1) = v(1) + B(1)⋅v(Lτ)
+        y[idx_1] = y1_temp
     end
 
     return nothing
@@ -166,38 +167,41 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     #####################################
 
     # Notes:
-    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ)⋅v(τ-1)  for τ > 1
-    # • y(τ) = [Mᵀ⋅v](τ) = v(τ) + Bᵀ(τ)⋅v(τ-1)  for τ = 1
+    # • y(τ)  = [Mᵀ⋅v](τ)  = v(τ)  - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
+    # • y(Lτ) = [Mᵀ⋅v](Lτ) = v(Lτ) + Bᵀ(1)⋅v(1)     for τ = Lτ
     # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[x(τ)]}ᵀ 
-    # • exp{-Δτ⋅V[x(τ)]} is the exponentiated interaction matrix and is diagonal,
-    #   and as such is stored as a vector
+    # • exp{-Δτ⋅V[x(τ)]}ᵀ =exp{-Δτ⋅V[x(τ)]} is the exponentiated diagona interaction
+    #   matrix and is diagonal, and as such is stored as a vector
     # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
 
     # iterating over sites in lattice
     @fastmath @inbounds for i in 1:holstein.nsites
 
-        # iterating over imaginary time slices
-        for τ in 2:holstein.Lτ
+        # y(Lτ) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(1) for τ=Lτ
+        idx_L  = get_index(holstein.Lτ, i, holstein.Lτ)
+        idx_1  = get_index(1,           i, holstein.Lτ)
+        yL_tmp = conj(holstein.expnΔτV[idx_1]) * v[idx_1]
 
-            # y(τ) = -exp{-Δτ⋅V[x(τ)]}ᵀ⋅v(τ-1) for τ > 1
-            idx_τm = get_index(τ-1, i, holstein.Lτ)
-            idx_τ  = get_index(τ,   i, holstein.Lτ)
-            y[idx_τ] = -conj(holstein.expnΔτV[idx_τ]) * v[idx_τm]
+        # iterating over imaginary time slices
+        for τ in 1:holstein.Lτ-1
+
+            # y(τ) = -exp{-Δτ⋅V[x(τ+1)]}ᵀ⋅v(τ+1) for τ < Lτ
+            idx_τp   = get_index(τ+1, i, holstein.Lτ)
+            idx_τ    = get_index(τ,   i, holstein.Lτ)
+            y[idx_τ] = -conj(holstein.expnΔτV[idx_τp]) * v[idx_τp]
         end
 
-        # y(1) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(Lτ) for τ=1
-        idx_L = get_index(holstein.Lτ, i, holstein.Lτ)
-        idx_1 = get_index(1,           i, holstein.Lτ)
-        y[idx_1] = conj(holstein.expnΔτV[idx_1]) * v[idx_L ]
+        # y(Lτ) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(1) for τ=Lτ
+        y[idx_L] = yL_tmp
     end
 
-    # y(τ) = -Bᵀ(τ)⋅v(τ-1) for τ > 1
-    # y(τ) = +Bᵀ(τ)⋅v(τ-1) for τ = 1 
+    # y(τ) = -Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
+    # y(τ) = +Bᵀ(τ+1)⋅v(τ+1) for τ = Lτ 
     checkerboard_transpose_mul!(y, holstein.neighbor_table_tij, holstein.coshtij, holstein.sinhtij, holstein.Lτ)
 
-    # y(τ) = v(τ) - Bᵀ(τ)⋅v(τ-1) for τ > 1
-    # y(τ) = v(τ) + Bᵀ(τ)⋅v(τ-1) for τ = 1
-    y .+= v
+    # y(τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
+    # y(τ) = v(τ) + Bᵀ(τ+1)⋅v(τ+1) for τ = Lτ
+    @. y = v + y
 
     return nothing
 end
@@ -215,8 +219,8 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # Notes:
     # • Consider y = ∂M/∂xᵢ(τ)⋅v ==>
     #
-    # • yᵢ(τ-1) = -∂B/∂xᵢ(τ)⋅vᵢ(τ) for τ > 1
-    # • yᵢ(Lτ)  = +∂B/∂xᵢ(1)⋅vᵢ(1) for τ = 1
+    # • yᵢ(τ) = -∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
+    # • yᵢ(1) = +∂B/∂xᵢ(1)⋅vᵢ(Lτ)  for τ = 1
     #
     # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
@@ -227,8 +231,8 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # • yᵢ(Lτ)  = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅exp{-Δτ⋅K}⋅vᵢ(1) for τ = 1
     #
     # • Simplifying a little bit:
-    # • yᵢ(τ-1) = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ) for τ > 1
-    # • yᵢ(Lτ)  = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(1) for τ = 1
+    # • yᵢ(τ) = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
+    # • yᵢ(1) = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(Lτ)  for τ = 1
 
     # y(τ) = v(τ)
     copyto!(y, v)
@@ -242,19 +246,19 @@ function muldMdx!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
         # y(Lτ) = -Δτ⋅λᵢ⋅B(1)⋅v(1) for τ=1
         idx_1 = get_index(1,           i,  holstein.Lτ)
         idx_L = get_index(holstein.Lτ, i,  holstein.Lτ)
-        yL_temp = -holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_1] * y[idx_1]
+        y1_temp = -holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_1] * y[idx_L]
 
         # iterating over time slices
-        for τ in 2:holstein.Lτ
+        for τ in holstein.Lτ:-1:2
 
             # y(τ-1) = +Δτ⋅λ⋅B(τ)⋅v(τ) for τ>1
+            idx_τ   = get_index(τ,   i, holstein.Lτ)
             idx_τm1 = get_index(τ-1, i, holstein.Lτ)
-            idx_τ   = get_index(τ  , i, holstein.Lτ)
-            y[idx_τm1] = holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_τ] * y[idx_τ]
+            y[idx_τ] = holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_τ] * y[idx_τm1]
         end
 
-        # y(Lτ) = -Δτ⋅λ⋅B(1)⋅v(1) for τ=1
-        y[idx_L] = yL_temp
+        # y(1) = -Δτ⋅λ⋅B(1)⋅v(Lτ) for τ=1
+        y[idx_1] = y1_temp
     end
 
     return nothing
