@@ -407,8 +407,7 @@ end
     checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::Int
 
 Constructs the checkerboard decomposition for a given neighbor table.
-Assumes the neighbor table has already been sorted using the sort_neighbor_table!
-method from the Lattices module.
+Assumes the neighbor table has already been sorted using the sort_neighbor_table! method from the Lattices module.
 Returns the number of groups in the checkerboard decomposition.
 """
 function checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::Int

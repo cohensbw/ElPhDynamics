@@ -1,5 +1,7 @@
 module Utilities
 
+using FFTW
+
 ##############################
 ## INDEX MAPPTING FUNCTIONS ##
 ##############################
@@ -38,6 +40,45 @@ end
 
 function reshaped(a::AbstractArray{T,M}, dims::NTuple{N,Int}) where {T,N,M}
     return reshape(a, dims)
+end
+
+function reshaped(a::AbstractArray{T,M}, dims...) where {T,M}
+    return reshaped(a, dims)
+end
+
+"""
+Translationally shift elements in vector corresponding to a displacement vector [l1,l2,l3] given in terms
+of unit cells.
+"""
+function translational_shift!(vout::AbstractArray,vin::AbstractArray,L1::Int,L2::Int,L3::Int,l1::Int,l2::Int,l3::Int)
+
+    @assert length(vout)==length(vin)
+    NL = length(vout)
+    N  = L1*L2*L3
+    L  = div(NL,N)
+    @assert mod(NL,L)==0
+    uin  = reshaped(vin,L,L1,L2,L3)
+    uout = reshaped(vout,L,L1,L2,L3)
+    circshift!(uout,uin,(0,l1,l2,l3))
+    return nothing
+end
+
+"""
+Averages over translational symmetry between arrays `f` and `g` by doing an FFT accelerated convolution.
+The result is output into the array `fg`. The arrays `f` and `g` are left modified by this function.
+"""
+function translational_average!(fg::AbstractArray{T},f::AbstractArray{T},g::AbstractArray{T}) where {T<:Complex}
+    
+    fft!(f)
+    fft!(g)
+    N = length(f)
+    copyto!(fg,f)
+    circshift!(f, fg, size(fg,d)-1 for d in 1:ndims(fg) )
+    for (i,f_reverse) in enumerate(Iterators.reverse(f))
+        fg[i] = f_reverse * g[i] / N
+    end
+    ifft!(fg)
+    return nothing
 end
 
 ####################

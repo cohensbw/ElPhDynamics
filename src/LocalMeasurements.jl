@@ -4,7 +4,7 @@ using Printf
 using UnsafeArrays
 
 using ..Utilities: get_index, get_site, get_τ, δ
-using ..Models: HolsteinModel
+using ..Models: HolsteinModel, SSHModel, AbstractModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, estimate
 using ..NonLocalMeasurements: measure_Greens, measure_DenDen
@@ -35,7 +35,7 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
     norbits = holstein.lattice.unit_cell.norbits::Int
 
     # number of physical sites in lattice
-    nsites = holstein.nsites::Int
+    nsites = holstein.Nsites::Int
 
     # length of imaginary time axis
     Lτ = holstein.Lτ::Int
@@ -71,9 +71,9 @@ function make_local_measurements!(container::NamedTuple, holstein::HolsteinModel
                 # measuring the electron phonon energy λ⟨x⋅(n₊+n₋)⟩
                 container.elph_energy[orbit] += λ[site]*x[index]*(2.0-G1-G2) / normalization
                 # measure ⟨x⟩
-                container.phi[orbit] += x[index] / normalization
+                container.x[orbit] += x[index] / normalization
                 # measure ⟨x²⟩
-                container.phi_squared[orbit] += x[index]*x[index] / normalization
+                container.x_squared[orbit] += x[index]*x[index] / normalization
                 # measure chemical potential
                 container.mu[orbit] += holstein.μ[site] / normalization
             end
@@ -87,10 +87,43 @@ end
 """
 Construct a dictionary to hold local measurement data.
 """
+function construct_local_measurements_container(ssh::SSHModel{T1,T2}, unequaltime_meas::AbstractVector{String})::NamedTuple where {T1,T2}
+
+    # number of sites/orbitals per unit cell
+    norbits = ssh.lattice.unit_cell.norbits
+
+    # number of types of phonons
+    nphonons  = length(ssh.phonon_definitions)
+
+    local_meas_container = Dict()
+
+    for meas in ("density", "mu")
+        local_meas_container[meas] = zeros(T1,norbits)
+    end
+
+    for meas in ("phonon_kin","phonon_pot","elph_energy","x_squared","x")
+        local_meas_container[meas] = zeros(T1,nphonons)
+    end
+
+    # only measure S-Wave Susceptibility if Unequal Time Pair Green's Function is being measured
+    if "PairGreens" in unequaltime_meas
+        local_meas_container["swave_susc"] = zeros(T1,norbits)
+    end
+
+    # converting dictionary to named tuple
+    local_meas_container = NamedTuple{Tuple(Symbol.(keys(local_meas_container)))}(values(local_meas_container))
+
+    return local_meas_container
+end
+
+
+"""
+Construct a dictionary to hold local measurement data.
+"""
 function construct_local_measurements_container(holstein::HolsteinModel{T1,T2}, unequaltime_meas::AbstractVector{String})::NamedTuple where {T1<:AbstractFloat,T2<:Number}
 
     local_meas_container = Dict()
-    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "phi_squared", "phi","mu")
+    for meas in ("density", "double_occ", "phonon_kin", "phonon_pot", "elph_energy", "x_squared", "x", "mu")
         local_meas_container[meas] = zeros(T1,holstein.lattice.unit_cell.norbits)
     end
 
@@ -109,7 +142,7 @@ end
 """
 Process Local Measurements.
 """
-function process_local_measurements!(container::NamedTuple, sim_params::SimulationParameters, holstein::HolsteinModel,
+function process_local_measurements!(container::NamedTuple, sim_params::SimulationParameters, model::AbstractModel,
                                      container_rspace::NamedTuple, container_kspace::NamedTuple)
     
     # normalizing measurements
@@ -118,7 +151,7 @@ function process_local_measurements!(container::NamedTuple, sim_params::Simulati
     end
 
     # number of orbits/sites per unit cell
-    norbits = holstein.lattice.unit_cell.norbits::Int
+    norbits = model.lattice.unit_cell.norbits::Int
 
     # if measuring s-wave susceptibility
     if :swave_susc in keys(container)
@@ -129,7 +162,7 @@ function process_local_measurements!(container::NamedTuple, sim_params::Simulati
             # green's function
             Gᵣ = container_rspace.Greens
             # calculating s-wave susceptibility
-            container.swave_susc[orbit] = calc_swave_susc(Pᵣ, Gᵣ, holstein.Δτ, orbit)
+            container.swave_susc[orbit] = calc_swave_susc(Pᵣ, Gᵣ, model.Δτ, orbit)
         end
     end
 
@@ -156,7 +189,7 @@ Initializes file that will contain local measurement data, with header included.
 function initialize_local_measurements_file(container::NamedTuple, sim_params::SimulationParameters) where {T<:Number}
 
     open(sim_params.datafolder*"local_measurements.out", "w") do file
-        write(file, "orbit")
+        write(file, "orbit/bond")
         for key in keys(container)
             measurement = String(key)
             write(file, ",", measurement)
@@ -181,6 +214,28 @@ function write_local_measurements(container::NamedTuple, sim_params::SimulationP
             end
             write(file, "\n")
         end
+    end
+
+    return nothing
+end
+
+function write_local_measurements(container::NamedTuple, sim_params::SimulationParameters, ssh::SSHModel) where {T<:Number}
+
+    norbits = ssh.lattice.unit_cell.norbits::Int
+    nbonds  = length(ssh.phonon_definitions)
+    open(sim_params.datafolder*"local_measurements.out", "a") do file
+        for key in keys(container)
+            if size(container[key])==norbits
+                for orbit in 1:norbits
+                    write(file, @sprintf(",%.6f", container[key][orbit]))
+                end
+            else
+                for bond in 1:nbonds
+                    write(file, @sprintf(",%.6f", container[key][bond]))
+                end
+            end
+        end
+        write(file, "\n")
     end
 
     return nothing

@@ -66,7 +66,7 @@ using ..MuFinder: MuTuner, update_μ!
 export simulate, load_model
 
 """
-Highest level function used to run a langevin simulation of a Holstein model.
+Highest level function used to run a langevin simulation.
 To run a simulation execute the following command:
 `julia -O3 -e "using Langevin; simulate(ARGS)" -- input.toml`
 """
@@ -80,19 +80,19 @@ function simulate(args)
     input_file = args[1]
 
     # precoessing input file
-    holstein, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
+    model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
 
     ########################
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(holstein, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
+    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary(holstein, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
+    write_simulation_summary(model, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
 end
 
 
@@ -109,10 +109,10 @@ function load_model(dir::String)
     config_file = joinpath(dir, files[config[1]])
     phonon_file = joinpath(dir, files[phonon[1]])
     
-    holstein = initialize_holstein_model(config_file)
-    read_phonons(holstein, phonon_file)
+    model = initialize_holstein_model(config_file)
+    read_phonons(model, phonon_file)
     
-    return holstein
+    return model
 end
 
 end

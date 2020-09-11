@@ -6,7 +6,7 @@ using UnsafeArrays
 
 import LinearAlgebra: ldiv!, mul!, transpose
 
-using ..Models: HolsteinModel
+using ..Models: HolsteinModel, SSHModel, AbstractModel, Continuous
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
@@ -16,7 +16,7 @@ export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner
 """
 Object to represent Kenerl Polynomial Expansion.
 """
-mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
+mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
 
     "Current frequency."
     ω::Int
@@ -48,14 +48,20 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
     "number of order 1 expansions."
     n_order_1::Int
 
-    "holstein model."
-    holstein::HolsteinModel{T1,T2}
+    "model."
+    model::T3
 
     "TimeFreqFFT object for mapping between τ ⟷ ω"
     timefreqfft::TimeFreqFFT{T1}
 
     "exp{-Δτ⋅V̄} = (1/L)∑exp{-Δτ⋅V(τ)}"
     expnΔτV̄::Vector{T1}
+
+    "For checkerboard representation of exp{-Δτ⋅K̄}=(1/L)∑exp{-Δτ⋅K(τ)}"
+    cosht̄::Vector{T2}
+
+    "For checkerboard representation of exp{-Δτ⋅K̄}=(1/L)∑exp{-Δτ⋅K(τ)}"
+    sinht̄::Vector{T2}
 
     "ϕ=2π/L⋅(ω+1/2)"
     ϕs::Vector{T1}
@@ -84,20 +90,20 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
     "Count total checkerboard multiplies."
     checkerboard_count::Int
 
-    function KPMExpansion(holstein::HolsteinModel{T1,T2},
-                          λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
-                          jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function KPMExpansion(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
 
-        N   = holstein.nsites
-        L   = holstein.Lτ
+        N   = model.Ndim
+        L   = model.Lτ
         NL  = N*L
         Lo2 = cld(L,2)
 
-        timefreqfft = TimeFreqFFT(holstein.lattice,L)
+        timefreqfft = TimeFreqFFT(model.lattice,L)
 
         λ_avg   = (λ_hi+λ_lo)/2
         λ_mag   = (λ_hi-λ_lo)/2
         expnΔτV̄ = zeros(T1,N)
+        cosht̄   = zeros(T2,model.Nbonds)
+        sinht̄   = zeros(T2,model.Nbonds)
         ϕs        = [2*π/L*(ω+1/2) for ω in 0:Lo2-1]
         order     = [max(1,round(Int,c1/ϕ + c2)) for ϕ in ϕs]
         order_max = maximum(order)
@@ -108,6 +114,13 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
         v3      = zeros(Complex{T1},N)
         v4      = zeros(Complex{T1},N)
         v5      = zeros(Complex{T1},N)
+
+        if length(model.cosht)==model.Nbonds # for holstein model
+            cosht̄ .= model.cosht
+            sinht̄ .= model.sinht
+        else # for ssh model
+            expnΔτV̄ .= model.expΔτμ
+        end
 
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
         coeff   = Vector{Vector{Complex{T1}}}()
@@ -122,7 +135,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Number}
             push!(coeff,coeff_re+im*coeff_im)
         end
 
-        return new{T1,T2}(1,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,order_min,order_max,n_order_1,holstein,timefreqfft,expnΔτV̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
+        return new{T1,T2,typeof(model)}(1,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,order_min,order_max,n_order_1,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
     end
 end
 
@@ -131,61 +144,55 @@ end
 Abstract type to reprepresent preconditioners based the Kernel Polynomial Method
 that uses Chebyshev Polynomials to approximate M⁻¹[ω,ω].
 """
-abstract type KPMPreconditioner end
+abstract type KPMPreconditioner{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel} end
 
 
-mutable struct LeftKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
+mutable struct LeftKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
-    expansion::KPMExpansion{T1,T2}
+    expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftKPMPreconditioner(holstein::HolsteinModel{T1,T2},
-                                   λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
-                                   jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
-
-        expansion = KPMExpansion(holstein,λ_lo,λ_hi,c1,c2,jackson_kernel)
-        return new{T1,T2}(expansion)
+    function LeftKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        return new{T1,T2,typeof(model)}(expansion)
     end
 
-    function LeftKPMPreconditioner(expansion::KPMExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function LeftKPMPreconditioner(expansion::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
-        return new{T1,T2}(expansion)
+        return new{T1,T2,T3}(expansion)
     end
 end
 
 
-mutable struct RightKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
+mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
-    expansion::KPMExpansion{T1,T2}
+    expansion::KPMExpansion{T1,T2,t3}
 
-    function RightKPMPreconditioner(holstein::HolsteinModel{T1,T2},
-                                   λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
-                                   jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function RightKPMPreconditioner(model::AbstractModel{T1,T2,T3},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
 
-        expansion = KPMExpansion(holstein,λ_lo,λ_hi,c1,c2,jackson_kernel)
-        return new{T1,T2}(expansion)
+        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        return new{T1,T2,typeof(model)}(expansion)
     end
 
-    function RightKPMPreconditioner(expansion::KPMExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+    function RightKPMPreconditioner(expansion::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
-        return new{T1,T2}(expansion)
+        return new{T1,T2,T3}(expansion)
     end
 end
 
 
-mutable struct LeftRightKPMPreconditioner{T1<:AbstractFloat,T2<:Number} <: KPMPreconditioner
+mutable struct LeftRightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
-    lkpm::LeftKPMPreconditioner{T1,T2}
-    rkpm::RightKPMPreconditioner{T1,T2}
-    expansion::KPMExpansion{T1,T2}
+    lkpm::LeftKPMPreconditioner{T1,T2,T3}
+    rkpm::RightKPMPreconditioner{T1,T2,T3}
+    expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftRightKPMPreconditioner(holstein::HolsteinModel{T1,T2},
-                                        λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,
-                                        jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function LeftRightKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
 
-        lkpm = LeftKPMPreconditioner(holstein,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        lkpm = LeftKPMPreconditioner(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
         rkpm = transpose(lkpm)
         expansion = lkpm.expansion
-        return new{T1,T2}(lkpm,rkpm,expansion)
+
+        return new{T1,T2,typeof(model)}(lkpm,rkpm,expansion)
     end
 end
 
@@ -216,20 +223,46 @@ function setup!(op::KPMPreconditioner)
     return nothing
 end
 
-function setup!(op::KPMExpansion{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+"""
+Calculate exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
+"""
+function setup!(op::KPMExpansion{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3<:HolsteinModel}
 
-    N  = op.holstein.nsites::Int
-    L  = op.holstein.Lτ::Int
-    Δτ = op.holstein.Δτ
+    N  = op.model.Nsites::Int
+    L  = op.model.Lτ::Int
+    Δτ = op.model.Δτ
 
     # calulcate diagonal matrix exp{-Δτ⋅V̄} = (1/L)∑exp{-Δτ⋅V(τ)}
-    expnΔτV = op.holstein.expnΔτV::Vector{T2}
+    expnΔτV = op.model.expnΔτV::Vector{T2}
     @fastmath @inbounds for i in 1:N
         op.expnΔτV̄[i] = 0.0
         for τ in 1:L
             op.expnΔτV̄[i] += expnΔτV[get_index(τ,i,L)]
         end
         op.expnΔτV̄[i] /= L
+    end
+    return nothing
+end
+
+function setup!(op::KPMExpansion{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3<:SSHModel}
+
+    N  = op.model.Nbonds::Int
+    L  = op.model.Lτ::Int
+    Δτ = op.model.Δτ
+
+    cosht = op.model.cosht::Vector{T2}
+    sinht = op.model.sinht::Vector{T2}
+    index = 0 
+    @fastmath @inbounds for i in 1:N
+        index += 1
+        op.cosht̄[i] = 0.0
+        op.sinht̄[i] = 0.0
+        for τ in 1:L
+            op.cosht̄[i] += cosht[index]
+            op.sinht̄[i] += sinht[index]
+        end
+        op.cosht̄[i] /= L
+        op.sinht̄[i] /= L
     end
     return nothing
 end
@@ -246,8 +279,8 @@ Apply Preconditioner.
 function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{T}) where {T<:AbstractFloat}
 
     op = P.expansion::KPMExpansion
-    N  = op.holstein.nsites::Int
-    L  = op.holstein.Lτ::Int
+    N  = op.model.Nsites::Int
+    L  = op.model.Lτ::Int
     v1 = op.v1::Vector{Complex{T}}
     v2 = op.v2::Vector{Complex{T}}
     op.checkerboard_count = 0
@@ -306,14 +339,14 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω] or M⁻ᵀ[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
-    op       = P.expansion::KPMExpansion{T1,T2}
-    holstein = op.holstein::HolsteinModel{T1,T2}
-    lkpm     = P.lkpm::LeftKPMPreconditioner{T1,T2}
-    rkpm     = P.rkpm::RightKPMPreconditioner{T1,T2}
+    op    = P.expansion::KPMExpansion{T1,T2,T3}
+    model = op.model::T3
+    lkpm  = P.lkpm::LeftKPMPreconditioner{T1,T2,T3}
+    rkpm  = P.rkpm::RightKPMPreconditioner{T1,T2,T3}
 
-    if holstein.transposed
+    if model.transposed
         mul!(v′,rkpm,v)
     else
         mul!(v′,lkpm,v)
@@ -325,10 +358,9 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},
-              v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
-    op    = P.expansion::KPMExpansion{T1,T2}
+    op    = P.expansion::KPMExpansion{T1,T2,T3}
     ω     = op.ω # current frequency
     order = op.order[ω] # order of expansion
     coeff = op.coeff::Vector{Vector{Complex{T1}}}
@@ -430,16 +462,16 @@ end
 
 
 """
-Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K} or A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
+Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
 """
 function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
-    op       = P.expansion::KPMExpansion{T1,T2}
-    holstein = op.holstein::HolsteinModel{T1,T2}
-    lkpm     = P.lkpm::LeftKPMPreconditioner{T1,T2}
-    rkpm     = P.rkpm::RightKPMPreconditioner{T1,T2}
+    op    = P.expansion::KPMExpansion{T1,T2}
+    model = op.model::T3
+    lkpm  = P.lkpm::LeftKPMPreconditioner{T1,T2}
+    rkpm  = P.rkpm::RightKPMPreconditioner{T1,T2}
 
-    if holstein.transposed
+    if model.transposed
         mulA!(v′,rkpm,v)
     else
         mulA!(v′,lkpm,v)
@@ -449,19 +481,18 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T
 end
 
 """
-Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K}
+Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
-    op      = P.expansion::KPMExpansion{T1,T2}
+    op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
-
-    neighbor_table_tij = op.holstein.neighbor_table_tij::Matrix{Int}
-    coshtij = op.holstein.coshtij::Vector{T2}
-    sinhtij = op.holstein.sinhtij::Vector{T2}
+    neighbor_table = op.model.neighbor_table::Matrix{Int}
+    cosht̄ = op.cosht̄::Vector{T2}
+    sinht̄ = op.sinht̄::Vector{T2}
 
     copyto!(v′,v)
-    checkerboard_mul!(v′,neighbor_table_tij,coshtij,sinhtij)
+    checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
     @. v′ *= expnΔτV̄
 
     op.checkerboard_count += 1
@@ -470,19 +501,18 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2}
 end
 
 """
-Perform A⋅v where A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
+Perform A⋅v where A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
-    op      = P.expansion::KPMExpansion{T1,T2}
+    op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
-
-    neighbor_table_tij = op.holstein.neighbor_table_tij::Matrix{Int}
-    coshtij = op.holstein.coshtij::Vector{T2}
-    sinhtij = op.holstein.sinhtij::Vector{T2}
+    neighbor_table = op.model.neighbor_table::Matrix{Int}
+    cosht̄ = op.cosht̄::Vector{T2}
+    sinht̄ = op.sinht̄::Vector{T2}
 
     @. v′ = expnΔτV̄ * v
-    checkerboard_transpose_mul!(v′,neighbor_table_tij,coshtij,sinhtij)
+    checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,cosht̄)
 
     op.checkerboard_count += 1
 

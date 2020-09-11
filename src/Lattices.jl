@@ -7,7 +7,7 @@ using ..UnitCells: UnitCell, monkhorst_pack_mesh, calc_site_pos!
 export Lattice
 export loc_to_cell, loc_to_site, site_to_site
 export translationally_equivalent_sets
-export calc_neighbor_table, sort_neighbor_table!
+export calc_neighbor_table, sorted_neighbor_table_perm
 export site_to_site_vec!, site_to_site_vec
 
 """
@@ -315,43 +315,15 @@ end
 
 
 """
-    sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
-
-Sorts a neighbor table so that the first row is in strictly ascending order,
+Returns the permutation that sorts the neighbor table so that the first row is in strictly ascending order,
 and for fixed values in the first row, the second row is also in ascending order.
-Also returns the sorted permutation order of the neighbor_table based on the original ordering
-of the neighbor_table before sorting occured.
 """
-function sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
-
-    # making sure dimensions of neighbor table are valid
+function sorted_neighbor_table_perm(neighbor_table::Matrix{Int})::Vector{Int}
+    
     @assert size(neighbor_table,1)==2
-
-    # getting the number of neighbor_table
-    nneighbor_table = size(neighbor_table,2)
-
-    # filling in array that will contain sorted neighbor relations.
-    # note that the third row will contain the sorted permutation order
-    # or the original neighbor table.
-    sorted_neighbor_table = Matrix{Int}(undef,3,nneighbor_table)
-    for i in 1:nneighbor_table
-        sorted_neighbor_table[1,i] = neighbor_table[1,i]
-        sorted_neighbor_table[2,i] = neighbor_table[2,i]
-        sorted_neighbor_table[3,i] = i
-        # making sure smaller site in neighbor pair is always in first column
-        if sorted_neighbor_table[1,i]>sorted_neighbor_table[2,i]
-            sorted_neighbor_table[1,i], sorted_neighbor_table[2,i] = sorted_neighbor_table[2,i], sorted_neighbor_table[1,i]
-        end
-    end
-
-    # sorting the neighbor_table
-    sorted_neighbor_table .= sortslices(sorted_neighbor_table,dims=2)
-
-    # recording sorted neighbor relations
-    neighbor_table .= @view sorted_neighbor_table[1:2,:]
-
-    # returning the sorted permuation order based on original ordering of neighbor table
-    return sorted_neighbor_table[3,:]
+    vals = maximum(neighbor_table)*neighbor_table[1,:] + neighbor_table[2,:]
+    perm = sortperm(vals)
+    return perm
 end
 
 """

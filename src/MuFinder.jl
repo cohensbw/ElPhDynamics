@@ -109,8 +109,8 @@ function forgetful_mean(data::Vector{T}, c::T, prev_mean::T)::T  where{T<:Abstra
         return data[1]
     end
 
-    cutoff = ceil(Int64, (1.0 - c) * length(data))
-    prev_cutoff = ceil(Int64, (1.0 - c) * (length(data) - 1))
+    cutoff = ceil(Int, (1.0 - c) * length(data))
+    prev_cutoff = ceil(Int, (1.0 - c) * (length(data) - 1))
 
     new_mean = (length(data) - prev_cutoff) * prev_mean
     if prev_cutoff != cutoff

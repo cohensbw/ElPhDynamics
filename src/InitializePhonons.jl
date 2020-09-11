@@ -1,9 +1,42 @@
 module InitializePhonons
 
-using ..Models: HolsteinModel, construct_expnΔτV!
+using ..Models: HolsteinModel, SSHModel, update_model!
 using ..Utilities: get_index
 
 export init_phonons_single_site!, init_phonons_half_filled!, sample_qho
+
+
+function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
+    
+    # info about temperature of system
+    β  = ssh.β::T1
+    Δτ = ssh.Δτ::T1
+    Lτ = ssh.Lτ::Int
+
+    # number of phonons
+    Nph = ssh.Nph
+
+    # get phonon fields
+    x = reshape(ssh.x,(Lτ,Nph))
+
+    # iterate over phonons
+    for phonon in 1:Nph
+
+        # calculate average phonon position
+        α  = ssh.α[phonon]
+        ω  = ssh.ω[phonon]
+        x0 = -α/ω^2
+
+        # iterate over imaginary time slices
+        for τ in 1:Lτ
+
+            # set phonon value
+            x[τ,phonon] = sample_qho(ω,β) + x0
+        end
+    end
+
+    return nothing
+end
 
 
 """
@@ -45,7 +78,7 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
     end
 
     # udpate exponentiated interaction matrix
-    construct_expnΔτV!(holstein)
+    update_model!(holstein)
 
     return nothing
 end
@@ -126,7 +159,7 @@ function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
         end
     end
     # construct the exponentiated interaction matrix based on intialized phonon fields
-    construct_expnΔτV!(holstein)
+    update_model!(holstein)
 
     return nothing
 end

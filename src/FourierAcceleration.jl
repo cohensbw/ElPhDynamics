@@ -4,7 +4,7 @@ using FFTW
 using LinearAlgebra
 using UnsafeArrays
 
-using ..Models: HolsteinModel
+using ..Models: AbstractModel
 using ..Utilities: get_index
 
 export FourierAccelerator, update_Q!, update_M!, fourier_accelerate!
@@ -32,7 +32,7 @@ struct FourierAccelerator{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Abstra
     "Performs forward fourier transformation"
     pifft::Tifft
 
-    "Number of sites in lattice getting acclerated."
+    "Number of Phonons in Lattices."
     N::Int
 
     "Length of imagniary time axis"
@@ -45,13 +45,13 @@ struct FourierAccelerator{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Abstra
     """
     Constructor for FourierAccelerator type.
     """
-    function FourierAccelerator(holstein::HolsteinModel{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3}
+    function FourierAccelerator(model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
 
         # getting number of sites in lattice
-        N = holstein.lattice.nsites
+        N = model.Nph
 
         # length of imaginary time axis
-        L = holstein.Lτ
+        L = model.Lτ
 
         # constructing Q and M
         Q = zeros(T1,N*L)
@@ -149,10 +149,10 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(fa::FourierAccelerator{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
 
     # updating the acceleration matrix for sites with a phonon frequency withing the specified range
-    update_Q!(fa.Q,holstein,ω_min,ω_max,m)
+    update_Q!(fa.Q,model,ω_min,ω_max,m)
 
     return nothing
 end
@@ -161,10 +161,10 @@ end
 """
 Updates the c1 matrix for sites with phonon frequencies withing the specified range.
 """
-function update_M!(fa::FourierAccelerator{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1=0.0) where {T1<:AbstractFloat,T2<:Number}
+function update_M!(fa::FourierAccelerator{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1=0.0) where {T1<:AbstractFloat,T2<:Number}
 
     # updating the acceleration matrix for sites with a phonon frequency withing the specified range
-    update_M!(fa.M,holstein,ω_min,ω_max,m0,c)
+    update_M!(fa.M,model,ω_min,ω_max,m0,c)
 
     return nothing
 end
@@ -176,14 +176,12 @@ end
 """
 Updates the fourier acceleration matrix for sites with phonon frequencies withing the specified range.
 """
-function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_Q!(Q::Vector{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::T1,m::T1) where {T1<:AbstractFloat,T2<:Number}
 
-    N  = holstein.nsites::Int
-    L  = holstein.Lτ
-    Δτ = holstein.Δτ::T1
-    ω  = holstein.ω
-    λ  = holstein.λ
-    μ  = holstein.μ
+    N  = model.Nph::Int
+    L  = model.Lτ
+    Δτ = model.Δτ::T1
+    ω  = model.ω
     # iterating over site in lattice
     for site in 1:N
         # if phonon frequncy on site falls withing specified range
@@ -191,7 +189,7 @@ function update_Q!(Q::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_ma
             # get a view into Q matrix for current lattice site
             Qi = @view Q[get_index(1,site,L):get_index(L,site,L)]
             # define Q matrix just for current site
-            construct_Qi!( Qi , ω[site] , λ[site] , μ[site] , Δτ , m )
+            construct_Qi!( Qi , ω[site] , Δτ , m )
         end
     end
     return nothing
@@ -202,11 +200,11 @@ end
 Calculates acceleration matrix for specified phonon frequency `ω`, discretization `Δτ`.
 Obeys the FFTW convention for the ordering of the momentum values.
 """
-function construct_Qi!(Qi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,m::T) where {T<:AbstractFloat}
+function construct_Qi!(Qi::AbstractVector{T},ω::T,Δτ::T,m::T) where {T<:AbstractFloat}
 
     L = length(Qi)
     for k in 0:L-1
-        Qi[k+1] = element_Qi(k,ω,λ,μ,Δτ,m,L)
+        Qi[k+1] = element_Qi(k,ω,Δτ,m,L)
     end
     return nothing
 end
@@ -215,7 +213,7 @@ end
 """
 Calculates a specified matrix element of the acceleration matrix for a given mode k.
 """
-function element_Qi(k::Int,ω::T,λ::T,μ::T,Δτ::T,m::T,L::Int)::T where {T<:Number}
+function element_Qi(k::Int,ω::T,Δτ::T,m::T,L::Int)::T where {T<:Number}
 
     val = (m^2 + Δτ*ω*ω + 4.0/Δτ) / (m^2 + Δτ*ω*ω + (2-2*cos(2*π*k/L))/Δτ)
     return val
@@ -225,14 +223,12 @@ end
 """
 Updates the c1 matrix for sites with phonon frequencies withing the specified range.
 """
-function update_M!(M::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1) where {T1<:AbstractFloat,T2<:Number}
+function update_M!(M::Vector{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::T1,m0::T1,c::T1) where {T1<:AbstractFloat,T2<:Number}
 
-    N  = holstein.nsites::Int
-    L  = holstein.Lτ
-    Δτ = holstein.Δτ::T1
-    ω  = holstein.ω
-    λ  = holstein.λ
-    μ  = holstein.μ
+    N  = model.Nph::Int
+    L  = model.Lτ
+    Δτ = model.Δτ::T1
+    ω  = model.ω
     # iterating over site in lattice
     for site in 1:N
         # if phonon frequncy on site falls withing specified range
@@ -240,7 +236,7 @@ function update_M!(M::Vector{T1},holstein::HolsteinModel{T1,T2},ω_min::T1,ω_ma
             # get a view into M matrix for current lattice site
             Mi = @view M[get_index(1,site,L):get_index(L,site,L)]
             # define M matrix just for current site
-            construct_Mi!( Mi , ω[site] , λ[site] , μ[site] , Δτ , m0 , c )
+            construct_Mi!( Mi , ω[site] , Δτ , m0 , c )
         end
     end
     return nothing
@@ -251,11 +247,11 @@ end
 Calculates matrix matrix for specified phonon frequency `ω`, discretization `Δτ`.
 Obeys the FFTW convention for the ordering of the momentum values.
 """
-function construct_Mi!(Mi::AbstractVector{T},ω::T,λ::T,μ::T,Δτ::T,m0::T,c::T) where {T<:AbstractFloat}
+function construct_Mi!(Mi::AbstractVector{T},ω::T,Δτ::T,m0::T,c::T) where {T<:AbstractFloat}
 
     L = length(Mi)
     for k in 0:L-1
-        Mi[k+1] = element_Mi(k,ω,λ,μ,Δτ,m0,c,L)
+        Mi[k+1] = element_Mi(k,ω,Δτ,m0,c,L)
     end
     return nothing
 end
@@ -264,7 +260,7 @@ end
 """
 Calculates a specified matrix element of the c1 matrix for a given mode k.
 """
-function element_Mi(k::Int,ω::T,λ::T,μ::T,Δτ::T,m0::T,c::T,L::Int)::T where {T<:Number}
+function element_Mi(k::Int,ω::T,Δτ::T,m0::T,c::T,L::Int)::T where {T<:Number}
 
     k′  = min(k,L-k)
     m   = m0 * exp(-(c*k′/L)^2)
