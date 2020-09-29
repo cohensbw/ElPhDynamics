@@ -76,7 +76,7 @@ end
 """ 
 Given a MuTuner, and a new set of measurements for N, N², updates the MuTuner and returns the new value of μ.
 """
-function update_μ!(tuner::MuTuner, N::T, N²::T)::T  where{T<:AbstractFloat}
+function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
     @unpack μ_traj, N_traj, κ_traj, forgetful_c, β, target_N, κ_min = tuner
 
@@ -90,20 +90,45 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T  where{T<:AbstractFloat}
     tuner.κ̄ = forgetful_mean(κ_traj, forgetful_c, tuner.κ̄ )
     κ_update = max(tuner.κ̄, κ_min / sqrt(length(κ_traj)))
 
-    new_μ = tuner.μ̄  + (target_N - tuner.N̄) / κ_update
+    new_μ = tuner.μ̄ + (target_N - tuner.N̄) / κ_update
     tuner.μ = new_μ
     push!(μ_traj, new_μ)
 
-    # println("new mu = ",new_μ)
-
     return new_μ
+end
+
+"""
+Given a MuTuner, returns the best guess for (μ, err_μ) from
+previous trajectory.
+"""
+function estimate_μ(tuner::MuTuner{T})::Tuple{T,T} where {T<:AbstractFloat}
+    μ̄ = tuner.μ̄
+
+    # Run through and reconstruct the N̄ and κ̄ trajectories
+    N̄ = tuner.N_traj[1]
+    κ̄ = tuner.κ_traj[1]
+    N̄_traj = Vector{Float64}()
+    κ̄_traj = Vector{Float64}()
+    sizehint!(N̄_traj, length(tuner.N_traj))
+    sizehint!(κ̄_traj, length(tuner.κ_traj))
+    for i in 1:length(tuner.N_traj)
+        N̄ = forgetful_mean((@view tuner.N_traj[1:i]), tuner.forgetful_c, N̄)
+        κ̄ = forgetful_mean((@view tuner.κ_traj[1:i]), tuner.forgetful_c, κ̄)
+        push!(N̄_traj, N̄)
+        push!(κ̄_traj, κ̄)
+    end
+
+    μ_corrections = (tuner.target_N .- N̄_traj) ./ κ̄_traj
+    forgetful_idx = convert(Int, tuner.forgetful_c * length(μ_corrections))
+    err_μ = sqrt(mean(μ_corrections[forgetful_idx:end] .^ 2))
+    return (μ̄, err_μ)
 end
 
 ############################
 ## PRIVATE MODULE METHODS ##
 ############################
 
-function forgetful_mean(data::Vector{T}, c::T, prev_mean::T)::T  where{T<:AbstractFloat}
+function forgetful_mean(data::AbstractVector{T}, c::T, prev_mean::T)::T where {T<:AbstractFloat}
 
     if length(data) == 1
         return data[1]
