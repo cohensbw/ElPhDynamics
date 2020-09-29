@@ -9,7 +9,7 @@ using ..Checkerboard: checkerboard_order, checkerboard_groups
 using ..IterativeSolvers: GMRES, ConjugateGradient, BiCGStab
 using ..Utilities: get_index, get_τ, δ
 
-struct SSHPhonon{T1<AbstractFloat,T2<:Continuous}
+struct SSHPhonon{T1<AbstractFloat,T2<:Continuous} <: AbstractBond
 
     "bare phonon hopping"
     t::T2
@@ -231,13 +231,13 @@ function assign_hopping!(ssh::SSHModel{T1,T2},t::T2,σt::T1,ω::T1,σω::T1,α::
     end
 
     # adding new hopping values
-    append!(ssh.t, eiϕ.*(fill(abs(t),Nnewneighbors) + σt*randn(newneighbors)) )
+    append!(ssh.t, eiϕ.*(fill(abs(t),Nnewneighbors) + σt*randn(Nnewneighbors)) )
 
     # adding new phonon frequencies
-    append!(ssh.ω, fill(ω,Nnewneighbors) + σω*randn(newneighbors) )
+    append!(ssh.ω, fill(ω,Nnewneighbors) + σω*randn(Nnewneighbors) )
 
     # adding new phonon coupling
-    append!(ssh.α, eiϕ.*(fill(abs(α),Nnewneighbors) + σα*randn(newneighbors)) )
+    append!(ssh.α, eiϕ.*(fill(abs(α),Nnewneighbors) + σα*randn(Nnewneighbors)) )
 
     return nothing
 end

@@ -18,12 +18,38 @@ Continuous = Union{AbstractFloat,Complex{<:AbstractFloat}}
 
 
 """
+Abstract type to represent type of bond/hopping in lattice.
+"""
+abstract type AbstractBond end
+
+
+"""
+Represent a type of bare hopping/bond in lattice.
+"""
+struct Bond{T<:Continuous} <: AbstractBond
+
+    t::T
+    o₁::Int
+    o₂::Int
+    v::Vector{Int}
+
+    function Bond(t::T,o₁::Int,o₂::Int,v::AbstractVector{T}) where {T<:Continuous}
+
+        @assert length(v)==3
+        v′ = zeros(T,3)
+        copyto!(v′,v)
+        return new{T}(t,o₁,o₂,v′)
+    end
+end
+
+
+"""
 Abstract type to represent models.
     T1: data type for parameter values that are always real
     T2: data type for matrix elements of M
     T3: data type describing which iterative solver is being used
 """
-abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver} end
+abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver,T4<:AbstractBond} end
 
 # include code for models
 include("HolsteinModels.jl")

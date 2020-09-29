@@ -243,13 +243,13 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I, 
         convolve!(estimator.GΔ0_GΔ0,a,b,estimator,n)
 
         # calculate G[Δ,Δ]⋅G[0,0]
-        periodic_product!(a,r₁,M⁻¹r₁,L)
-        periodic_product!(b,r₂,M⁻¹r₂,L)
+        periodic_product!(a,M⁻¹r₁,r₁,L)
+        periodic_product!(b,M⁻¹r₂,r₂,L)
         convolve!(estimator.GΔΔ_G00,a,b,estimator,n)
 
         # calculate G[Δ,0]⋅G[0,Δ]
-        periodic_product!(a,r₁,M⁻¹r₂,L)
-        periodic_product!(b,r₂,M⁻¹r₁,L)
+        periodic_product!(a,M⁻¹r₂,r₁,L)
+        periodic_product!(b,M⁻¹r₁,r₂,L)
         convolve!(estimator.GΔ0_G0Δ,a,b,estimator,n)
     end
 

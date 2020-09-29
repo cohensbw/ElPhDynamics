@@ -184,8 +184,7 @@ function process_input_file(filename::String)
         @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
         @assert !((α>0)&(isfinite(τ)))
-        simulation_dynamics = HybridMonteCarlo(NL, Δt, tr, τ, α, Nb, construct_guess,
-                                              log=log, verbose=verbose, logfile=hmc_simulation_logfile)
+        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, τ, α, Nb, construct_guess, log=log, verbose=verbose, logfile=hmc_simulation_logfile)
 
         # defining burnin dynamics
         if haskey(input["hmc"], "burnin")
@@ -227,19 +226,19 @@ function process_input_file(filename::String)
     elseif input["langevin"]["update_method"]==1
 
         Δt       = input["langevin"]["dt"]
-        simulation_dynamics = EulerDynamics(NL,Δt)
+        simulation_dynamics = EulerDynamics(model,Δt)
         burnin_dyanmics = simulation_dynamics
 
     elseif input["langevin"]["update_method"]==2
 
         Δt       = input["langevin"]["dt"]
-        simulation_dynamics = RungeKuttaDynamics(NL,Δt)
+        simulation_dynamics = RungeKuttaDynamics(model),Δt)
         burnin_dyanmics = simulation_dynamics
 
     elseif input["langevin"]["update_method"]==3
 
         Δt       = input["langevin"]["dt"]
-        simulation_dynamics = HeunsDynamics(NL,Δt)
+        simulation_dynamics = HeunsDynamics(model,Δt)
         burnin_dyanmics = simulation_dynamics
 
     end

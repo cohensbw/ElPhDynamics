@@ -225,9 +225,9 @@ time_dependent = true
 [measurements.BondBond]
 measure        = true
 time_dependent = true
-[[measurements.BondBond.bond]]
+[[measurements.BondBond.vector]]
 orbit = [1,1]
 dL    = [1,0,0]
-[[measurements.BondBond.bond]]
+[[measurements.BondBond.vector]]
 orbit = [1,1]
 dL    = [0,1,0]

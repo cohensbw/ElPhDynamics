@@ -65,8 +65,10 @@ struct EulerDynamics{T<:AbstractFloat} <: Dynamics
     """
     M⁻¹R::Vector{T}
 
-    function EulerDynamics(Ndof::Int, Ndim::Int, Δt::T) where {T<:AbstractFloat}
+    function EulerDynamics(model::ABstractModel, Δt::T) where {T<:AbstractFloat}
 
+        Ndof     = model.Ndof
+        Ndim     = model.Ndim
         dSdx     = zeros(T,Ndof)
         η        = zeros(T,Ndof)
         Δx       = zeros(T,Ndof)
@@ -143,8 +145,10 @@ struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
     R::Vector{T}
     M⁻¹R::Vector{T}
 
-    function RungeKuttaDynamics(Ndof::Int, Ndim::Int, Δt::T) where {T<:AbstractFloat}
+    function RungeKuttaDynamics(model::AbstractModel, Δt::T) where {T<:AbstractFloat}
 
+        Ndof     = model.Ndof
+        Ndim     = model.Ndim
         dSdx     = zeros(T,Ndof)
         dSdx′    = zeros(T,Ndof)
         η        = zeros(T,Ndof)
@@ -251,8 +255,10 @@ struct HeunsDynamics{T<:AbstractFloat} <: Dynamics
     R::Vector{T}
     M⁻¹R::Vector{T}
 
-    function HeunsDynamics(Ndof::Int,Ndim::Int,Δt::T) where {T<:AbstractFloat}
+    function HeunsDynamics(model::AbstractModel,Δt::T) where {T<:AbstractFloat}
 
+        Ndof  = model.Ndof
+        Ndim  = model.Ndim
         η     = zeros(T,Ndof)
         dSdx  = zeros(T,Ndof)
         dSdx′ = zeros(T,Ndof)

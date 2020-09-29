@@ -222,7 +222,8 @@ function initialize_nonlocal_measurement_files(container_rspace::NamedTuple, con
         # get measurement string
         measurement = String(key)
         # Intializing data file
-        open(sim_params.datafolder * measurement * "_r.out", "w") do file
+        open(sim_params.dat
+        afolder * measurement * "_r.out", "w") do file
             # writing file header
             write(file, "orbit1", ",", "orbit2", ",", "dL1",  ",", "dL2",  ",", "dL3",  ",", "tau", ",", measurement*"_r", "\n")
         end

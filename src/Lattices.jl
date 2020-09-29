@@ -262,7 +262,7 @@ end
 
 Construct the neighbor table for a certain type of displacement in the lattice.
 """
-function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Matrix{Int}
+function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int},remove_duplicates::Bool=true)::Matrix{Int}
 
     # number of orbits/sites per unit cell
     norbits = lattice.unit_cell.norbits::Int
@@ -294,21 +294,23 @@ function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displaceme
     end
 
     # remove duplicate neighbor pairs
-    keep = ones(Bool,N)
-    for i in 1:N-1
-        if keep[i]
-            isite = neighbor_table[1,i]
-            fsite = neighbor_table[2,i]
-            for j in i+1:N
-                isite′ = neighbor_table[1,j]
-                fsite′ = neighbor_table[2,j]
-                if (isite==isite′ && fsite==fsite′)||(isite==fsite′ && fsite==isite′)
-                    keep[j] = false
+    if remove_duplicates
+        keep = ones(Bool,N)
+        for i in 1:N-1
+            if keep[i]
+                isite = neighbor_table[1,i]
+                fsite = neighbor_table[2,i]
+                for j in i+1:N
+                    isite′ = neighbor_table[1,j]
+                    fsite′ = neighbor_table[2,j]
+                    if (isite==isite′ && fsite==fsite′)||(isite==fsite′ && fsite==isite′)
+                        keep[j] = false
+                    end
                 end
             end
         end
+        neighbor_table = neighbor_table[:,keep]
     end
-    neighbor_table = neighbor_table[:,keep]
 
     return neighbor_table
 end
