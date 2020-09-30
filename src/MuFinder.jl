@@ -18,9 +18,9 @@ mutable struct MuTuner{T<:AbstractFloat}
     Δτ          :: T
     L           :: Int
     target_N    :: T
-    μ̄           :: T
-    N̄           :: T
-    κ̄           :: T
+    μ_bar       :: T
+    N_bar       :: T
+    κ_bar       :: T
     κ_min       :: T
 
     function MuTuner(active::Bool, init_μ::T, target_N::T, β::T, Δτ::T, forgetful_c::T, κ_min::T=0.1) where{T<:AbstractFloat}
@@ -80,17 +80,17 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
     @unpack μ_traj, N_traj, κ_traj, forgetful_c, β, target_N, κ_min = tuner
 
-    tuner.μ̄ = forgetful_mean(μ_traj, forgetful_c, tuner.μ̄ )
+    tuner.μ_bar = forgetful_mean(μ_traj, forgetful_c, tuner.μ_bar)
 
     push!(N_traj, N)
-    tuner.N̄ = forgetful_mean(N_traj, forgetful_c, tuner.N̄)
+    tuner.N_bar = forgetful_mean(N_traj, forgetful_c, tuner.N_bar)
 
-    κ = β * (N² - 2 * N * tuner.N̄ + tuner.N̄^2)
+    κ = β * (N² - 2 * N * tuner.N_bar + tuner.N̄^2)
     push!(κ_traj, κ)
-    tuner.κ̄ = forgetful_mean(κ_traj, forgetful_c, tuner.κ̄ )
-    κ_update = max(tuner.κ̄, κ_min / sqrt(length(κ_traj)))
+    tuner.κ_bar = forgetful_mean(κ_traj, forgetful_c, tuner.κ_bar )
+    κ_update = max(tuner.κ_bar, κ_min / sqrt(length(κ_traj)))
 
-    new_μ = tuner.μ̄ + (target_N - tuner.N̄) / κ_update
+    new_μ = tuner.μ_bar + (target_N - tuner.N_bar) / κ_update
     tuner.μ = new_μ
     push!(μ_traj, new_μ)
 
@@ -102,26 +102,26 @@ Given a MuTuner, returns the best guess for (μ, err_μ) from
 previous trajectory.
 """
 function estimate_μ(tuner::MuTuner{T})::Tuple{T,T} where {T<:AbstractFloat}
-    μ̄ = tuner.μ̄
+    μ_bar = tuner.μ_bar
 
     # Run through and reconstruct the N̄ and κ̄ trajectories
-    N̄ = tuner.N_traj[1]
-    κ̄ = tuner.κ_traj[1]
-    N̄_traj = Vector{Float64}()
-    κ̄_traj = Vector{Float64}()
-    sizehint!(N̄_traj, length(tuner.N_traj))
-    sizehint!(κ̄_traj, length(tuner.κ_traj))
+    N_bar = tuner.N_traj[1]
+    κ_bar = tuner.κ_traj[1]
+    N_bar_traj = Vector{Float64}()
+    κ_bar_traj = Vector{Float64}()
+    sizehint!(N_bar_traj, length(tuner.N_traj))
+    sizehint!(κ_bar_traj, length(tuner.κ_traj))
     for i in 1:length(tuner.N_traj)
-        N̄ = forgetful_mean((@view tuner.N_traj[1:i]), tuner.forgetful_c, N̄)
-        κ̄ = forgetful_mean((@view tuner.κ_traj[1:i]), tuner.forgetful_c, κ̄)
-        push!(N̄_traj, N̄)
-        push!(κ̄_traj, κ̄)
+        N_bar = forgetful_mean((@view tuner.N_traj[1:i]), tuner.forgetful_c, N_bar)
+        κ_bar = forgetful_mean((@view tuner.κ_traj[1:i]), tuner.forgetful_c, κ_bar)
+        push!(N_bar_traj, N_bar)
+        push!(κ_bar_traj, κ_bar)
     end
 
-    μ_corrections = (tuner.target_N .- N̄_traj) ./ κ̄_traj
+    μ_corrections = (tuner.target_N .- N_bar_traj) ./ κ_bar_traj
     forgetful_idx = convert(Int, tuner.forgetful_c * length(μ_corrections))
     err_μ = sqrt(mean(μ_corrections[forgetful_idx:end] .^ 2))
-    return (μ̄, err_μ)
+    return (μ_bar, err_μ)
 end
 
 ############################
@@ -134,8 +134,8 @@ function forgetful_mean(data::AbstractVector{T}, c::T, prev_mean::T)::T where {T
         return data[1]
     end
 
-    cutoff = ceil(Int64, (1.0 - c) * length(data))
-    prev_cutoff = ceil(Int64, (1.0 - c) * (length(data) - 1))
+    cutoff = ceil(Int, (1.0 - c) * length(data))
+    prev_cutoff = ceil(Int, (1.0 - c) * (length(data) - 1))
 
     new_mean = (length(data) - prev_cutoff) * prev_mean
     if prev_cutoff != cutoff

@@ -92,7 +92,7 @@ function process_input_file(filename::String)
     if input["holstein"]["read_phonon_config"]
         phononfile = input["holstein"]["phonon_config_file"]
         read_phonons(holstein, phononfile)
-        cp(filename, sim_params.datafolder * phononfile)
+        cp(phononfile, sim_params.datafolder * split(phononfile,"/")[end])
     else
         init_phonons_half_filled!(holstein)
     end
