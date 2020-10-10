@@ -28,17 +28,27 @@ Represent a type of bare hopping/bond in lattice.
 """
 struct Bond{T<:Continuous} <: AbstractBond
 
+    "Average hopping energy."
     t::T
+
+    "Standard Deviation of hopping energy."
+    σt::T
+
+    "Starting site/orbital in unit cell."
     o₁::Int
+
+    "Ending site/orbital in unit cell."
     o₂::Int
+
+    "Displacement in unit cells."
     v::Vector{Int}
 
-    function Bond(t::T,o₁::Int,o₂::Int,v::AbstractVector{T}) where {T<:Continuous}
+    function Bond(t::T,σt::T,o₁::Int,o₂::Int,v::AbstractVector{Int}) where {T<:Continuous}
 
         @assert length(v)==3
         v′ = zeros(T,3)
         copyto!(v′,v)
-        return new{T}(t,o₁,o₂,v′)
+        return new{T}(t,σt,o₁,o₂,v′)
     end
 end
 
@@ -49,7 +59,7 @@ Abstract type to represent models.
     T2: data type for matrix elements of M
     T3: data type describing which iterative solver is being used
 """
-abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver,T4<:AbstractBond} end
+abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver} end
 
 # include code for models
 include("HolsteinModels.jl")
@@ -127,7 +137,7 @@ Dimension of M matrix.
 """
 function length(model::AbstractModel)::Int
 
-    return model.Ndims
+    return model.Ndim
 end
 
 
@@ -136,7 +146,7 @@ Dimension of M matrix.
 """
 function size(model::AbstractModel)::Tuple{Int,Int}
 
-    return model.Ndims, model.Ndim
+    return model.Ndim, model.Ndim
 end
 
 
@@ -145,7 +155,7 @@ Dimension of M matrix.
 """
 function size(model::AbstractModel,dim::Int)::Int
 
-    return model.Ndims
+    return model.Ndim
 end
 
 

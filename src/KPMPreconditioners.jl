@@ -92,9 +92,9 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
 
     function KPMExpansion(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
 
-        N   = model.Ndim
+        N   = model.Nsites
         L   = model.Lτ
-        NL  = N*L
+        NL  = model.Ndim
         Lo2 = cld(L,2)
 
         timefreqfft = TimeFreqFFT(model.lattice,L)
@@ -115,11 +115,13 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         v4      = zeros(Complex{T1},N)
         v5      = zeros(Complex{T1},N)
 
-        if length(model.cosht)==model.Nbonds # for holstein model
+        if typeof(model) <: HolsteinModel # for holstein model
             cosht̄ .= model.cosht
             sinht̄ .= model.sinht
-        else # for ssh model
+        elseif typeof(model) <: SSHModel
             expnΔτV̄ .= model.expΔτμ
+        else
+            throw(TypeError())
         end
 
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
@@ -165,12 +167,13 @@ end
 
 mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
-    expansion::KPMExpansion{T1,T2,t3}
+    expansion::KPMExpansion{T1,T2,T3}
 
-    function RightKPMPreconditioner(model::AbstractModel{T1,T2,T3},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function RightKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
 
         expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
-        return new{T1,T2,typeof(model)}(expansion)
+        T3        = typeof(model)
+        return new{T1,T2,T3}(expansion)
     end
 
     function RightKPMPreconditioner(expansion::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
@@ -226,7 +229,7 @@ end
 """
 Calculate exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
 """
-function setup!(op::KPMExpansion{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3<:HolsteinModel}
+function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:HolsteinModel}
 
     N  = op.model.Nsites::Int
     L  = op.model.Lτ::Int
@@ -244,22 +247,20 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,
     return nothing
 end
 
-function setup!(op::KPMExpansion{T1,T2,T3}) where {T1<:AbstractFloat,T2<:Number,T3<:SSHModel}
+function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
 
     N  = op.model.Nbonds::Int
     L  = op.model.Lτ::Int
     Δτ = op.model.Δτ
 
-    cosht = op.model.cosht::Vector{T2}
-    sinht = op.model.sinht::Vector{T2}
-    index = 0 
+    cosht = op.model.cosht::Matrix{T2}
+    sinht = op.model.sinht::Matrix{T2}
     @fastmath @inbounds for i in 1:N
-        index += 1
         op.cosht̄[i] = 0.0
         op.sinht̄[i] = 0.0
         for τ in 1:L
-            op.cosht̄[i] += cosht[index]
-            op.sinht̄[i] += sinht[index]
+            op.cosht̄[i] += cosht[τ,i]
+            op.sinht̄[i] += sinht[τ,i]
         end
         op.cosht̄[i] /= L
         op.sinht̄[i] /= L

@@ -42,26 +42,26 @@ dtau = 0.1
 beta = 2.0
 
 # define hopping in lattice
-[[holstein.hopping]]
+[[ssh.hopping]]
 t_avg     = 1.0 # bare hopping
 t_std     = 0.0 # standard deviation/noise on bare hopping
 alpha_avg = 0.1 # electron-phonon coupling
 alpha_std = 0.0 # standard deviation/noise electron-phonon coupling
 omega_avg = 0.1 # phonon frequency
 omega_std = 0.0 # standard deviation/noise on phonon frequency
-orbit  = [1, 1]    # orbital types being connected
-dL     = [1, 0, 0] # displacement vector in unit cells
+orbits    = [1, 1]    # orbital types being connected
+dL        = [1, 0, 0] # displacement vector in unit cells
 
 # define hopping in lattice
-[[holstein.hopping]]
+[[ssh.hopping]]
 t_avg     = 1.0 # bare hopping
 t_std     = 0.0 # standard deviation/noise on bare hopping
 alpha_avg = 0.1 # electron-phonon coupling
 alpha_std = 0.0 # standard deviation/noise electron-phonon coupling
 omega_avg = 0.1 # phonon frequency
 omega_std = 0.0 # standard deviation/noise on phonon frequency
-orbit  = [1, 1]    # orbital types being connected
-dL     = [0, 1, 0] # displacement vector in unit cells
+orbits    = [1, 1]    # orbital types being connected
+dL        = [0, 1, 0] # displacement vector in unit cells
 
 # define chemical potential
 [[holstein.mu]]
@@ -225,9 +225,3 @@ time_dependent = true
 [measurements.BondBond]
 measure        = true
 time_dependent = true
-[[measurements.BondBond.vector]]
-orbit = [1,1]
-dL    = [1,0,0]
-[[measurements.BondBond.vector]]
-orbit = [1,1]
-dL    = [0,1,0]

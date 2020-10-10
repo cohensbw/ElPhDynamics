@@ -67,10 +67,10 @@ end
 """
 Simpson integration over vector.
 """
-function simpson(f::AbstractVector{T},dx::T) where {T<:Number}
+function simpson(f::AbstractVector{T1},dx::T2) where {T1<:Number,T2<:Number}
 
     L = length(f)
-    F = T(0)
+    F = T1(0.0)
     for i in 2:2:L-1
         F += dx * ( 1/3*f[i-1] + 4/3*f[i] + 1/3*f[i+1] )
     end

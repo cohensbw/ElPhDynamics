@@ -42,9 +42,7 @@ include("GreensFunctions.jl")
 
 include("SimulationParams.jl")
 
-include("NonLocalMeasurements.jl")
-
-include("LocalMeasurements.jl")
+include("Measurements.jl")
 
 include("RunSimulation.jl")
 
@@ -80,19 +78,19 @@ function simulate(args)
     input_file = args[1]
 
     # precoessing input file
-    model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, unequaltime_meas, equaltime_meas, input = process_input_file(input_file)
+    model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, input = process_input_file(input_file)
 
     ########################
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, unequaltime_meas, equaltime_meas, preconditioner)
+    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, input["measurements"], preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary(model, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
+    # write_simulation_summary(model, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
 end
 
 

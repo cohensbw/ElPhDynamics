@@ -143,8 +143,8 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
     """
     function EstimateGreensFunction(model::AbstractModel{T},n::Int=1) where {T<:AbstractFloat}
 
-        NL      = model.nindices
-        N       = model.nsites
+        NL      = model.Ndim
+        N       = model.Nsites
         L       = model.Lτ
         L₃      = model.lattice.L3
         L₂      = model.lattice.L2
@@ -306,8 +306,10 @@ function estimate(estimator::EstimateGreensFunction,i::Int,j::Int,τ₂::Int,τ�
     n = get_index(τ₂,i,estimator.L)
     if σ==1
         Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₁[n] * estimator.r₁[m]
-    else
+    elseif σ==2
         Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₂[n] * estimator.r₂[m]
+    else
+        throw(DomainError())
     end
     return Gᵢⱼτ₁τ₂
 end

@@ -19,25 +19,6 @@ import LinearAlgebra: mul!, ldiv!, transpose!
 
 using LinearAlgebra
 
-"""
-Define a bond/hopping in the lattice.
-"""
-struct Bond{T<:Continuous}
-
-    t::T
-    v::Vector{Int}
-    o₁::Int
-    o₂::Int
-
-    function Bond(t::T,v::AbstractVector{Int},o₁::Int,o₂::Int) where {T<:Continuous}
-
-        @assert length(v)==3
-        v′ = zeros{T,3}
-        copyto!(v′,v)
-        return new{T}(t,v′,o₁,o₂)
-    end
-end
-
 mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
     ################################
@@ -78,6 +59,12 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     "number of degrees of freedom"
     Ndof::Int
 
+    "number of type of bonds in lattice."
+    nbonds::Int
+
+    "number of type of phonons in lattice."
+    nph::Int
+
     #######################################
     ## FOR REPRESENTING LATTICE GEOMETRY ##
     #######################################
@@ -105,10 +92,13 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     #############################################################
 
     "definitions of bonds in lattice."
-    bonds::Vector{Bond{T2}}
+    bond_definitions::Vector{Bond{T2}}
 
     "electron hopping energies in tight binding model"
     t::Vector{T2}
+
+    "checkerboard permutation"
+    checkerboard_perm::Vector{Int}
 
     "cosh of electron hopping parameters in t. Sorted according to checkerboard decomposition."
     cosht::Vector{T2}
@@ -181,7 +171,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     """
     Constructor for Holstein type.
     """
-    function HolsteinModel(lattice::Lattice{T}, β::T1, Δτ::T1;
+    function HolsteinModel(lattice::Lattice{T1}, β::T1, Δτ::T1;
                            is_complex::Bool=false, iterativesolver::String="cg",
                            tol::T1=1e-4, maxiter::Int=10000, restart::Int=-1) where {T1<:AbstractFloat}
 
@@ -210,6 +200,12 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         # number of bonds in lattice
         Nbonds = 0
 
+        # zero types of bonds initially
+        nbonds = 0
+
+        # number of types of phonons in lattice
+        nph = lattice.unit_cell.norbits
+
         # initialize ineraction matrix, which is diagonal so stored as vector
         expnΔτV = zeros(T1,Ndim)
 
@@ -220,7 +216,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         μ = zeros(T1,Nsites)
 
         # initializing vector to contain bond definitions
-        bonds = Vector{Bond{T2}}(undef,0)
+        bond_definitions = Vector{Bond{T2}}(undef,0)
 
         # initialize hopping parameters to empty vector
         t = Vector{T2}(undef,0)
@@ -233,6 +229,9 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
         # initializing empty matrix to contain tight binding model neighbor_table
         neighbor_table = Matrix{Int}(undef,2,0)
+
+        # checkerboard perumtation
+        checkerboard_perm = Vector{Int}(undef,0)
 
         # intializing phonon frequencies to one
         ω = zeros(T1,Nph)
@@ -277,9 +276,9 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         T3 = typeof(solver)
 
         # constructing holstein model
-        return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Nph,Ndof, 
+        return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, x, expnΔτV,
-                             bonds, t, cosht, sinht, neighbor_table,
+                             bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
                              μ, ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
                              ytemp, Mᵀg, mul_by_M, transposed, solver)
     end
@@ -290,61 +289,109 @@ end
 ## DEFINING METHODS TO INCREMENTALLY SPECIFY THE HOLSTEIN MODEL PARAMETERS ##
 #############################################################################
 
+"""
+Assign chemical potential in model for given type of orbital.
+"""
+function assign_μ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
-# GENERATE THE FOLLOWING FUNCTIONS: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
-for param in [ :μ , :ω , :λ, :ω4 ]
-
-    # constructing symbol for function name
-    op = Symbol(:assign_,param,:!)
-
-    # defining functions
-    @eval begin
-        function $op(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
-
-            if orbit==0 # assigning parameter values for all sites
-                R = randn(length(holstein.$param))
-                @. holstein.$param = μ0 + σ0 * R
-            else # assigning paramerter values for only sites of certain kind of orbital
-                for i in 1:length(holstein.$param)
-                    if holstein.lattice.site_to_orbit[i]==orbit
-                        holstein.$param[i] = μ0 + σ0 * randn()
-                    end
-                end
+    if orbit==0
+        R = randn(holstein.Nsites)
+        @. holstein.μ = μ0 + σ0 * R
+    else
+        for i in 1:holstein.Nsites
+            if holstein.lattice.site_to_orbit[i]==orbit
+                holstein.μ[i] = μ0 + σ0 * randn()
             end
-
-            return nothing
         end
     end
+        
+    return nothing
+end
 
+"""
+Assign electron-phonon coupling in model for given type of orbital.
+"""
+function assign_λ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+
+    if orbit==0
+        R = randn(holstein.Nph)
+        @. holstein.μ = μ0 + σ0 * R
+    else
+        for i in 1:holstein.Nph
+            if holstein.lattice.site_to_orbit[i]==orbit
+                holstein.λ[i] = μ0 + σ0 * randn()
+            end
+        end
+    end
+        
+    return nothing
+end
+
+"""
+Assign phonon frequency in model.
+"""
+function assign_ω!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+
+    if orbit==0
+        R = randn(holstein.Nph)
+        @. holstein.ω = μ0 + σ0 * R
+    else
+        for i in 1:holstein.Nph
+            if holstein.lattice.site_to_orbit[i]==orbit
+                holstein.ω[i] = μ0 + σ0 * randn()
+            end
+        end
+    end
+        
+    return nothing
+end
+
+"""
+Assign coefficient for quartic phonon term.
+"""
+function assign_ω4!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+
+    if orbit==0
+        R = randn(holstein.Nsites)
+        @. holstein.ω4 = μ0 + σ0 * R
+    else
+        for i in 1:holstein.Nsites
+            if holstein.lattice.site_to_orbit[i]==orbit
+                holstein.ω4[i] = μ0 + σ0 * randn()
+            end
+        end
+    end
+        
+    return nothing
 end
 
 """
 Define a type of hopping/bond in the lattice.
 """
-function assign_t!(holstein::HolsteinModel{T1,T2,T3}, μt::T2, σt::T2, o1::Int, o2::Int, v::AbstractVector{Int}) where {T1,T2,T3}
+function assign_t!(holstein::HolsteinModel{T1,T2,T3}, t::T2, σt::T2, o₁::Int, o₂::Int, v::AbstractVector{Int}) where {T1,T2,T3}
+
+    # increment number of bond definitions
+    holstein.nbonds += 1
 
     # bond definition
-    bond = Bond(μt,o1,o2,v)
-    push!(holstein.bonds,bond)
+    bond = Bond(t,σt,o₁,o₂,v)
+    push!(holstein.bond_definitions,bond)
 
     # getting new neighbors accounting for periodic boundary conditions
-    newneighbors = calc_neighbor_table(holstein.lattice,o1,o2,v)
+    newneighbors = calc_neighbor_table(holstein.lattice,o₁,o₂,v)
 
     # getting number of new neighbors
     Nnewneighbors = size(newneighbors,2)
 
     # adding new neighbors to neighbor tables
-    ssh.neighbor_table = hcat(ssh.neighbor_table,newneighbors)
+    holstein.neighbor_table = hcat(holstein.neighbor_table,newneighbors)
 
     # phase of hopping
-    if T2<:Complex
-        eiϕ = exp(im*angle(μt))
-    else
-        eiϕ = sign(t)
-    end
+    phase = t/abs(t)
 
     # adding new hopping values
-    append!(ssh.t, eiϕ.*(fill(abs(μt),Nnewneighbors) + σt*randn(Nnewneighbors)) )
+    t_new = @. phase * ( fill(abs(t),Nnewneighbors) + σt*randn(Nnewneighbors) )
+    append!(holstein.t, t_new)
 
     return nothing
 end
@@ -361,10 +408,10 @@ function assign_ωij!(holstein::HolsteinModel{T1,T2,T3}, μω::T1, σω::T1, sgn
     Nnewneighbors = size(newneighbors,2)
 
     # adding new neighbors to neighbor tables
-    ssh.neighbor_table = hcat(ssh.neighbor_table,newneighbors)
+    holstein.neighbor_table = hcat(holstein.neighbor_table,newneighbors)
 
     # adding new hopping values
-    append!(ssh.ωij, fill(μω,Nnewneighbors) + σω*randn(Nnewneighbors) )
+    append!(holstein.ωij, fill(μω,Nnewneighbors) + σω*randn(Nnewneighbors) )
 
     # updating neighbor table and parameter values
     assign_ωij!(holstein,μω,σω,o1,o2,v)
@@ -408,12 +455,15 @@ function initialize_model!(holstein::HolsteinModel)
         groups = checkerboard_groups(holstein.neighbor_table)
 
         # get checkerboard permutation
-        perm = checkerboard_order(groups)
+        new_perm = checkerboard_order(groups)
 
         # applying checkerboard permutation
-        holstein.neighbor_table .= holstein.neighbor_table[:,perm]
-        holstein.cosht          .= holstein.cosht[perm]
-        holstein.sinht          .= holstein.sinht[perm]
+        holstein.neighbor_table .= holstein.neighbor_table[:,new_perm]
+        holstein.cosht          .= holstein.cosht[new_perm]
+        holstein.sinht          .= holstein.sinht[new_perm]
+
+        # record checkerboard permutation
+        holstein.checkerboard_perm = perm[new_perm]
     end
 
     return nothing
@@ -466,15 +516,15 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     #           EXAMPLE OF M MATRIX CONVENTION
     #     |   1     0      0      0      0   +B(1) |
     #     | -B(2)   1      0      0      0     0   |
-    # M = |   0   -B(2)    1      0      0     0   |
-    #     |   0     0    -B(3)    1      0     0   |
-    #     |   0     0      0    -B(4)    1     0   |
-    #     |   0     0      0      0    -B(5)   1   | 
+    # M = |   0   -B(3)    1      0      0     0   |
+    #     |   0     0    -B(4)    1      0     0   |
+    #     |   0     0      0    -B(5)    1     0   |
+    #     |   0     0      0      0    -B(6)   1   | 
 
     # Notes:
-    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1) for τ > 1
     # • y(1) = [M⋅v](1) = v(1) + B(1)⋅v(Lτ)  for τ = 1
-    # • B(τ) = exp{-Δτ⋅V[x(τ)]} exp{-Δτ⋅K}
+    # • y(τ) = [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1) for τ > 1
+    # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • exp{-Δτ⋅V[x(τ)]} is the exponentiated interaction matrix and is diagonal,
     #   and as such is stored as a vector
     # • exp{-Δτ⋅K} is given by the checkerboard approximation matrix.
@@ -486,7 +536,7 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     checkerboard_mul!(y, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
 
     # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.nsites
+    @fastmath @inbounds for i in 1:holstein.Nsites
 
         # y(1) = v(1) + B(1)⋅v(Lτ)
         idx_L   = get_index(holstein.Lτ, i,  holstein.Lτ)
@@ -505,6 +555,9 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
         # y(1) = v(1) + B(1)⋅v(Lτ)
         y[idx_1] = y1_temp
     end
+
+    # println("Mv")
+    # println(y)
 
     return nothing
 end
@@ -527,12 +580,7 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
 
     # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.nsites
-
-        # y(Lτ) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(1) for τ=Lτ
-        idx_L  = get_index(holstein.Lτ, i, holstein.Lτ)
-        idx_1  = get_index(1,           i, holstein.Lτ)
-        yL_tmp = conj(holstein.expnΔτV[idx_1]) * v[idx_1]
+    @fastmath @inbounds for i in 1:holstein.Nsites
 
         # iterating over imaginary time slices
         for τ in 1:holstein.Lτ-1
@@ -544,7 +592,9 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
         end
 
         # y(Lτ) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(1) for τ=Lτ
-        y[idx_L] = yL_tmp
+        idx_L    = get_index(holstein.Lτ, i, holstein.Lτ)
+        idx_1    = get_index(1,           i, holstein.Lτ)
+        y[idx_L] = conj(holstein.expnΔτV[idx_1]) * v[idx_1]
     end
 
     # y(τ) = -Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
@@ -554,6 +604,9 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # y(τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
     # y(τ) = v(τ) + Bᵀ(τ+1)⋅v(τ+1) for τ = Lτ
     @. y = v + y
+
+    # println("Mᵀv")
+    # println(y)
 
     return nothing
 end
@@ -587,42 +640,45 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
     # • yᵢ(τ) = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
     # • yᵢ(1) = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(Lτ)  for τ = 1
 
-    # y(τ) = v(τ)
+    # ⟨∂M/∂xᵢⱼ(τ)⟩ = v(τ)
     copyto!(dMdx, v)
 
-    # y(τ) = exp{-Δτ⋅K}⋅v(τ)
+    # ⟨∂M/∂xᵢⱼ(τ)⟩ = exp{-Δτ⋅K}⋅v(τ)
     checkerboard_mul!(dMdx, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
     
     # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.nsites
+    @fastmath @inbounds for i in 1:holstein.Nsites
 
-        # y(Lτ) = -Δτ⋅λᵢ⋅B(1)⋅v(1) for τ=1
+        # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λᵢ⋅B(1)⋅v(1) for τ=1
         idx_1 = get_index(1,           i,  holstein.Lτ)
         idx_L = get_index(holstein.Lτ, i,  holstein.Lτ)
-        dMdx1_temp = -holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_1] * y[idx_L]
+        dMdx1_temp = -holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_1] * dMdx[idx_L]
 
         # iterating over time slices
         for τ in holstein.Lτ:-1:2
 
-            # y(τ-1) = +Δτ⋅λ⋅B(τ)⋅v(τ) for τ>1
+            # ⟨∂M/∂xᵢⱼ(τ)⟩ = +Δτ⋅λ⋅B(τ)⋅v(τ) for τ>1
             idx_τ   = get_index(τ,   i, holstein.Lτ)
             idx_τm1 = get_index(τ-1, i, holstein.Lτ)
-            dMdx[idx_τ] = holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_τ] * y[idx_τm1]
+            dMdx[idx_τ] = holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_τ] * dMdx[idx_τm1]
         end
 
-        # y(1) = -Δτ⋅λ⋅B(1)⋅v(Lτ) for τ=1
+        # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λ⋅B(1)⋅v(Lτ) for τ=1
         dMdx[idx_1] = dMdx1_temp
     end
 
     # finalize calculation of ⟨∂M/∂xᵢⱼ(τ)⟩ = uᵀ⋅[∂M/∂xᵢⱼ(τ)]⋅v
     @. dMdx *= u
 
+    # println("dMdx")
+    # println(dMdx)
+
     return nothing
 end
 
-#############################
-## PHONON FIELD IO ROUTINES##
-#############################
+##############################
+## PHONON FIELD IO ROUTINES ##
+##############################
 
 """
 Writes the current phonon field configuration for a HolsteinModel to file.

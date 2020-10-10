@@ -182,14 +182,14 @@ function update_Q!(Q::Vector{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::
     L  = model.Lτ
     Δτ = model.Δτ::T1
     ω  = model.ω
-    # iterating over site in lattice
-    for site in 1:N
-        # if phonon frequncy on site falls withing specified range
-        if ω_min < ω[site] < ω_max
-            # get a view into Q matrix for current lattice site
-            Qi = @view Q[get_index(1,site,L):get_index(L,site,L)]
-            # define Q matrix just for current site
-            construct_Qi!( Qi , ω[site] , Δτ , m )
+    # iterating over phonons in lattice
+    for phonon in 1:N
+        # if phonon frequncy falls withing specified range
+        if ω_min < ω[phonon] < ω_max
+            # get a view into Q matrix for current lattice phonon
+            Qi = @view Q[get_index(1,phonon,L):get_index(L,phonon,L)]
+            # define Q matrix just for current phonon
+            construct_Qi!( Qi , ω[phonon] , Δτ , m )
         end
     end
     return nothing
@@ -229,14 +229,14 @@ function update_M!(M::Vector{T1},model::AbstractModel{T1,T2},ω_min::T1,ω_max::
     L  = model.Lτ
     Δτ = model.Δτ::T1
     ω  = model.ω
-    # iterating over site in lattice
-    for site in 1:N
+    # iterating over phonons in lattice
+    for phonon in 1:N
         # if phonon frequncy on site falls withing specified range
-        if ω_min < ω[site] < ω_max
-            # get a view into M matrix for current lattice site
-            Mi = @view M[get_index(1,site,L):get_index(L,site,L)]
-            # define M matrix just for current site
-            construct_Mi!( Mi , ω[site] , Δτ , m0 , c )
+        if ω_min < ω[phonon] < ω_max
+            # get a view into M matrix for current phonon
+            Mi = @view M[get_index(1,phonon,L):get_index(L,phonon,L)]
+            # define M matrix just for current phonon
+            construct_Mi!( Mi , ω[phonon] , Δτ , m0 , c )
         end
     end
     return nothing

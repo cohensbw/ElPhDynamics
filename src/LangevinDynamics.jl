@@ -65,7 +65,7 @@ struct EulerDynamics{T<:AbstractFloat} <: Dynamics
     """
     M⁻¹R::Vector{T}
 
-    function EulerDynamics(model::ABstractModel, Δt::T) where {T<:AbstractFloat}
+    function EulerDynamics(model::AbstractModel, Δt::T) where {T<:AbstractFloat}
 
         Ndof     = model.Ndof
         Ndim     = model.Ndim

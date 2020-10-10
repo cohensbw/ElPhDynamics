@@ -13,7 +13,7 @@ using ..Models: HolsteinModel, SSHModel
 using ..MuFinder: MuTuner, update_μ!
 using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..Models: assign_t!, assign_ωij!, assign_hopping!
-using ..Models: initialize_model!, update_model!, read_phonons
+using ..Models: initialize_model!, update_model!, read_phonons, mulM!, mulMᵀ!
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
@@ -70,10 +70,10 @@ function process_input_file(filename::String)
     Random.seed!(input["simulation"]["random_seed"])
 
     # copy input file into data folder
-    cp(filename,sim_params.datafolder*filename)
+    cp(filename, joinpath(sim_params.datafolder,filename))
 
     # create log for simulation
-    logfilename = sim_params.datafolder*sim_params.foldername[1:end-1]*".log"
+    logfilename = joinpath(sim_params.datafolder, sim_params.foldername*".log")
     logio       = open(logfilename,"w+")
     logger      = SimpleLogger(logio)
     global_logger(logger)
@@ -178,8 +178,8 @@ function process_input_file(filename::String)
         else
             verbose = false
         end
-        hmc_simulation_logfile = sim_params.datafolder*"hmc_sim_log.out"
-        hmc_burnin_logfile = sim_params.datafolder*"hmc_burnin_log.out"
+        hmc_simulation_logfile = joinpath(sim_params.datafolder,"hmc_sim_log.out")
+        hmc_burnin_logfile     = joinpath(sim_params.datafolder,"hmc_burnin_log.out")
 
         @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
@@ -225,19 +225,19 @@ function process_input_file(filename::String)
 
     elseif input["langevin"]["update_method"]==1
 
-        Δt       = input["langevin"]["dt"]
+        Δt = input["langevin"]["dt"]
         simulation_dynamics = EulerDynamics(model,Δt)
         burnin_dyanmics = simulation_dynamics
 
     elseif input["langevin"]["update_method"]==2
 
-        Δt       = input["langevin"]["dt"]
-        simulation_dynamics = RungeKuttaDynamics(model),Δt)
+        Δt = input["langevin"]["dt"]
+        simulation_dynamics = RungeKuttaDynamics(model,Δt)
         burnin_dyanmics = simulation_dynamics
 
     elseif input["langevin"]["update_method"]==3
 
-        Δt       = input["langevin"]["dt"]
+        Δt = input["langevin"]["dt"]
         simulation_dynamics = HeunsDynamics(model,Δt)
         burnin_dyanmics = simulation_dynamics
 
@@ -247,22 +247,6 @@ function process_input_file(filename::String)
     ## DEFINE MEASUREMENTS ##
     #########################
 
-    # specify which measurements to make
-    measurements     = input["measurements"]
-    unequaltime_meas = Vector{String}()
-    equaltime_meas   = Vector{String}()
-    for k in keys(measurements)
-        if k != "num_random_vectors"
-            if measurements[k]["measure"]
-                if measurements[k]["time_dependent"]
-                    push!(unequaltime_meas,k)
-                else
-                    push!(equaltime_meas,k)
-                end
-            end
-        end
-    end
-
     # construct object of estimating Green's function
     if haskey(input["measurements"],"num_random_vectors")
         num_random_vectors = input["measurements"]["num_random_vectors"]
@@ -271,7 +255,7 @@ function process_input_file(filename::String)
     end
     Gr = EstimateGreensFunction(model,num_random_vectors)
     
-    return model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dyanmics, fa, preconditioner, unequaltime_meas, equaltime_meas, input
+    return model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dyanmics, fa, preconditioner, input
 end
 
 """
@@ -351,8 +335,7 @@ function initialize_holstein_model(filename::String)
             if "stddev" in keys(t)
                 stddev = t["stddev"]
             end
-            assign_t!(holstein, t["val"], stddev,
-                        t["orbit"][1], t["orbit"][2], Vector{Int}(t["dL"]))
+            assign_t!(holstein, t["val"], stddev, t["orbit"][1], t["orbit"][2], Vector{Int}(t["dL"]))
         end
     end
 
@@ -426,12 +409,12 @@ function initialize_ssh_model(filename::String)
             stddev = d["stddev"]
         end
         for orbit in d["orbit"]
-            assign_μ!(holstein,d["val"],stddev,orbit)
+            assign_μ!(ssh,d["val"],stddev,orbit)
         end
     end
 
     # add hoppings
-    if haskey(input["ssh"]["hopping"])
+    if haskey(input["ssh"],"hopping")
         for d in input["ssh"]["hopping"]
             if haskey(d,"t_avg")
                 t = d["t_avg"]
@@ -465,7 +448,8 @@ function initialize_ssh_model(filename::String)
             end
             o₁ = d["orbits"][1]
             o₂ = d["orbits"][2]
-            dL = d["dL"]
+            dL = zeros(Int,3)
+            dL[1:length(d["dL"])] .= d["dL"]
             assign_hopping!(ssh,t,σt,ω,σω,α,σα,o₁,o₂,dL)
         end
     end

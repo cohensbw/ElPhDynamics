@@ -6,6 +6,7 @@ using LinearAlgebra
 using Printf
 using Parameters
 using Printf
+using Statistics
 
 using ..Utilities: get_index
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulM!, muldMdx!, mulMᵀ!
@@ -214,10 +215,12 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
 
         Ndof   = model.Ndof
         Ndim   = model.Ndim
+
         x0     = zeros(T,Ndof)
         dSdx   = zeros(T,Ndof)
         v      = randn(T,Ndof)
         v0     = zeros(T,Ndof)
+
         R      = zeros(T,Ndim)
         ϕ₊     = zeros(T,Ndim)
         M⁻ᵀϕ₊  = zeros(T,Ndim)
@@ -225,10 +228,8 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         ϕ₋     = zeros(T,Ndim)
         M⁻ᵀϕ₋  = zeros(T,Ndim)
         O⁻¹ϕ₋  = zeros(T,Ndim)
-
         M⁻ᵀϕ₊′ = zeros(T,Ndim)
         O⁻¹ϕ₊′ = zeros(T,Ndim)
-
         M⁻ᵀϕ₋′ = zeros(T,Ndim)
         O⁻¹ϕ₋′ = zeros(T,Ndim)
 
@@ -321,25 +322,31 @@ Do a Hybrid Monte Carlo update to the phonon fields.
 """
 function update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Tuple{Bool,T1}  where {T1,T2}
 
-    # increment HMC update counter
-    hmc.updates += 1
+    # only do an update if the model has a non-zero number of degrees of freedom.
+    if hmc.Ndof > 0
 
-    # set HMC timestep to zero
-    hmc.t = 0
+        # increment HMC update counter
+        hmc.updates += 1
 
-    if hmc.Nb==1
-        accepted, iters = standard_update!(model,hmc,fa,preconditioner)
+        # set HMC timestep to zero
+        hmc.t = 0
+
+        if hmc.Nb==1
+            accepted, iters = standard_update!(model,hmc,fa,preconditioner)
+        else
+            accepted, iters = multitimestep_update!(model,hmc,fa,preconditioner)
+        end
+
+        # write output of logfile
+        if hmc.log
+            hmc.t = -1
+            update_log(hmc)
+        end
+
+        return accepted, iters
     else
-        accepted, iters = multitimestep_update!(model,hmc,fa,preconditioner)
+        return true, 0
     end
-
-    # write output of logfile
-    if hmc.log
-        hmc.t = -1
-        update_log(hmc)
-    end
-
-    return accepted, iters
 end
 
 """
@@ -363,7 +370,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     refresh_v!(hmc,fa)
 
     # refresh ϕ
-    refresh_ϕ!(hmc,model,fa)
+    refresh_ϕ!(hmc,model)
 
     # calculate the initial dS/dx value
     iter_t = calc_dSdx!(hmc, model, preconditioner)
@@ -487,7 +494,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     refresh_v!(hmc,fa)
 
     # refresh ϕ
-    refresh_ϕ!(hmc,model,fa)
+    refresh_ϕ!(hmc,model)
 
     # calculate the initial dSf/dx value
     iter_t = calc_dSfdx!(hmc, model, preconditioner)
@@ -633,7 +640,7 @@ end
 """
 Refresh `ϕ` according to the relationship `ϕ ~ Mᵀ⋅R` where `R` is a vector of normal random numbers.
 """
-function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2},fa::FourierAccelerator{T1}) where {T1,T2}
+function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) where {T1,T2}
 
     R     = hmc.R
 
@@ -759,7 +766,7 @@ More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to th
 function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I)::Int where {T1,T2}
     
     dSdx  = hmc.dSdx
-    dMdx  = hmc.R
+    dMdx  = hmc.y
     MO⁻¹ϕ = hmc.u
     
     O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊

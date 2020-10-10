@@ -1,7 +1,7 @@
 module InitializePhonons
 
 using ..Models: HolsteinModel, SSHModel, update_model!
-using ..Utilities: get_index
+using ..Utilities: get_index, reshaped
 
 export init_phonons_single_site!, init_phonons_half_filled!, sample_qho
 
@@ -17,7 +17,7 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     Nph = ssh.Nph
 
     # get phonon fields
-    x = reshape(ssh.x,(Lτ,Nph))
+    x = reshaped(ssh.x,(Lτ,Nph))
 
     # iterate over phonons
     for phonon in 1:Nph
@@ -25,25 +25,23 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
         # calculate average phonon position
         α  = ssh.α[phonon]
         ω  = ssh.ω[phonon]
-        x0 = -α/ω^2
+        x0 = -2*α/ω^2
+
+        # add some noise according to QHO position distribution
+        xr = x0 + sample_qho(ω,β)
 
         # iterate over imaginary time slices
         for τ in 1:Lτ
 
             # set phonon value
-            x[τ,phonon] = sample_qho(ω,β) + x0
+            x[τ,phonon] = xr
         end
     end
 
     return nothing
 end
 
-
-"""
-Initialize phonones assuming every site has one electron on it.
-Uses levy construction to sample phonon path in imaginary time direction on each site.
-"""
-function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
+function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1,T2}
 
     # info about temperature of system
     β  = holstein.β::T1
@@ -51,7 +49,7 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
     Lτ = holstein.Lτ::Int
 
     # iterate over sites in lattice
-    for site in 1:holstein.nsites
+    for site in 1:holstein.Nsites
 
         # get parameters for site in lattice
         ω = holstein.ω[site]
@@ -63,18 +61,11 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
         i_end   = get_index(Lτ,site,Lτ)
         path    = @view holstein.x[i_start:i_end]
 
-        # construct levy path
-        for τ in 1:Lτ
-            path[τ] = sample_qho(ω,β)
-        end
-
-        # shift levy path by ammount corresponding to an
-        # electron density of 1 on the site
+        # shift levy path by ammount corresponding having either
+        # a density of 0 or 2 on the site
         x0 = -2*λ/ω^2 * rand(0:1)
-        @. path += x0
-
-        # x0 = sample_qho(ω,β) - 2*λ/ω^2 * rand(0:1)
-        # @. path = x0
+        xr = x0 + sample_qho(ω,β)
+        @. path = xr
     end
 
     # udpate exponentiated interaction matrix
@@ -83,115 +74,10 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1<:Ab
     return nothing
 end
 
-
-"""
-Intializes phonon fields in `HolsteinModel` instance using the
-single-site limit where the hopping between sites is zero.
-Uses the Levy Construction to sample phonon fields in the imaginary
-time direction.
-"""
-function init_phonons_single_site!(holstein::HolsteinModel{T1,T2}) where {T1<:AbstractFloat,T2<:Number}
-    
-    # info about temperature of system
-    β  = holstein.β::T1
-    Δτ = holstein.Δτ::T1
-    Lτ = holstein.Lτ::Int
-    
-    # number of site in physical lattice
-    nsites = holstein.nsites::Int
-    
-    # phonon frequency of site
-    ω = 0.0
-    # el-ph coupling on site
-    λ = 0.0
-    # chemical potential of site
-    μ = 0.0
-    
-    # statistical weight associated with 1 or 2 electrons on site.
-    # The statistical weight of 0 electrons is just 1.
-    Z1 = 0.0
-    Z2 = 0.0
-    # normalization
-    Z = 0.0
-    
-    # holds random number between [0.0,1.0)
-    r = 0.0
-    
-    # iterating over sites in lattice
-    for site in 1:nsites
-        
-        # parameters associated with site
-        μ = holstein.μ[site]
-        ω = holstein.ω[site]
-        λ = holstein.λ[site]
-        
-        # if non-zero phonon frequency
-        if abs(ω)>0.0
-            
-            # constructing levy harmonic path for site along τ-axis
-            path = @view holstein.x[(site-1)*Lτ+1:site*Lτ]
-            levy_path!(path,ω,β,Δτ,Lτ)
-        
-            # if non-zero el-phonon coupling
-            if abs(λ)>0.0
-
-                # chemical potential for half-filling
-                μhalf = -(λ*λ)/(ω*ω)
-                # weight associated with 1 electron on site
-                Z1 = 2.0*exp(β*(λ^2/ω^2/2.0+μ))
-                # weight associated with 2 electron on site
-                Z2 = exp(2*β*(λ^2/ω^2+μ))
-                # normalization
-                Z = 1.0 + Z1 + Z2
-                
-                # sample random number between [0.0,1.0)
-                r = rand()
-                # if 1 electrons on site
-                if r < abs(Z1/Z)
-                    # shifting mean position of phonon fields on site
-                    path .-= λ/ω^2
-                # if 2 electrons on site
-                elseif r < abs((Z1+Z2)/Z)
-                    # shifting mean position of phonon fields on site
-                    path .-= 2.0*λ/ω^2
-                end
-            end
-        end
-    end
-    # construct the exponentiated interaction matrix based on intialized phonon fields
-    update_model!(holstein)
-
-    return nothing
-end
-
-
-"""
-Directly samples the phonon fields along the imaginary time axis
-for a QHO using the Levy construction.
-"""
-function levy_path!(path::AbstractVector,ω::Number,β::AbstractFloat,Δτ::AbstractFloat,Lτ::Int)
-    
-    x1 = sample_qho(ω,β)
-    γ1 = 0.0
-    γ2 = 0.0
-    μi = 0.0
-    σi = 0.0
-    path[1] = x1
-    for i = 2:Lτ
-        γ1 = coth(ω*Δτ) + coth((Lτ+1-i)*ω*Δτ)
-        γ2 = path[i-1]/sinh(ω*Δτ) + x1/sinh((Lτ+1-i)*ω*Δτ)
-        μi = γ2/γ1
-        σi = 1.0/sqrt(γ1)
-        path[i] = μi + σi*randn()
-    end
-    return nothing
-end
-
-
 """
 Samples the position distribution of a QHO with frequency `ω` at inverse temperature `β`.
 """
-function sample_qho(ω::T,β::AbstractFloat)::T where {T<:Number}
+function sample_qho(ω::T,β::T)::T where {T<:Number}
     
     σ = sqrt( tanh(β*ω/2) / (2*ω) )
     return σ*randn()
