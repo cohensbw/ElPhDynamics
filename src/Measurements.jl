@@ -206,6 +206,7 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
     #############################################
 
     open(joinpath(sim_params.datafolder,"global_measurements.out"), "w") do file
+        write( file, "bin", ",")
         write( file, join(keys(container.global_meas),",") , "\n")
     end
 
@@ -214,7 +215,7 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
     ##############################################
 
     open(joinpath(sim_params.datafolder,"onsite_measurements.out"), "w") do file
-        write(file, "orbit")
+        write(file, "bin,orbit")
         for key in keys(container.onsite_meas)
             measurement = String(key)
             write(file, ",", measurement)
@@ -227,7 +228,7 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
     #################################################
 
     open(joinpath(sim_params.datafolder,"intersite_measurements.out"), "w") do file
-        write(file, "vector")
+        write(file, "bin,vector")
         for key in keys(container.intersite_meas)
             measurement = String(key)
             write(file, ",", measurement)
@@ -244,12 +245,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
             # writing file header
-            write(file, "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
             # writing file header
-            write(file, "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
     end
 
@@ -262,12 +263,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
             # writing file header
-            write(file, "vector1", ",", "vector2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "vector1", ",", "vector2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
             # writing file header
-            write(file, "vector1", ",", "vector2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "vector1", ",", "vector2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
     end
 
@@ -365,13 +366,13 @@ end
 """
 Write measurements to file.
 """
-function write_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2}) where {T1,T2}
+function write_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2},bin::Int) where {T1,T2}
 
-    write_global_measurements!(    container.global_meas,    sim_params,model)
-    write_onsite_measurements!(    container.onsite_meas,    sim_params,model)
-    write_intersite_measurements!( container.intersite_meas, sim_params,model)
-    write_correlations!(           container.onsite_corr,    sim_params,model)
-    write_correlations!(           container.intersite_corr, sim_params,model)
+    write_global_measurements!(    container.global_meas,    sim_params,model, bin)
+    write_onsite_measurements!(    container.onsite_meas,    sim_params,model, bin)
+    write_intersite_measurements!( container.intersite_meas, sim_params,model, bin)
+    write_correlations!(           container.onsite_corr,    sim_params,model, bin)
+    write_correlations!(           container.intersite_corr, sim_params,model, bin)
 
     return nothing
 end
@@ -449,7 +450,7 @@ function init_intersite_corr_container!(container::Dict,measurement::String,info
 end
 
 """
-Intialize multi-dimensional array to contain an inter-site correlation measurement.
+Intialize multi-dimensional array to contain an on-site correlation measurement.
 """
 function init_onsite_corr_container!(container::Dict,measurement::String,info::Dict,model::AbstractModel{T1,T2,T3},
                                     nₒ::Int,L₁::Int,L₂::Int,L₃::Int,Lₜ::Int) where {T1,T2,T3}
@@ -826,12 +827,13 @@ end
 """
 Write global measurements to file.
 """
-function write_global_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function write_global_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     filename = joinpath(sim_params.datafolder,"global_measurements.out")
 
     open(filename,"a") do file
 
+        write(file,string(bin),",")
         line = join((real(container[k]) for k in keys(container)), ",")
         write(file,line,"\n")
     end
@@ -842,7 +844,7 @@ end
 """
 Write on-site measurements to file.
 """
-function write_onsite_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function write_onsite_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     # number of orbitals per unit cell
     nₒ = model.lattice.unit_cell.norbits::Int
@@ -853,6 +855,7 @@ function write_onsite_measurements!(container::Dict,sim_params::SimulationParame
     open(filename,"a") do file
         # iterate over orbitals
         for o in 1:nₒ
+            write(file,string(bin),",")
             write(file, string(o))
             for measurement in keys(container)
                 write( file , @sprintf(",%.6f",real(container[measurement][o])) )
@@ -867,7 +870,7 @@ end
 """
 Write inter-site measurements to file.
 """
-function write_intersite_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function write_intersite_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     # filename
     filename = joinpath(sim_params.datafolder,"intersite_measurements.out")
@@ -875,6 +878,7 @@ function write_intersite_measurements!(container::Dict,sim_params::SimulationPar
     open(filename,"a") do file
         # iterate over bonds
         for bond in 1:model.nbonds
+            write(file,string(bin),",")
             write(file, string(bond))
             for measurement in keys(container)
                 write( file , @sprintf(",%.6f",real(container[measurement][bond])) )
@@ -889,18 +893,18 @@ end
 """
 Write all different correlation functions to file.
 """
-function write_correlations!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function write_correlations!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     # iterate over on-site correlation functions
     for key in keys(container)
 
         # write position space correlations to file
         filename = joinpath(sim_params.datafolder,key*"_position.out")
-        write_correlation!(filename,container[key]["position"])
+        write_correlation!(filename,container[key]["position"],bin)
 
         # write momemtum space correlations to file
         filename = joinpath(sim_params.datafolder,key*"_momentum.out")
-        write_correlation!(filename,container[key]["momentum"])
+        write_correlation!(filename,container[key]["momentum"],bin)
     end
 
     return nothing
@@ -909,7 +913,7 @@ end
 """
 Write a correlation function to file.
 """
-function write_correlation!(filename::String,correlations::Array{Complex{T},6}) where {T<:AbstractFloat}
+function write_correlation!(filename::String,correlations::Array{Complex{T},6},bin::Int) where {T<:AbstractFloat}
 
     open(filename,"a") do file
         Lₜ = size(correlations,1)
@@ -923,7 +927,7 @@ function write_correlation!(filename::String,correlations::Array{Complex{T},6}) 
                     for l₂ in 1:L₂
                         for l₁ in 1:L₁
                             for τ in 1:Lₜ
-                                line = @sprintf("%d,%d,%d,%d,%d,%d,%.6f\n",n₁,n₂,l₃,l₂,l₁,τ,real(correlations[τ,l₁,l₂,l₃,n₂,n₁]))
+                                line = @sprintf("%d,%d,%d,%d,%d,%d,%d,%.6f\n",bin,n₁,n₂,l₃,l₂,l₁,τ,real(correlations[τ,l₁,l₂,l₃,n₂,n₁]))
                                 write(file,line)
                             end
                         end

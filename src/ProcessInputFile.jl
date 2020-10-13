@@ -13,13 +13,14 @@ using ..Models: HolsteinModel, SSHModel
 using ..MuFinder: MuTuner, update_μ!
 using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
 using ..Models: assign_t!, assign_ωij!, assign_hopping!
-using ..Models: initialize_model!, update_model!, read_phonons, mulM!, mulMᵀ!
+using ..Models: initialize_model!, update_model!, read_phonons!, mulM!, mulMᵀ!
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
+using ..SimulationSummary: initialize_simulation_summary!
 
 using ..KPMPreconditioners: LeftRightKPMPreconditioner
 
@@ -82,9 +83,9 @@ function process_input_file(filename::String)
     @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
     flush(logio)
 
-    #####################
-    ## CONSTRUCT MODEL ##
-    #####################
+    ######################
+    ## INITIALIZE MODEL ##
+    ######################
     
     if haskey(input,"holstein")
         model = initialize_holstein_model(filename)
@@ -254,9 +255,20 @@ function process_input_file(filename::String)
         num_random_vectors = 1
     end
     Gr = EstimateGreensFunction(model,num_random_vectors)
+
+    ########################################
+    ## INITIALIZE SIMULATION SUMMARY FILE ##
+    ########################################
+
+    initialize_simulation_summary!(model,sim_params,input)
     
     return model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dyanmics, fa, preconditioner, input
 end
+
+#####################################
+## METHODS FOR INITIALIZING MODELS ##
+## BASED ON THE CONFIGURATION FILE ##
+#####################################
 
 """
 Initialize Holstein Model from config file.
@@ -356,7 +368,7 @@ function initialize_holstein_model(filename::String)
     # intialize phonon field
     if input["holstein"]["read_phonon_config"]
         phononfile = input["holstein"]["phonon_config_file"]
-        read_phonons(holstein, phononfile)
+        read_phonons!(holstein, phononfile)
         cp(filename, sim_params.datafolder * phononfile)
     else
         init_phonons_half_filled!(holstein)
@@ -367,6 +379,7 @@ function initialize_holstein_model(filename::String)
 
     return holstein
 end
+
 
 """
 Initialize SSH model from config file.
@@ -439,7 +452,7 @@ function initialize_ssh_model(filename::String)
             if haskey(d,"omega_avg")
                 ω = d["omega_avg"]
             else
-                ω = 1.0
+                ω = 0.0
             end
             if haskey(d,"omega_std")
                 σω = d["omega_std"]
@@ -460,7 +473,7 @@ function initialize_ssh_model(filename::String)
     # intialize phonon field
     if input["ssh"]["read_phonon_config"]
         phononfile = input["ssh"]["phonon_config_file"]
-        read_phonons(ssh, phononfile)
+        read_phonons!(ssh, phononfile)
         cp(filename, sim_params.datafolder * phononfile)
     else
         init_phonons_half_filled!(ssh)

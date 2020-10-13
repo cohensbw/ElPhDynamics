@@ -156,7 +156,7 @@ struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
         R        = zeros(T,Ndim)
         M⁻¹R     = zeros(T,Ndim)
 
-        return new{T}(N,Δt,dSdx,dSdx′,η,Δx,R,M⁻¹R)
+        return new{T}(Ndof,Ndim,Δt,dSdx,dSdx′,η,Δx,R,M⁻¹R)
     end
 end
 

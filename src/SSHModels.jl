@@ -687,3 +687,94 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
 
     return nothing
 end
+
+##############################
+## PHONON FIELD IO ROUTINES ##
+##############################
+
+"""
+Writes the current phonon field configuration to file.
+"""
+function write_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3}
+
+    # get info about size of lattice and number of phonons
+    Lₜ = ssh.Lτ
+    L₁ = ssh.lattice.L1
+    L₂ = ssh.lattice.L1
+    L₃ = ssh.lattice.L1
+    n  = ssh.nph
+
+    # get phonon fields
+    x = reshaped(ssh.x,(Lₜ,L₁,L₂,L₃,n))
+
+    # open file
+    open(filename,"w") do file
+
+        # write header to file
+        write(file, "phonon L3 L2 L1 Lt x\n")
+
+        # iterate over phonon fileds
+        for phonon in 1:n
+            for l₃ in 0:L₃-1
+                for l₂ in 0:l₂-1
+                    for l₁ in 0:l₁-1
+                        for τ in 1:Lₜ
+                            # get phonon field
+                            x₀ = x[τ,l₁+1,l₂+1,l₃+1,phonon]
+                            # write to file
+                            write(file, @sprintf("%d %d %d %d %d %.6f\n",phonon,l₃,l₂,l₁,τ,x₀))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
+Read phonon config from file.
+"""
+function read_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3}
+
+    # get info about size of lattice and number of phonons
+    Lₜ = ssh.Lτ
+    L₁ = ssh.lattice.L1
+    L₂ = ssh.lattice.L1
+    L₃ = ssh.lattice.L1
+    n  = ssh.nph
+
+    # get phonon fields
+    x = reshaped(ssh.x,(Lₜ,L₁,L₂,L₃,n))
+
+    # open file
+    open(filename,"r") do file
+
+        # read in header
+        header = readline(file)
+
+        # iterate over lines in file
+        for line in eachline(file)
+
+            # split line at white space
+            atoms = split(line," ")
+
+            # extract info about phonon field and location
+            phonon = parse(Int,atoms[1])
+            l₃     = parse(Int,atoms[2])
+            l₁     = parse(Int,atoms[3])
+            l₂     = parse(Int,atoms[4])
+            τ      = parse(Int,atoms[5])
+            x₀     = parse(T1, atoms[6])
+
+            # record phonon field
+            x[τ,l₁+1,l₂+1,l₃+1,phonon] = x₀
+        end
+    end
+
+    # construct exponentiated interaction matrix
+    update_model!(holstein)
+
+    return nothing
+end

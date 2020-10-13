@@ -46,9 +46,9 @@ include("Measurements.jl")
 
 include("RunSimulation.jl")
 
-include("ProcessInputFile.jl")
-
 include("SimulationSummary.jl")
+
+include("ProcessInputFile.jl")
 
 ####################################
 ## DEFINING HIGHET LEVEL FUNCTION ##
@@ -57,9 +57,9 @@ include("SimulationSummary.jl")
 
 using ..RunSimulation: run_simulation!
 using ..ProcessInputFile: process_input_file, initialize_holstein_model
-using ..SimulationSummary: write_simulation_summary
-using ..Models: read_phonons
+using ..Models: read_phonons!
 using ..MuFinder: MuTuner, update_μ!
+using ..SimulationSummary: write_simulation_summary!
 
 export simulate, load_model
 
@@ -84,13 +84,14 @@ function simulate(args)
     ## RUNNING SIMULATION ##
     ########################
 
-    simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, input["measurements"], preconditioner)
+    simulation_time, measurement_time, write_time, iters, acceptance_rate, container = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, input["measurements"], preconditioner)
 
     ###################################
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    # write_simulation_summary(model, input, sim_params, unequaltime_meas, equaltime_meas, simulation_time, measurement_time, write_time, iters, acceptance_rate)
+    write_simulation_summary!(model, sim_params, container, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+
 end
 
 
@@ -108,7 +109,7 @@ function load_model(dir::String)
     phonon_file = joinpath(dir, files[phonon[1]])
     
     model = initialize_holstein_model(config_file)
-    read_phonons(model, phonon_file)
+    read_phonons!(model, phonon_file)
     
     return model
 end

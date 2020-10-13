@@ -683,7 +683,7 @@ end
 """
 Writes the current phonon field configuration for a HolsteinModel to file.
 """
-function write_phonons(holstein::HolsteinModel,filename::String)
+function write_phonons!(holstein::HolsteinModel,filename::String)
 
     # get lattice associated with holstein model
     lattice = holstein.lattice
@@ -732,7 +732,7 @@ end
 """
 Read phonon config from file.
 """
-function read_phonons(holstein::HolsteinModel{T1,T2,T3},filename::String) where {T1<:AbstractFloat,T2<:Number,T3<:IterativeSolver}
+function read_phonons!(holstein::HolsteinModel{T1,T2,T3},filename::String) where {T1<:AbstractFloat,T2<:Number,T3<:IterativeSolver}
 
     # open file
     open(filename,"r") do file

@@ -5,352 +5,237 @@ using Printf
 using Pkg.TOML
 
 using ..SimulationParams: SimulationParameters
-using ..Models: HolsteinModel, write_phonons, write_M_matrix
-using ..Lattices: Lattice
+using ..Models: AbstractBond, SSHBond, Bond
+using ..Models: AbstractModel, SSHModel, HolsteinModel
+using ..Models: write_phonons!, write_M_matrix
 
-export write_simulation_summary
-
+export initialize_simulation_summary!
+export write_simulation_summary!
 
 """
-Writes a simulation summary file after a simulation completes.
+Initialize simulation summary file.
 """
-function write_simulation_summary(holstein::HolsteinModel, input::Dict, sim_params::SimulationParameters,
-                                  unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String},
-                                  simulation_time::T, measurement_time::T, write_time::T, iters::T, acceptance_rate::T,
-                                  nbins::Int=10) where {T<:Number}
+function initialize_simulation_summary!(model::AbstractModel{T1,T2,T3},sim_params::SimulationParameters,input::Dict) where {T1,T2,T3}
 
-    @assert sim_params.num_bins%nbins==0
+    # construct filename for summary filen
+    filename = joinpath(sim_params.datafolder, sim_params.datafolder * "_summary.out")
 
-    # getting name of output file
-    outputfn = sim_params.foldername[1:end-1]*".out"
-
-    # get list of all output files from simulation
-    files = readdir(sim_params.datafolder)
-
-    # getting info about size of lattice
-    Lτ = holstein.Lτ
-    L1 = holstein.lattice.L1
-    L2 = holstein.lattice.L2
-    L3 = holstein.lattice.L3
-    norbits = holstein.lattice.unit_cell.norbits
-
-    # write final phonon field configuration to file
-    write_phonons(holstein,sim_params.datafolder*"phonon_config.out")
-
-    # write M matrix to file
-    if input["simulation"]["write_M_matrix"]
-        write_M_matrix(holstein,sim_params.datafolder*"matrix.out")
-    end
-
-    ########################
-    ## WRITE SUMMARY FILE ##
-    ########################
-    
-    # writing summary file
-    open(sim_params.datafolder*outputfn,"w") do outfile
-        
-        #################################
-        ## COPY CONTENTS OF INPUT FILE ##
-        #################################
+    # open summary file
+    open(filename,"w") do fout
         
         # copy contents of input file to output file
-        write(outfile,"#########################\n")
-        write(outfile,"## INPUT FILE CONTENTS ##\n")
-        write(outfile,"#########################\n\n")
-        
-        TOML.print(outfile, input)
-        
-        ###########################
-        ## WRITE SIMULATION INFO ##
-        ###########################
+        write(fout,"#########################\n")
+        write(fout,"## INPUT FILE CONTENTS ##\n")
+        write(fout,"#########################\n\n")
+        TOML.print(fout, input)
+        write(fout,"\n")
 
-        # total simulation time
-        total_time = simulation_time + measurement_time + write_time
-        
-        write(outfile,"\n#####################\n")
-        write(outfile,  "## SIMULATION INFO ##\n")
-        write(outfile,  "#####################\n\n")
-        
-        write(outfile, "Simulation Time (min) = ",  @sprintf("%.4f",simulation_time), "\n")
-        write(outfile, "Measurement Time (min) = ", @sprintf("%.4f",measurement_time), "\n")
-        write(outfile, "Write Time (min) = ",       @sprintf("%.4f",write_time), "\n")
-        write(outfile, "Total Time (min) = ",       @sprintf("%.4f",total_time), "\n")
-        write(outfile, "Iterative Solver Steps = ", @sprintf("%.4f",iters), "\n")
-        write(outfile, "Acceptance Rate = ", @sprintf("%.4f",acceptance_rate), "\n")
-        
-        ##################################
-        ## WRITE LOCAL MEASUREMENT DATA ##
-        ##################################
-        
-        write(outfile,"\n########################\n")
-        write(outfile,  "## LOCAL MEASUREMENTS ##\n")
-        write(outfile,  "########################\n\n")
+        # write bond defintions to summary file
+        write_bond_definitions!(fout,model)
 
-        write_local_data(outfile, sim_params, holstein.lattice, nbins)
-        
-        ######################################
-        ## WRITE NON-LOCAL MEASUREMENT DATA ##
-        ######################################
-
-        # container for storing non-local measurement data 
-        unequaltime_container = zeros(T,nbins,Lτ,L1,L2,L3,norbits,norbits)
-        equaltime_container   = zeros(T,nbins, 1,L1,L2,L3,norbits,norbits)
-        
-        # writing real-space non-local measurements
-        write(outfile,"\n#######################################\n")
-        write(outfile,  "## REAL-SPACE NON-LOCAL MEASUREMENTS ##\n")
-        write(outfile,  "#######################################\n\n")
-
-        for file in files
-            # checking if real space measurement
-            if endswith(file,"_r.out")
-                # getting measurement
-                measurement = split(file,"_")[1]
-                # determine if equal time or unequal time measurement
-                if measurement in unequaltime_meas
-                    write_nonlocal_data(outfile, file, sim_params, unequaltime_container)
-                else
-                    write_nonlocal_data(outfile, file, sim_params, equaltime_container)
-                end
-            end
-        end
-
-        # writing momentum-space non-local measurements
-        write(outfile,"\n###########################################\n")
-        write(outfile,  "## MOMENTUM-SPACE NON-LOCAL MEASUREMENTS ##\n")
-        write(outfile,  "###########################################\n\n")
-        
-        for file in files
-            # checking if momentum space measurement
-            if endswith(file,"_k.out")
-                # getting measurement
-                measurement = split(file,"_")[1]
-                # determine if equal time or unequal time measurement
-                if measurement in unequaltime_meas
-                    write_nonlocal_data(outfile, file, sim_params, unequaltime_container)
-                else
-                    write_nonlocal_data(outfile, file, sim_params, equaltime_container)
-                end
-            end
-        end
-
-    end
-end
-
-####################
-## HELPER METHODS ##
-####################
-
-"""
-Write local measurements to file.
-"""
-function write_local_data(outfile, sim_params::SimulationParameters, lattice::Lattice{T}, nbins::Int) where {T<:Number}
-
-    # num orbitals per unit cell
-    norbits = lattice.unit_cell.norbits
-
-    # data filename
-    datafile = sim_params.datafolder*"local_measurements.out"
-
-    # write local stats to own file as well
-    statsfile = sim_params.datafolder*"local_measurements_stats.out"
-
-    # open data file for local measurements
-    open(datafile,"r") do fin
-        open(statsfile,"w") do fout
-
-            # write header associated with local data
-            header = "measurement orbit avg std\n"
-            write(outfile,header)
-            write(fout,header)
-
-            # declared array for calculating binned statistics
-            bins = zeros(T,nbins)
-
-            # get header line
-            header = readline(fin)
-
-            # get columns
-            columns = split(header,",")
-
-            # get measurements
-            measurements = [String(columns[i]) for i in 2:length(columns)]
-
-            # get number of unique measurements
-            nmeasurements = length(measurements)
-
-            # dictionary for containing data
-            container = Dict( m => zeros(T,nbins,norbits) for m in measurements )
-
-            # number of measurements per bin
-            bin_size = div( sim_params.num_bins , nbins )
-
-            # line counter
-            line_count = 0
-
-            # iterate over lines
-            for line in eachline(fin)
-
-                # split line apart
-                atoms = split(line,",")
-
-                # get orbit
-                orbit = parse(Int,atoms[1])
-
-                # getting current bin
-                bin = div( line_count , norbits * bin_size ) + 1
-
-                # iterate over measurements
-                for i in 1:nmeasurements
-
-                    # incrementing value in container
-                    container[measurements[i]][bin,orbit] += parse(T,atoms[i+1]) / bin_size
-                end
-
-                # increment line count
-                line_count += 1
-            end
-
-            # iterate over measurements
-            for measurement in measurements
-
-                # iterate over orbits
-                for orbit in 1:norbits
-
-                    # get data
-                    data = @view container[measurement][:,orbit]
-
-                    # calcualte average and standard deviation measreument
-                    avg, sd = binned_statistics(data,bins)
-
-                    # writing measurement to file
-                    line = measurement*@sprintf(" %d  %.6f  %.6f\n",orbit,avg,sd)
-                    write(outfile, line)
-                    write(fout, line)
-                end
-            end
-        end
+        # write phonon definitions
+        write_phonon_definitions!(fout,model)
     end
 
     return nothing
 end
 
 """
-Writes non-local measurement data to summary stats file.
+Write results of simulation to simulation summary file.
 """
-function write_nonlocal_data(outfile, datafile, sim_params, container::Array{T,7}) where {T<:Number}
+function write_simulation_summary!(model::AbstractModel{T1,T2,T3},sim_params::SimulationParameters,container::NamedTuple,
+                                  simulation_time::T1, measurement_time::T1, write_time::T1,
+                                  iters::T1, acceptance_rate::T1,Nbins::Int=10) where {T1,T2,T3}
 
-    # getting measurement
-    measurement = split(datafile,"_")[1]
+    # data folder (including path)
+    datafolder = sim_params.datafolder
 
-    # getting info about size of data container
-    nbins, Lτ, L1, L2, L3, norbits, norbits_copy = size(container)
+    # data foldername
+    foldername = sim_params.foldername
 
-    # caluculate number of measurments that go into each bin
-    bin_size = div( sim_params.num_bins , nbins )
+    # construct filename for summary filen
+    filename = joinpath(datafolder, foldername * "_summary.out")
 
-    # number of unique displacement vectors for which the measuremnt was made
-    nvectors = Lτ*L1*L2*L3*norbits^2
+    # open summary file
+    open(filename,"a") do fout
+        
+        # write simulation statistics to file
+        write(fout, "#####################","\n")
+        write(fout, "## SIMULATION INFO ##","\n")
+        write(fout, "#####################","\n","\n")
 
-    # empty container
-    fill!(container,0.0)
+        total_time = simulation_time + measurement_time + write_time
+        write(fout, "Total Time (min) = ",       @sprintf("%.4f",total_time), "\n")
+        write(fout, "Simulation Time (min) = ",  @sprintf("%.4f",simulation_time), "\n")
+        write(fout, "Measurement Time (min) = ", @sprintf("%.4f",measurement_time), "\n")
+        write(fout, "Write Time (min) = ",       @sprintf("%.4f",write_time), "\n")
+        write(fout, "Iterative Solver Steps = ", @sprintf("%.4f",iters), "\n")
+        write(fout, "Acceptance Rate = ",        @sprintf("%.4f",acceptance_rate), "\n", "\n")
 
-    # read in data, and store in container
-    open(sim_params.datafolder*datafile,"r") do fp
+        # write global measurements to file
+        write(fout, "#########################","\n")
+        write(fout, "## GLOBAL MEASUREMENTS ##","\n")
+        write(fout, "#########################","\n","\n")
+
+        write_global_measurements!(fout,model,container.global_meas,sim_params,Nbins)
+
+    end
+
+    return nothing
+end
+
+
+######################
+## PRIVATE FUNCTION ##
+######################
+
+"""
+Write bond defintions to file.
+"""
+function write_bond_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+
+    bonds = model.bond_definitions
+
+    write(fout,"######################\n")
+    write(fout,"## BOND DEFINITIONS ##\n")
+    write(fout,"######################\n\n")
+
+    for (id, bond) in enumerate(bonds)
+
+        write(fout,"Bond ID = ", string(id),      "\n")
+        write(fout,"t_avg = ", string(bond.t),  "\n")
+        write(fout,"t_std = ", string(bond.σt), "\n")
+        write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
+        write(fout,"Final Orbit   = ", string(bond.o₁), "\n")
+        write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
+    end
+
+    return nothing
+end
+
+"""
+Write SSH Phonon definitions to file.
+"""
+function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3}
+
+    bonds = model.bond_definitions
+
+    write(fout,"############################\n")
+    write(fout,"## SSH PHONON DEFINITIONS ##\n")
+    write(fout,"############################\n\n")
+
+    for (id, bond) in enumerate(bonds)
+
+        write(fout,"SSH Phonon ID = ", string(id),      "\n")
+        write(fout,"t_avg = ", string(bond.t),  "\n")
+        write(fout,"t_std = ", string(bond.σt), "\n")
+        write(fout,"alpha_avg = ", string(bond.α),  "\n")
+        write(fout,"alpha_std = ", string(bond.σα), "\n")
+        write(fout,"omega_avg = ", string(bond.ω),  "\n")
+        write(fout,"omega_std = ", string(bond.σω), "\n")
+        write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
+        write(fout,"Final Orbit   = ", string(bond.o₁), "\n")
+        write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
+    end
+
+    return nothing
+end
+
+function write_phonon_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,T2,T3}
+
+    return nothing
+end
+
+"""
+Write global measurements to file.
+"""
+function write_global_measurements!(fout,model::AbstractModel{T1,T2,T3},container::Dict,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+
+    # filename containing global measurements
+    datafn = joinpath(sim_params.datafolder, "global_measurements.out")
+
+    # file statistics will be written to
+    statsfn = joinpath(sim_params.datafolder, "global_measurements_stats.out")
+
+    # number of measurements in data file
+    Nmeas = sim_params.num_bins
+
+    # calculate number of measurements per bin
+    Nbins = min(Nmeas,Nbins)
+    N     = div(Nmeas,Nbins)
+    @assert Nmeas%Nbins==0
+
+    # container to hold binned data
+    binned_data = Dict(k=>zeros(T2,Nbins) for k in keys(container))
+
+    # open file with global measurements data
+    open(datafn,"r") do fin
 
         # read in header
-        header = readline(fp)
+        header = readline(fin)
 
-        # keeps track of the number of lines read in
-        line_count = 0
+        # get column names
+        columns = split(header,",")
 
-        # iterate over lines of data
-        for line in eachline(fp)
+        # iterate over lines in file
+        for line in eachline(fin)
 
-            # getting current bin
-            bin = div( line_count , nvectors * bin_size ) + 1
-
-            # split line into an array of strings where each index
-            # corresponds to: [ orbit1 , orbit2 , dL1 , dL2 , dL3 , tau , data ]
+            # split line apart
             atoms = split(line,",")
 
-            # extracting data
-            o1   = parse(Int,atoms[1])
-            o2   = parse(Int,atoms[2])
-            dL1  = parse(Int,atoms[3])
-            dL2  = parse(Int,atoms[4])
-            dL3  = parse(Int,atoms[5])
-            τ    = parse(Int,atoms[6])
-            meas = parse(T,atoms[7])
+            # get the measurement number
+            nmeas = parse(Int,atoms[1])
 
-            # record data
-            container[bin,τ+1,dL1+1,dL2+1,dL3+1,o2,o1] += meas/bin_size
+            # get bin
+            bin = div(nmeas-1,N) + 1
 
-            # increment line_count
-            line_count += 1
+            # iterate over measurements/columns
+            for i in 2:length(columns)
+
+                # get measurement
+                measurement = columns[i]
+
+                # record measurement
+                binned_data[measurement][bin] += parse(T2,atoms[i]) / N
+            end
         end
     end
 
-    # additionally, right measurement statistics to own file as well
-    statsfilename = sim_params.datafolder*datafile[1:end-4]*"_stats.out"
-    open(statsfilename,"w") do statsfile
+    # write averaged statistics to file
+    open(statsfn,"w") do statsout
 
-        # write header for table
-        header = "orbit1  orbit2  dL1  dL2  dL3  tau  "*measurement*"_avg  "*measurement*"_std\n"
-        write(statsfile, header)
-        write(outfile, header)
+        # header
+        header = "global_meas avg error\n"
+        write(fout,    header)
+        write(statsout,header)
 
-        # iterate over displacement vector
-        for orbit1 in 1:norbits
-            for orbit2 in 1:norbits
-                for dL3 in 0:L3-1
-                    for dL2 in 0:L2-1
-                        for dL1 in 0:L1-1
-                            for τ in 0:Lτ-1
-                                data   = @view container[:,τ+1,dL1+1,dL2+1,dL3+1,orbit2,orbit1]
-                                avg    = mean(data)
-                                stddev = std(data)/sqrt(nbins)
-                                if !iszero(avg)
-                                    # write displacement info to file
-                                    line = @sprintf("%d  %d  %d  %d  %d  %d  %.6f  %.6f\n",orbit1,orbit2,dL1,dL2,dL3,τ,avg,stddev)
-                                    write(statsfile,line)
-                                    write(outfile,line)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+        # iterate over measurements
+        for measurement in keys(binned_data)
+
+            # calculate mean and standard deviation of mean
+            avg, err = mean_and_error(binned_data[measurement])
+
+            # write statistics to file
+            line = measurement * @sprintf(" %.6f %.6f\n",avg,err)
+            write(fout,    line)
+            write(statsout,line)
         end
 
-        # add an additional line break
-        write(outfile,"\n")
-
+        write(fout,"\n")
     end
 
     return nothing
 end
 
 """
-Calculates the average and binned standard deviation of a set of data.
-The number of bins used is equal to the length of the preallocated `bins` vector
-passed to the function.
+Calculate mean and standard deviation of the mean of a set of data.
 """
-function binned_statistics(data::AbstractVector{T},bins::Vector{T})::Tuple{T,T} where {T<:Number}
+function mean_and_error(v::AbstractArray{T})::Tuple{T,T} where {T<:Number}
     
-    N = length(data)
-    n = length(bins)
-    @assert length(data)%length(bins)==0
-    binsize = div(N,n)
-    bins .= 0
-    for bin in 1:n
-        for i in 1:binsize
-            bins[bin] += data[i+(bin-1)*binsize]
-        end
-        bins[bin] /= binsize
-    end
-    avg = mean(bins)
-    return avg, std(bins,corrected=true,mean=avg)/sqrt(n)
+    N   = length(v)
+    avg = mean(v)
+    err = std(v,corrected=true,mean=avg)/sqrt(N)
+    return avg, err
 end
 
 end

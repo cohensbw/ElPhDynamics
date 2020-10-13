@@ -97,7 +97,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         measurement_time += @elapsed process_measurements!(container,sim_params,model)
 
         # write measurements to file
-        write_time += @elapsed write_measurements!(container,sim_params,model)
+        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
 
         # reset measurements container
         measurement_time += @elapsed reset_measurements!(container,model)
@@ -112,7 +112,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     write_time       /= 60.0
     acceptance_rate   = 1.0
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end
 
 """
@@ -201,7 +201,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         measurement_time += @elapsed process_measurements!(container,sim_params,model)
 
         # write measurements to file
-        write_time += @elapsed write_measurements!(container,sim_params,model)
+        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
 
         # reset measurements container
         measurement_time += @elapsed reset_measurements!(container,model)
@@ -218,7 +218,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     measurement_time /= 60.0
     write_time       /= 60.0
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end
 
 end

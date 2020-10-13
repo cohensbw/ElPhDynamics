@@ -443,7 +443,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
             update!(x,gmres.restart,H,s,y,V)
             mul!(r,A,x)  # r = A⋅x
             @. r = b - r # r = b - A⋅x
-            ldiv!(M,r)   # r = M \ (b - A⋅x)
+            ldiv!(M,r)   # r = M \ (b - A⋅x) = M⁻¹⋅(b - A⋅x)
             β    = norm(r)
             Δ    = β/normb
             if Δ<gmres.tol
