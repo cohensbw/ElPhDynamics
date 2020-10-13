@@ -85,7 +85,7 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     push!(N_traj, N)
     tuner.N_bar = forgetful_mean(N_traj, forgetful_c, tuner.N_bar)
 
-    κ = β * (N² - 2 * N * tuner.N_bar + tuner.N̄^2)
+    κ = β * (N² - 2 * N * tuner.N_bar + tuner.N_bar^2)
     push!(κ_traj, κ)
     tuner.κ_bar = forgetful_mean(κ_traj, forgetful_c, tuner.κ_bar )
     κ_update = max(tuner.κ_bar, κ_min / sqrt(length(κ_traj)))
