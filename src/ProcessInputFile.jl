@@ -96,7 +96,7 @@ function process_input_file(filename::String)
         if input["holstein"]["read_phonon_config"]
             phononfile = input["holstein"]["phonon_config_file"]
             read_phonons!(model, phononfile)
-            cp(filename, sim_params.datafolder * phononfile)
+            cp(filename, joinpath(sim_params.datafolder,phononfile))
             update_model!(model)
         else
             init_phonons_half_filled!(model)
@@ -111,7 +111,7 @@ function process_input_file(filename::String)
         if input["ssh"]["read_phonon_config"]
             phononfile = input["ssh"]["phonon_config_file"]
             read_phonons!(model, phononfile)
-            cp(filename, sim_params.datafolder * phononfile)
+            cp(filename, joinpath(sim_params.datafolder,phononfile))
             update_model!(model)
         else
             init_phonons_half_filled!(model)
