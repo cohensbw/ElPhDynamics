@@ -144,18 +144,24 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     Ordered in vector according to checkerboard decomposition."
     sinht::Matrix{T2}
 
-    "If true the default mul! routine multiplies by the M matrix.
-    If false the default mul! routine multiplies by the symmetric matrix MᵀM instead."
+    "If true the default mul! routine multiplies by the M (or Mᵀ) matrix.
+    If false the default mul! routine multiplies by the symmetric matrix MᵀM (or MMᵀ) instead."
     mul_by_M::Bool
 
-    "If true multiply by Mᵀ instead of M."
+    "If true multiply by Mᵀ (or MMᵀ) instead of M (or MᵀM)."
     transposed::Bool
 
-    "A vector for storing the temporary product Mᵀ⋅g needed for Conjugate Gradient method."
-    Mᵀg::Vector{T2}
+    "A vector of length `Ndim` to temporarily store data.
+    Used in multiplication by MᵀM or MMᵀ."
+    v′::Vector{T2}
 
-    "A vector of length `ninidces` to temporarily store data."
-    ytemp::Vector{T2}
+    "A vector of length `Ndim` to temporarily store data.
+    Used to store Mᵀ⋅b result when solving M⋅x=b via MᵀM⋅x=Mᵀ⋅b."
+    v″::Vector{T2}
+
+    "A vector of length `Ndim` to temporarily store data.
+    Used for calculating true residual error after linear solve."
+    v‴::Vector{T2}
 
     """
     Iterative Solver
@@ -219,22 +225,23 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         bond_to_definition = Vector{Int}(undef,0)
 
         # declaring temporary storage vectors
-        ytemp = zeros(T2,Ndim)
-        Mᵀg   = zeros(T2,Ndim)
+        v′ = zeros(T2,Ndim)
+        v″ = zeros(T2,Ndim)
+        v‴ = zeros(T2,Ndim)
 
         # construct solver
         if lowercase(iterativesolver)=="cg"
             mul_by_M   = false
             transposed = false
-            solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            solver = ConjugateGradient(v″,tol=tol,maxiter=maxiter)
         elseif lowercase(iterativesolver)=="gmres"
             mul_by_M   = true
             transposed = false
-            solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+            solver = GMRES(v″,tol=tol,restart=restart,maxiter=maxiter)
         elseif lowercase(iterativesolver)=="bicgstab"
             mul_by_M   = true
             transposed = false
-            solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
+            solver = BiCGStab(v″,tol=tol,maxiter=maxiter)
         end
         T3 = typeof(solver)
 
@@ -243,7 +250,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
                              x,t,ω,α,μ,expΔτμ,t′,
                              field_to_phonon,field_to_τ,phonon_to_bond,bond_to_phonon,bond_to_definition,
                              checkerboard_perm,neighbor_table,cosht,sinht,
-                             mul_by_M, transposed, Mᵀg, ytemp, solver)
+                             mul_by_M, transposed, v′, v″, v‴, solver)
     end
 end
 
@@ -440,14 +447,10 @@ function mulM!(Mv::AbstractVector{T2},ssh::SSHModel{T1,T2},v::AbstractVector{T2}
     # Calculate [M⋅v](τ) = v(τ-1)
 
     @fastmath @inbounds for i in 1:Nsites
-
-        i1     = get_index(1,i,Lτ)
-        iL     = get_index(Lτ,i,Lτ)
-        Mv[i1] = v[iL]
-
-        for τ in 2:Lτ
+        for τ in 1:Lτ
+            τm1    = mod1(τ-1,Lτ)
             iτ     = get_index(τ,  i,Lτ)
-            iτm1   = get_index(τ-1,i,Lτ)
+            iτm1   = get_index(τm1,i,Lτ)
             Mv[iτ] = v[iτm1]
         end
     end
@@ -609,19 +612,15 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
     ################################
 
     # vector to represent B(τ)⋅v(τ-1)
-    Bv = ssh.ytemp
+    Bv = ssh.v′
 
     # Calculate [B⋅v](τ) = v(τ-1)
     
     @fastmath @inbounds for i in 1:Nsites
-
-        i1     = get_index(1,i,Lτ)
-        iL     = get_index(Lτ,i,Lτ)
-        Bv[i1] = v[iL]
-
-        for τ in 2:Lτ
+        for τ in 1:Lτ
+            τm1    = mod1(τ-1,Lτ)
+            iτm1   = get_index(τm1,i,Lτ)
             iτ     = get_index(τ,i,Lτ)
-            iτm1   = get_index(τ-1,i,Lτ)
             Bv[iτ] = v[iτm1]
         end
     end
@@ -660,7 +659,7 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
         τ = field_to_τ[field]
 
         # phonon to bond
-        bond = phonon_to_bond[phonon]
+        bond  = phonon_to_bond[phonon]
 
         # get index into neighbor table assoicated with bond
         index = checkerboard_perm[bond]

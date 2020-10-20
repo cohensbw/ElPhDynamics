@@ -9,7 +9,7 @@ import LinearAlgebra: ldiv!
 export Continuous, IterativeSolver, ConjugateGradient, BiCGStab, GMRES, solve!
 
 """
-Allows `I` to be used as a preconditioner.
+Allows the identity operator `I` to be used as a preconditioner.
 """
 function ldiv!(vout::AbstractVector,I::UniformScaling,vin::AbstractVector)
     copyto!(vout,vin)
@@ -35,12 +35,12 @@ To represent Conjugate Gradient algorithm.
 """
 mutable struct ConjugateGradient{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
     
-    tol::Tdata
+    tol::Ttol
     maxiter::Int
     N::Int
-    r::Vector{Ttol}
-    p::Vector{Ttol}
-    z::Vector{Ttol}
+    r::Vector{Tdata}
+    p::Vector{Tdata}
+    z::Vector{Tdata}
     
     function ConjugateGradient(z::AbstractVector{Tdata};tol::Ttol=1e-4,maxiter::Int=0) where {Ttol<:AbstractFloat,Tdata<:Continuous}
         
@@ -60,7 +60,7 @@ end
 Solve `A⋅x=b` using the Conjugate Gradient method with a split preconditioner
 such that `[L⁻¹⋅A⋅L⁻ᵀ]⋅u=L⁻¹⋅b` where `u=L⁻ᵀ⋅x`.
 """
-function solve!(x::AbstractVector{Ttol},A,b::AbstractVector{Ttol},cg::ConjugateGradient{Ttol,Tdata},L,Lt)::Int where {Ttol<:Number,Tdata<:AbstractFloat}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},L,Lt)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -123,7 +123,7 @@ end
 Solve `A⋅x=b` using the Conjugate Gradient method with a left preconditioner
 such that `P⁻¹⋅A⋅x=P⁻¹⋅b`.
 """
-function solve!(x::AbstractVector{Ttol},A,b::AbstractVector{Ttol},cg::ConjugateGradient{Ttol,Tdata},P)::Int where {Ttol<:Number,Tdata<:AbstractFloat}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},P)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -184,7 +184,7 @@ end
 """
 Solve `A⋅x=b` using the Conjugate Gradient method with no preconditioning.
 """
-function solve!(x::AbstractVector{Ttol},A,b::AbstractVector{Ttol},cg::ConjugateGradient{Ttol,Tdata})::Int where {Ttol<:Number,Tdata<:AbstractFloat}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata})::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -273,7 +273,7 @@ end
 """
 Solve linear system using preconditioned BiCGStab.
 """
-function solve!(x::AbstractVector{T},A,b::AbstractVector{T},bicgstab::BiCGStab,P=I)::Int where {T<:Continuous}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::BiCGStab{Ttol,Tdata},P=I)::Int where {Ttol,Tdata}
 
     @unpack tol, maxiter, r, r̃, p, p̂, s, ŝ, v, t = bicgstab
 
@@ -374,7 +374,7 @@ mutable struct GMRES{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
 end
 
 
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES{Ttol,Tdata},M=I)::Int where {Ttol<:AbstractFloat,Tdata<:Continuous}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES{Ttol,Tdata},M=I)::Int where {Ttol,Tdata}
     
     H  = gmres.H
     V  = gmres.V

@@ -22,7 +22,7 @@ using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 using ..SimulationSummary: initialize_simulation_summary!
 
-using ..KPMPreconditioners: LeftRightKPMPreconditioner
+using ..KPMPreconditioners: LeftRightKPMPreconditioner, SymmetricKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
 
@@ -88,9 +88,34 @@ function process_input_file(filename::String)
     ######################
     
     if haskey(input,"holstein")
+
+        # initialize model
         model = initialize_holstein_model(filename)
+
+        # intialize phonon field
+        if input["holstein"]["read_phonon_config"]
+            phononfile = input["holstein"]["phonon_config_file"]
+            read_phonons!(model, phononfile)
+            cp(filename, sim_params.datafolder * phononfile)
+            update_model!(model)
+        else
+            init_phonons_half_filled!(model)
+        end
+
     elseif haskey(input,"ssh")
+
+        # initialize model
         model = initialize_ssh_model(filename)
+
+        # intialize phonon field
+        if input["ssh"]["read_phonon_config"]
+            phononfile = input["ssh"]["phonon_config_file"]
+            read_phonons!(model, phononfile)
+            cp(filename, sim_params.datafolder * phononfile)
+            update_model!(model)
+        else
+            init_phonons_half_filled!(model)
+        end
     end
 
     #####################################
@@ -101,9 +126,9 @@ function process_input_file(filename::String)
         targed_density = input["tune_density"]["density"]
         memory         = input["tune_density"]["memory"]
         κ_min          = input["tune_density"]["kappa_min"]
-        μ_tuner = MuTuner(true, mean(model.μ), targed_density*model.Nsites, model.β, model.Δτ, memory, κ_min*model.Nsites)
+        μ_tuner = MuTuner(true, mean(model.μ), targed_density*model.Nsites, model.Nsites, model.β, model.Δτ, memory, κ_min*model.Nsites)
     else
-        μ_tuner = MuTuner(false, mean(model.μ), 1.0*model.Nsites, model.β, model.Δτ, 0.75, 0.1)
+        μ_tuner = MuTuner(false, mean(model.μ), 1.0*model.Nsites, model.Nsites, model.β, model.Δτ, 0.75, 0.1)
     end
 
     ###########################
@@ -111,7 +136,15 @@ function process_input_file(filename::String)
     ###########################
 
     if lowercase(input["solver"]["type"])=="cg"
-        preconditioner = I
+        if haskey(input["solver"],"preconditioner")
+            λ_lo = input["solver"]["preconditioner"]["lambda_lo"]
+            λ_hi = input["solver"]["preconditioner"]["lambda_hi"]
+            c1   = input["solver"]["preconditioner"]["c1"]
+            c2   = input["solver"]["preconditioner"]["c2"]
+            preconditioner = SymmetricKPMPreconditioner(model,λ_lo,λ_hi,c1,c2,false)
+        else
+            preconditioner = I
+        end
     else
         λ_lo = input["solver"]["preconditioner"]["lambda_lo"]
         λ_hi = input["solver"]["preconditioner"]["lambda_hi"]
@@ -153,20 +186,6 @@ function process_input_file(filename::String)
         construct_guess = input["hmc"]["construct_guess"]
         α               = input["hmc"]["momentum_conservation_fraction"]
         Nb              = input["hmc"]["num_multitimesteps"]
-        if haskey(input["hmc"],"tau")
-            τ = input["hmc"]["tau"]
-        else
-            # default value is infinity, recovering normal hamiltonian dynamics
-            τ = Inf
-        end
-        # if τ is meant to be infinity, recovering normal hamiltonian dynamics
-        if typeof(τ)==String
-            if startswith(lowercase(τ),"inf")
-                τ = Inf
-            else
-                throw(DomainError(τ,"invalid value for tau"))
-            end
-        end
 
         # log file instructions
         if haskey(input["hmc"],"log")
@@ -182,10 +201,8 @@ function process_input_file(filename::String)
         hmc_simulation_logfile = joinpath(sim_params.datafolder,"hmc_sim_log.out")
         hmc_burnin_logfile     = joinpath(sim_params.datafolder,"hmc_burnin_log.out")
 
-        @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
-        @assert !((α>0)&(isfinite(τ)))
-        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, τ, α, Nb, construct_guess, log=log, verbose=verbose, logfile=hmc_simulation_logfile)
+        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, α, Nb, construct_guess, log=log, verbose=verbose, logfile=hmc_simulation_logfile)
 
         # defining burnin dynamics
         if haskey(input["hmc"], "burnin")
@@ -194,19 +211,6 @@ function process_input_file(filename::String)
             end
             if haskey(input["hmc"]["burnin"],"trajectory_time")
                 tr = input["hmc"]["burnin"]["trajectory_time"]
-            end
-            if haskey(input["hmc"]["burnin"],"tau")
-                τ = input["hmc"]["burnin"]["tau"]
-                # if τ is meant to be infinity, recovering normal hamiltonian dynamics
-                if typeof(τ)==String
-                    if startswith(lowercase(τ),"inf")
-                        τ = Inf
-                    else
-                        throw(DomainError(τ,"invalid value for tau"))
-                    end
-                end
-            else
-                τ = Inf
             end
             if haskey(input["hmc"]["burnin"],"construct_guess")
                 construct_guess = input["hmc"]["burnin"]["construct_guess"]
@@ -217,11 +221,9 @@ function process_input_file(filename::String)
             if haskey(input["hmc"]["burnin"],"num_multitimesteps")
                 Nb = input["hmc"]["burnin"]["num_multitimesteps"]
             end
-            @assert τ >= 0.0
             @assert 0.0 <= α < 1.0
-            @assert !((α>0)&(isfinite(τ)))
         end
-        burnin_dyanmics = HybridMonteCarlo(simulation_dynamics, Δt, tr, τ, α, Nb, construct_guess,
+        burnin_dyanmics = HybridMonteCarlo(simulation_dynamics, Δt, tr, α, Nb, construct_guess,
                                            log=log, verbose=verbose, logfile=hmc_burnin_logfile)
 
     elseif input["langevin"]["update_method"]==1
@@ -249,12 +251,7 @@ function process_input_file(filename::String)
     #########################
 
     # construct object of estimating Green's function
-    if haskey(input["measurements"],"num_random_vectors")
-        num_random_vectors = input["measurements"]["num_random_vectors"]
-    else
-        num_random_vectors = 1
-    end
-    Gr = EstimateGreensFunction(model,num_random_vectors)
+    Gr = EstimateGreensFunction(model)
 
     ########################################
     ## INITIALIZE SIMULATION SUMMARY FILE ##
@@ -362,20 +359,8 @@ function initialize_holstein_model(filename::String)
         end
     end
 
-    # organize electron hoppings for checkerboard decomposition
+    # initialize model
     initialize_model!(holstein)
-
-    # intialize phonon field
-    if input["holstein"]["read_phonon_config"]
-        phononfile = input["holstein"]["phonon_config_file"]
-        read_phonons!(holstein, phononfile)
-        cp(filename, sim_params.datafolder * phononfile)
-    else
-        init_phonons_half_filled!(holstein)
-    end
-
-    # construct exponentiated interaction matrix
-    update_model!(holstein)
 
     return holstein
 end
@@ -469,18 +454,6 @@ function initialize_ssh_model(filename::String)
 
     # initialize model
     initialize_model!(ssh)
-
-    # intialize phonon field
-    if input["ssh"]["read_phonon_config"]
-        phononfile = input["ssh"]["phonon_config_file"]
-        read_phonons!(ssh, phononfile)
-        cp(filename, sim_params.datafolder * phononfile)
-    else
-        init_phonons_half_filled!(ssh)
-    end
-
-    # construct exponentiated interaction matrix
-    update_model!(ssh)
 
     return ssh
 end

@@ -7,6 +7,7 @@ using Printf
 using Parameters
 using Printf
 using Statistics
+using Logging
 
 using ..Utilities: get_index
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulM!, muldMdx!, mulMᵀ!
@@ -37,11 +38,6 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     Time between refreshing the momentum p and auxialiary fields ϕ.
     """
     tr::T
-
-    """
-    BDP thermostat timescale
-    """
-    τ::T
 
     """
     Timestep.
@@ -207,7 +203,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     iters::Int
 
-    function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,τ::T,α::T,Nb::Int,construct_guess::Bool;
+    function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
                               log::Bool=false, verbose::Bool=false, logfile::String="") where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
@@ -246,9 +242,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         Δt′ = Δt/Nb
 
         # checking conditions on parameters
-        @assert τ >= 0.0
         @assert 0.0 <= α < 1.0
-        @assert !((α>0)&(isfinite(τ)))
 
         updates  = 0
         t        = 0
@@ -264,11 +258,11 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             end
         end
 
-        return new{T}(Ndof, Ndim, x0, tr, τ, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
                      log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
 
-    function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,τ::T,α::T,Nb::Int,construct_guess::Bool;
+    function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
                               log::Bool=false, verbose::Bool=false, logfile::String="") where {T<:AbstractFloat}
 
         @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u, y = hmc
@@ -289,7 +283,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             end
         end
     
-        return new{T}(Ndof, Ndim, x0, tr, τ, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
                       log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
 end
@@ -372,18 +366,18 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     # refresh ϕ
     refresh_ϕ!(hmc,model)
 
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    iters = calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+
+    # calculate initial energy
+    H₀, S, K = calc_H(hmc, model, fa)
+
     # calculate the initial dS/dx value
     iter_t = calc_dSdx!(hmc, model, preconditioner)
     iters  = iter_t
 
     # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
     fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
-
-    # calculate energy
-    H₁, S, K = calc_H(hmc, model, fa)
-
-    # keeps track of change in effective energy
-    ΔH̃ = 0.0
 
     # record intial state
     copyto!(x0,x)
@@ -395,15 +389,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     end
 
     # iterate over time steps, doing leapfrog updates to the phonon fields
-    iters = 0
     for hmc.t in 1:Nt
-
-        # recalculate energy if BDP thermostat active
-        if !isfinite(hmc.τ) || hmc.t==1
-            H₀ = H₁
-        else
-            H₀, S, K = calc_H(hmc, model, fa)
-        end
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dS/dx(t)
         @. v = v - Δt/2*QdSdx
@@ -414,9 +400,11 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         # update exp{-Δτ⋅V[x]}
         update_model!(model)
 
+        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+        iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
+
         # calculate dS/dx(t+Δt) value
-        iter_t = calc_dSdx!(hmc, model, preconditioner)
-        iters += iter_t
+        calc_dSdx!(hmc, model, preconditioner)
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
         fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
@@ -424,32 +412,29 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
         @. v = v - Δt/2*QdSdx
 
-        # calculate energy
-        H₁, S, K = calc_H(hmc, model, fa)
-
-        # update change in energy
-        ΔH̃ += H₁-H₀
-
         # log HMC state
         if hmc.log & hmc.verbose
             update_log(hmc)
         end
-
-        # apply BDP Thermostat
-        bdp_thermostat!(v,hmc.u,K,hmc.τ,hmc.Δt)
     end
 
-    # calculate probability of acceptance
-    P = min(1.0, exp(-ΔH̃))
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
 
-    # get the number of iterations
-    hmc.iters = cld(iters,Nt)
+    # calculate final energy
+    H₁, S, K = calc_H(hmc, model, fa)
+
+    # calculate change in energy
+    ΔH = H₁ - H₀
+
+    # calculate probability of acceptance
+    P = min(1.0, exp(-ΔH))
 
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
         hmc.accepted = true
-        return hmc.accepted, T1(hmc.iters)
+        return hmc.accepted, T1(cld(iters,Nt+2))
 
     else # if rejected
 
@@ -464,7 +449,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         update_model!(model)
 
         hmc.accepted = false
-        return hmc.accepted, T1(hmc.iters)
+        return hmc.accepted, T1(cld(iters,Nt+2))
     end
 end
 
@@ -496,18 +481,17 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     # refresh ϕ
     refresh_ϕ!(hmc,model)
 
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    iters = calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+
+    # calculate energy
+    H₀, S, K = calc_H(hmc, model, fa)
+
     # calculate the initial dSf/dx value
-    iter_t = calc_dSfdx!(hmc, model, preconditioner)
-    iters  = iter_t
+    calc_dSfdx!(hmc, model, preconditioner)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
-
-    # calculate energy
-    H₁, S, K = calc_H(hmc, model, fa)
-
-    # keeps track of change in effective energy
-    ΔH̃ = 0.0
 
     # record intial phonon configuration
     copyto!(x0,x)
@@ -520,13 +504,6 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
 
     # iterate over timesteps
     for hmc.t in 1:Nt
-
-        # recalculate energy if BDP thermostat active
-        if !isfinite(hmc.τ) || hmc.t==1
-            H₀ = H₁
-        else
-            H₀, S, K = calc_H(hmc, model, fa)
-        end
 
         # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
@@ -561,9 +538,11 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         # update exp{-Δτ⋅V[x]}
         update_model!(model)
 
+        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+        iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
+
         # calculate dSf/dx(t+Δt) value
-        iter_t = calc_dSfdx!(hmc, model, preconditioner)
-        iters += iter_t
+        calc_dSfdx!(hmc, model, preconditioner)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -571,32 +550,29 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         # v(t+Δt) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
         @. v = v - Δt/2*QdSfdx
 
-        # calculate energy
-        H₁, S, K = calc_H(hmc, model, fa)
-
-        # update change in energy
-        ΔH̃ += H₁-H₀
-
         # log HMC state
         if hmc.log & hmc.verbose
             update_log(hmc)
         end
-
-        # apply BDP Thermostat
-        bdp_thermostat!(v,hmc.u,K,hmc.τ,hmc.Δt)
     end
 
-    # calculate probability of acceptance
-    P = min(1.0, exp(-ΔH̃))
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
 
-    # get the number of iterations
-    hmc.iters = cld(iters,Nt)
+    # calculate final energy
+    H₁, S, K = calc_H(hmc, model, fa)
+
+    # calculate change in energy
+    ΔH = H₁ - H₀
+
+    # calculate probability of acceptance
+    P = min(1.0, exp(-ΔH))
 
     # Metropolis-Hasting Accept/Reject Step
     if rand() < P # if accepted
 
         hmc.accepted = true
-        return hmc.accepted, T1(hmc.iters)
+        return hmc.accepted, T1(cld(iters,Nt+2))
 
     else # if rejected
 
@@ -611,7 +587,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         update_model!(model)
 
         hmc.accepted = false
-        return hmc.accepted, T1(hmc.iters)
+        return hmc.accepted, T1(cld(iters,Nt+2))
     end
 end
 
@@ -663,10 +639,10 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     mulMᵀ!(ϕ₊,model,R)
 
     # intially M⁻ᵀ⋅ϕ₊ = R₊
-    copyto!(M⁻ᵀϕ₊,R)
+    copyto!(M⁻ᵀϕ₊ ,R)
     copyto!(M⁻ᵀϕ₊′,R)
 
-    fill!(O⁻¹ϕ₊,0.0)
+    fill!(O⁻¹ϕ₊ ,0.0)
     fill!(O⁻¹ϕ₊′,0.0)
 
     # REFRESH ϕ₋
@@ -676,10 +652,10 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     mulMᵀ!(ϕ₋,model,R)
 
     # intially M⁻ᵀ⋅ϕ₋ = R₋
-    copyto!(M⁻ᵀϕ₋,R)
+    copyto!(M⁻ᵀϕ₋ ,R)
     copyto!(M⁻ᵀϕ₋′,R)
 
-    fill!(O⁻¹ϕ₋,0.0)
+    fill!(O⁻¹ϕ₋ ,0.0)
     fill!(O⁻¹ϕ₋′,0.0)
 
     return nothing
@@ -729,17 +705,17 @@ end
 """
 Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋
 """
-function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I)::Int where {T1,T2}
+function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I) where {T1,T2}
     
     dSdx = hmc.dSdx
     
     # dS/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    iters = calc_dSfdx!(hmc,model,preconditioner)
+    calc_dSfdx!(hmc,model,preconditioner)
 
     # dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
     calc_dSbosedx!(dSdx, model)
 
-    return iters
+    return nothing
 end
 
 
@@ -763,7 +739,7 @@ end
 Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ + ₋ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
 More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
 """
-function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I)::Int where {T1,T2}
+function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I) where {T1,T2}
     
     dSdx  = hmc.dSdx
     dMdx  = hmc.y
@@ -771,9 +747,6 @@ function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, pre
     
     O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
     O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
-
-    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters = calc_O⁻¹ϕ!(hmc,model,preconditioner)
 
     # calculate M⋅O⁻¹⋅ϕ₊
     mulM!(MO⁻¹ϕ,model,O⁻¹ϕ₊)
@@ -789,13 +762,13 @@ function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, pre
     muldMdx!(dMdx,MO⁻¹ϕ,model,O⁻¹ϕ₋)
     @. dSdx = dSdx - dMdx
 
-    return iters
+    return nothing
 end
 
 """
 Solve `O⋅x=ϕ₊ ==> x=O⁻¹⋅ϕ₊` and `O⋅x=ϕ₋ ==> x=O⁻¹⋅ϕ₋` where `O = Mᵀ⋅M`.
 """
-function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I)::Int where {T1,T2}
+function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I, power::T1=1.0)::Int where {T1,T2}
 
     ϕ₊     = hmc.ϕ₊
     M⁻ᵀϕ₊  = hmc.M⁻ᵀϕ₊
@@ -803,20 +776,25 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
     ϕ₋     = hmc.ϕ₋
     M⁻ᵀϕ₋  = hmc.M⁻ᵀϕ₋
     O⁻¹ϕ₋  = hmc.O⁻¹ϕ₋
-
     M⁻ᵀϕ₊′ = hmc.M⁻ᵀϕ₊′
     O⁻¹ϕ₊′ = hmc.O⁻¹ϕ₊′
     M⁻ᵀϕ₋′ = hmc.M⁻ᵀϕ₋′
     O⁻¹ϕ₋′ = hmc.O⁻¹ϕ₋′
-    
     u      = hmc.u
 
     #######################
     ## CALCULATE  O⁻¹⋅ϕ₊ ##
     #######################
 
+    # udpate tolerance used by solver
+    tol = model.solver.tol::T1
+    model.solver.tol = tol^power
+
     # count iterative solver iterations
     hmc.iters = 0
+
+    # setup the precontioer
+    KPMPreconditioners.setup!(preconditioner)
 
     if !model.mul_by_M # if using Conjugate Gradient
 
@@ -830,12 +808,11 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
         end
 
         # solve linear system
-        hmc.iters += ldiv!(O⁻¹ϕ₊,model,ϕ₊,preconditioner)
+        model.transposed=false
+        iters, err = ldiv!(O⁻¹ϕ₊,model,ϕ₊,preconditioner)
+        hmc.iters += iters
 
     else # if using GMRES
-
-        # setup the precontioer
-        KPMPreconditioners.setup!(preconditioner)
 
         if hmc.construct_guess
             # construct initial guess for solution to linear system
@@ -848,7 +825,8 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
 
         # solve linear system
         model.transposed=true
-        hmc.iters += ldiv!(M⁻ᵀϕ₊,model,ϕ₊,preconditioner)
+        iters, err = ldiv!(M⁻ᵀϕ₊,model,ϕ₊,preconditioner)
+        hmc.iters += iters
 
         if hmc.construct_guess
             # construct initial guess for solution to linear system
@@ -861,7 +839,8 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
 
         # solve linear system
         model.transposed=false
-        hmc.iters += ldiv!(O⁻¹ϕ₊,model,M⁻ᵀϕ₊,preconditioner)
+        iters, err = ldiv!(O⁻¹ϕ₊,model,M⁻ᵀϕ₊,preconditioner)
+        hmc.iters += iters
     end
 
     #######################
@@ -880,7 +859,9 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
         end
 
         # solve linear system
-        hmc.iters += ldiv!(O⁻¹ϕ₋,model,ϕ₋,preconditioner)
+        model.transposed=false
+        iters, err = ldiv!(O⁻¹ϕ₋,model,ϕ₋,preconditioner)
+        hmc.iters += iters
         
     else
         
@@ -894,8 +875,9 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
         end
 
         # solve linear system
-        model.transposed=true
-        hmc.iters += ldiv!(M⁻ᵀϕ₋,model,ϕ₋,preconditioner)
+        model.transposed = true
+        iters, err       = ldiv!(M⁻ᵀϕ₋,model,ϕ₋,preconditioner)
+        hmc.iters        += iters
 
         if hmc.construct_guess
             # construct initial guess for solution to linear system
@@ -907,13 +889,17 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
         end
 
         # solve linear system
-        model.transposed=false
-        hmc.iters += ldiv!(O⁻¹ϕ₋,model,M⁻ᵀϕ₋,preconditioner)
+        model.transposed = false
+        iters, err       = ldiv!(O⁻¹ϕ₋,model,M⁻ᵀϕ₋,preconditioner)
+        hmc.iters       += iters
     end
 
     # accounting for the fact that there is a spin up and spin down
     # linear system that needs to be solved
     hmc.iters = cld(hmc.iters,2)
+
+    # revert solvers tolerance to original value
+    model.solver.tol = tol
 
     return hmc.iters
 end

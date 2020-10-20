@@ -64,7 +64,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         # update chemical potential
         if μ_tuner.active
             simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
         end
     end
 
@@ -89,7 +89,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
             end
         end
 
@@ -163,8 +163,8 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
         # update chemical potential
         if μ_tuner.active
-            simulation_time += @elapsed update!(Gr,model,preconditioner,true)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            simulation_time += @elapsed update!(Gr,model,preconditioner)
+            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
         end
     end
 
@@ -185,16 +185,15 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 simulation_time  += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
                 iters            += niters
                 accepted_updates += accepted
-
-                # update chemical potential
-                if μ_tuner.active
-                    simulation_time += @elapsed update!(Gr,model,preconditioner,true)
-                    simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
-                end
             end
 
             # making measurements
             measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
+
+            # update chemical potential
+            if μ_tuner.active
+                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
+            end
         end
 
         # process measurements

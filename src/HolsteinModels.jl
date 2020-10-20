@@ -146,18 +146,24 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     ## VARIBALES FOR SOLVING M⋅x=g VIA ITERATIVELY ##
     #################################################
 
-    "A vector of length `ninidces` to temporarily store data."
-    ytemp::Vector{T2}
-
-    "A vector for storing the temporary product Mᵀ⋅g needed for Conjugate Gradient method."
-    Mᵀg::Vector{T2}
-
-    "If true the default matrix multiplication uses just the M matrix.
-    If false the default matrix multiplication use the symmetric matrix MᵀM instead."
+    "If true the default mul! routine multiplies by the M (or Mᵀ) matrix.
+    If false the default mul! routine multiplies by the symmetric matrix MᵀM (or MMᵀ) instead."
     mul_by_M::Bool
 
-    "If true multiply by Mᵀ instead of M."
+    "If true multiply by Mᵀ (or MMᵀ) instead of M (or MᵀM)."
     transposed::Bool
+
+    "A vector of length `Ndim` to temporarily store data.
+    Used in multiplication by MᵀM or MMᵀ."
+    v′::Vector{T2}
+
+    "A vector of length `Ndim` to temporarily store data.
+    Used to store Mᵀ⋅b result when solving M⋅x=b via MᵀM⋅x=Mᵀ⋅b."
+    v″::Vector{T2}
+
+    "A vector of length `Ndim` to temporarily store data.
+    Used for calculating true residual error after linear solve."
+    v‴::Vector{T2}
 
     """
     Iterative Solver
@@ -252,24 +258,27 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         sign_ωij = Vector{Int}(undef,0)
 
         # temporary vectors
-        ytemp = zeros(T2,Ndim)
+        v′ = zeros(T2,Ndim)
+
+        # temporary vector
+        v″ = zeros(T2,Ndim)
+
+        # temporary vector
+        v‴ = zeros(T2,Ndim)
 
         # if true multiply by Mᵀ instead of M
         transposed = false
 
-        # temporary vector
-        Mᵀg = zeros(T2,Ndim)
-
         # construct solver
         if lowercase(iterativesolver)=="cg"
             mul_by_M = false
-            solver = ConjugateGradient(Mᵀg,tol=tol,maxiter=maxiter)
+            solver = ConjugateGradient(v″,tol=tol,maxiter=maxiter)
         elseif lowercase(iterativesolver)=="gmres"
             mul_by_M = true
-            solver = GMRES(Mᵀg,tol=tol,restart=restart,maxiter=maxiter)
+            solver = GMRES(v″,tol=tol,restart=restart,maxiter=maxiter)
         elseif lowercase(iterativesolver)=="bicgstab"
             mul_by_M = true
-            solver = BiCGStab(Mᵀg,tol=tol,maxiter=maxiter)
+            solver = BiCGStab(v″,tol=tol,maxiter=maxiter)
         end
 
         # get data type of iterative solver used
@@ -280,7 +289,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
                              lattice, x, expnΔτV,
                              bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
                              μ, ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
-                             ytemp, Mᵀg, mul_by_M, transposed, solver)
+                             mul_by_M, transposed, v′, v″, v‴, solver)
     end
 
 end
@@ -315,7 +324,7 @@ function assign_λ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T
 
     if orbit==0
         R = randn(holstein.Nph)
-        @. holstein.μ = μ0 + σ0 * R
+        @. holstein.λ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nph
             if holstein.lattice.site_to_orbit[i]==orbit
@@ -625,20 +634,20 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
     # Notes:
     # • Consider y = ∂M/∂xᵢ(τ)⋅v ==>
     #
-    # • yᵢ(τ) = -∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
-    # • yᵢ(1) = +∂B/∂xᵢ(1)⋅vᵢ(Lτ)  for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = -∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = +∂B/∂xᵢ(1)⋅vᵢ(L)   for τ = 1
     #
     # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
     #
     # • Therefore the final expression is:
-    # • yᵢ(τ-1) = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ > 1
-    # • yᵢ(Lτ)  = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅exp{-Δτ⋅K}⋅vᵢ(1) for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩  = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅exp{-Δτ⋅K}⋅vᵢ(L) for τ = 1
     #
     # • Simplifying a little bit:
-    # • yᵢ(τ) = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
-    # • yᵢ(1) = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(Lτ)  for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(L)   for τ = 1
 
     # ⟨∂M/∂xᵢⱼ(τ)⟩ = v(τ)
     copyto!(dMdx, v)

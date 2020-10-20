@@ -11,7 +11,7 @@ using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
 
-export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, setup!
+export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner, setup!
 
 """
 Object to represent Kenerl Polynomial Expansion.
@@ -115,7 +115,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         v4      = zeros(Complex{T1},N)
         v5      = zeros(Complex{T1},N)
 
-        if typeof(model) <: HolsteinModel # for holstein model
+        if typeof(model) <: HolsteinModel
             cosht̄ .= model.cosht
             sinht̄ .= model.sinht
         elseif typeof(model) <: SSHModel
@@ -149,6 +149,9 @@ that uses Chebyshev Polynomials to approximate M⁻¹[ω,ω].
 abstract type KPMPreconditioner{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel} end
 
 
+"""
+For preconditioning M⋅x=b
+"""
 mutable struct LeftKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
@@ -165,6 +168,9 @@ mutable struct LeftKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 end
 
 
+"""
+For preconditioning Mᵀ⋅x=b
+"""
 mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
@@ -183,6 +189,9 @@ mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 end
 
 
+"""
+For preconditioning M⋅x=b or Mᵀ⋅x=b
+"""
 mutable struct LeftRightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     lkpm::LeftKPMPreconditioner{T1,T2,T3}
@@ -196,6 +205,28 @@ mutable struct LeftRightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T
         expansion = lkpm.expansion
 
         return new{T1,T2,typeof(model)}(lkpm,rkpm,expansion)
+    end
+end
+
+
+"""
+For preconditioning MᵀM⋅x=b
+"""
+mutable struct SymmetricKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
+
+    expansion::KPMExpansion{T1,T2,T3}
+    transposed::Bool
+
+    function SymmetricKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+
+        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        T3        = typeof(model)
+        return new{T1,T2,T3}(expansion,false)
+    end
+
+    function SymmetricKPMPreconditioner(expansion::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
+
+        return new{T1,T2,T3}(expansion,false)
     end
 end
 
@@ -253,8 +284,10 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
     L  = op.model.Lτ::Int
     Δτ = op.model.Δτ
 
-    cosht = op.model.cosht::Matrix{T2}
-    sinht = op.model.sinht::Matrix{T2}
+    cosht       = op.model.cosht::Matrix{T2}
+    sinht       = op.model.sinht::Matrix{T2}
+    t′          = op.model.t′::Matrix{T2}
+    chkbrd_perm = op.model.checkerboard_perm::Vector{Int}
     @fastmath @inbounds for i in 1:N
         op.cosht̄[i] = 0.0
         op.sinht̄[i] = 0.0
@@ -376,7 +409,7 @@ function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T
     @. v′ = c[1] * v
     if order>1
         n = 1 # current order
-        copyto!(uₙ,v) # u₁ = v
+        copyto!(uₙ,v)     # u₁ = v
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
         @fastmath @inbounds while true
             n += 1 # increment order counter
@@ -422,7 +455,7 @@ function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2}
     @. v′ = conj(c[1]) * v
     if order>1
         n = 1 # current order
-        copyto!(uₙ,v) # u₁ = v
+        copyto!(uₙ,v)     # u₁ = v
         mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
         @fastmath @inbounds while true
             n += 1 # increment order counter
@@ -434,6 +467,84 @@ function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2}
             uₙ₊₁ = temp
             # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
             @. v′ += conj(c[n]) * uₙ
+            if n==order
+                break
+            end
+            # uₙ₊₁ = A′⋅uₙ
+            mulA′!(uₙ₊₁,P,uₙ)
+            # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁
+        end
+    end
+
+    return nothing
+end
+
+"""
+Multiply by KPM approximation for M⁻¹[ω,ω]⋅M⁻ᵀ[ω,ω]
+"""
+function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+
+    op    = P.expansion::KPMExpansion{T1,T2}
+    ω     = op.ω # current frequency
+    order = op.order[ω] # order of expansion
+    coeff = op.coeff::Vector{Vector{Complex{T1}}}
+    c     = coeff[ω]::Vector{Complex{T1}}
+
+    # Recursively build `uₙ = Tₙ(A)⋅v`.
+    uₙ₋₁ = op.v3
+    uₙ   = op.v4
+    uₙ₊₁ = op.v5
+
+    # multiply by M⁻ᵀ[ω,ω]
+    P.transposed = true
+
+    # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    @. v′ = conj(c[1]) * v
+    if order>1
+        n = 1 # current order
+        copyto!(uₙ,v)     # u₁ = v
+        mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
+        @fastmath @inbounds while true
+            n += 1 # increment order counter
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += conj(c[n]) * uₙ
+            if n==order
+                break
+            end
+            # uₙ₊₁ = A′⋅uₙ
+            mulA′!(uₙ₊₁,P,uₙ)
+            # uₙ₊₁ = 2⋅A′⋅uₙ - uₙ₋₁
+            @. uₙ₊₁ = 2 * uₙ₊₁ - uₙ₋₁
+        end
+    end
+
+    # Multiply by M⁻¹[ω,ω]
+    P.transposed = false
+
+    if order==1
+        @. v′ *= c[1] # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+    else
+        copyto!(uₙ,v′)    # u₁ = v
+        @. v′ = c[1] * v′ # v′ = c₁⋅u₁ = c₁⋅T₁(A)⋅v
+        n = 1 # current order
+        mulA′!(uₙ₊₁,P,uₙ) # u₂ = A′⋅u₁
+        @fastmath @inbounds while true
+            n += 1 # increment order counter
+            # uₙ₋₁ = uₙ
+            # uₙ   = uₙ₊₁
+            temp = uₙ₋₁
+            uₙ₋₁ = uₙ
+            uₙ   = uₙ₊₁
+            uₙ₊₁ = temp
+            # v′ = v′ + cₙ⋅uₙ = v′ + cₙ⋅Tₙ(A)⋅v
+            @. v′ += c[n] * uₙ
             if n==order
                 break
             end
@@ -513,7 +624,33 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2
     sinht̄ = op.sinht̄::Vector{T2}
 
     @. v′ = expnΔτV̄ * v
-    checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,cosht̄)
+    checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,sinht̄)
+
+    op.checkerboard_count += 1
+
+    return nothing
+end
+
+
+"""
+Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
+"""
+function mulA!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+
+    op      = P.expansion::KPMExpansion{T1,T2,T3}
+    expnΔτV̄ = op.expnΔτV̄::Vector{T1}
+    neighbor_table = op.model.neighbor_table::Matrix{Int}
+    cosht̄ = op.cosht̄::Vector{T2}
+    sinht̄ = op.sinht̄::Vector{T2}
+
+    if P.transposed
+        @. v′ = expnΔτV̄ * v
+        checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,sinht̄)
+    else
+        copyto!(v′,v)
+        checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
+        @. v′ *= expnΔτV̄
+    end
 
     op.checkerboard_count += 1
 

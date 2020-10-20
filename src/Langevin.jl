@@ -24,8 +24,6 @@ include("TightBindingFFTs.jl")
 
 include("Models.jl")
 
-include("MuFinder.jl")
-
 include("KPMPreconditioners.jl")
 
 include("InitializePhonons.jl")
@@ -43,6 +41,8 @@ include("GreensFunctions.jl")
 include("SimulationParams.jl")
 
 include("Measurements.jl")
+
+include("MuFinder.jl")
 
 include("RunSimulation.jl")
 
@@ -90,7 +90,7 @@ function simulate(args)
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary!(model, sim_params, container, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+    write_simulation_summary!(model, sim_params, μ_tuner, container, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
 
 end
 

@@ -329,19 +329,8 @@ end
 #################################################
 
 """
-    function calc_dSdx!(dSdx::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::AbstractVector{T1},M⁻¹g::AbstractVector{T1},holstein::HolsteinModel{T1,T2},tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
-
 Calculates all of the partial derivatives ∂S/∂xᵢ(τ) and stores each partial derivative in a vector dSdx.
 The expression we are evaluating is `∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ[∂M/∂xᵢ(τ)]⋅M⁻¹g`.
-# Arguments
-- `dSdx::AbstractVector{T1}`: vector the will be modified to contain all the partial derivatives ∂S/∂xᵢ(τ)
-- `g::AbstractVector{T1}`: A random vector.
-- `Mᵀg::AbstractVector{T1}`: Vector containing the product Mᵀg
-- `M⁻¹g::AbstractVector{T1}`: A vector the will contain the solution of the linear equation M⋅v=g when computed.
-- `holstein::HolsteinModel{T1,T2}`: Type represent holstein model being simulated.
-- `tol::AbstractFloat`: The tolerance used when solving the linear equation M⋅v=g in order to get M⁻¹g.
-# Returns
-- `iters::Int`: Number of iterations used to solve for M⁻¹g.
 """
 function calc_dSdx!(dSdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::AbstractVector{T2},
                     model::AbstractModel{T1,T2,T3}, preconditioner=I)::Int where {T1,T2,T3}
@@ -380,9 +369,10 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Ab
         model.transposed = false
         iters = ldiv!(M⁻¹g,model,g,preconditioner)
     else
+        model.transposed=false
         # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g
-        mulMᵀ!(model.Mᵀg,model,g)
-        iters = ldiv!(M⁻¹g,model,model.Mᵀg,preconditioner)
+        mulMᵀ!(model.v″,model,g)
+        iters = ldiv!(M⁻¹g,model,model.v″,preconditioner)
     end
 
     # ⟨∂M/∂xᵢ(τ)⟩=gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g

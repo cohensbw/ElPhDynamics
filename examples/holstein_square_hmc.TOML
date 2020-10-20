@@ -120,9 +120,6 @@ trajectory_time = 1.0
 # timestep size
 dt = 0.1
 
-# BDP thermostat time scale
-tau = "Inf"
-
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
 

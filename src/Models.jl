@@ -1,6 +1,8 @@
 module Models
 
 using LinearAlgebra
+using Logging
+using Printf
 
 import Base: eltype, size, length, *
 import LinearAlgebra: mul!, ldiv!, transpose!
@@ -69,16 +71,32 @@ include("SSHModels.jl")
 """
 Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b.
 """
-function ldiv!(x::AbstractVector, model::AbstractModel, b::AbstractVector, P)::Int
-
+function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector, P)::Tuple{Int,T1} where {T1,T2,T3}
+    
     iters = solve!(x, model, b, model.solver, P)
-    return iters
+
+    # calculate residual error
+    v    = model.v‴
+    mul!(v,model,x)
+    @. v = v - b
+    err  = norm(v)/norm(b)
+    # @info("Residual Error = "*string(err)*", Iterations = "*string(iters))
+    
+    return (iters,err)
 end
 
-function ldiv!(x::AbstractVector, model::AbstractModel, b::AbstractVector)::Int
+function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector)::Tuple{Int,T1} where {T1,T2,T3}
 
     iters = solve!(x, model, b, model.solver)
-    return iters
+
+    # calculate residual error
+    v    = model.v‴
+    mul!(v,model,x)
+    @. v = v - b
+    err  = norm(v)/norm(b)
+    # @info("Residual Error = "*string(err)*", Iterations = "*string(iters))
+
+    return (iters,err)
 end
 
 
@@ -87,13 +105,20 @@ Default multiplication routine for AbstractModel type.
 """
 function mul!(y::AbstractVector{T2},model::AbstractModel{T1,T2},v::AbstractVector{T2}) where {T1,T2}
 
-    if !model.mul_by_M
-        mulMᵀM!(y,model,v)
-    elseif !model.transposed
-        mulM!(y,model,v)
+    if model.mul_by_M
+        if model.transposed
+            mulMᵀ!(y,model,v)
+        else
+            mulM!(y,model,v)
+        end
     else
-        mulMᵀ!(y,model,v)
+        if model.transposed
+            mulMMᵀ!(y,model,v)
+        else
+            mulMᵀM!(y,model,v)
+        end
     end
+
     return nothing
 end
 
@@ -104,17 +129,31 @@ Perform the multiplication y = MᵀM⋅v
 function mulMᵀM!(y::AbstractVector{T2},model::AbstractModel{T1,T2},v::AbstractVector{T2}) where {T1,T2}
 
     # y' = M⋅v
-    mulM!(model.ytemp, model, v)
+    mulM!(model.v′, model, v)
 
     # y  = Mᵀ⋅y' = MᵀM⋅v
-    mulMᵀ!(y, model, model.ytemp)
+    mulMᵀ!(y, model, model.v′)
+
+    return nothing
+end
+
+"""
+Perform the multiplication y = MMᵀ⋅v
+"""
+function mulMMᵀ!(y::AbstractVector{T2},model::AbstractModel{T1,T2},v::AbstractVector{T2}) where {T1,T2}
+
+    # y' = Mᵀ⋅v
+    mulMᵀ!(model.v′, model, v)
+
+    # y  = M⋅y' = MMᵀ⋅v
+    mulM!(y, model, model.v′)
 
     return nothing
 end
 
 
 """
-Tranpose M ⇆ Mᵀ with regards to application of mul! routine.
+Tranpose M ⇆ Mᵀ (MᵀM ⇆ MMᵀ) with regards to application of mul! routine.
 """
 function transpose!(model::AbstractModel)
 

@@ -4,6 +4,7 @@ using Printf
 using FFTW
 using LinearAlgebra
 using Parameters
+using Statistics
 
 using ..Utilities: get_index, get_site, get_τ, θ, δ, reshaped, translational_average!, simpson
 using ..Models: HolsteinModel, SSHModel, AbstractModel
@@ -49,8 +50,9 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     ## GLOBAL MEASUREMENTS ##
     #########################
     
-    container.global_meas["compressibility"] = Complex{T1}(0.0)
-    container.global_meas["density"]         = Complex{T1}(0.0)
+    container.global_meas["Nsqr"]    = Complex{T1}(0.0)
+    container.global_meas["density"] = Complex{T1}(0.0)
+    container.global_meas["mu"]      = Complex{T1}(0.0)
 
     ##########################    
     ## ON-SITE MEASUREMENTS ##
@@ -64,6 +66,7 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container.onsite_meas["phonon_pe"]   = zeros(Complex{T1},nₒ)
     container.onsite_meas["phonon_ke"]   = zeros(Complex{T1},nₒ)
     container.onsite_meas["elph_energy"] = zeros(Complex{T1},nₒ)
+    container.onsite_meas["mu"]          = zeros(Complex{T1},nₒ)
 
     # determining whether s-wave susceptibility is measured
     if haskey(info,"PairGreens")
@@ -133,8 +136,9 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     ## GLOBAL MEASUREMENTS ##
     #########################
     
-    container.global_meas["compressibility"] = Complex{T1}(0.0)
-    container.global_meas["density"]         = Complex{T1}(0.0)
+    container.global_meas["density"] = Complex{T1}(0.0)
+    container.global_meas["Nsqr"]    = Complex{T1}(0.0)
+    container.global_meas["mu"]      = Complex{T1}(0.0)
 
     ##########################    
     ## ON-SITE MEASUREMENTS ##
@@ -142,6 +146,7 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
 
     container.onsite_meas["density"]    = zeros(Complex{T1},nₒ)
     container.onsite_meas["double_occ"] = zeros(Complex{T1},nₒ)
+    container.onsite_meas["mu"]         = zeros(Complex{T1},nₒ)
 
     # determining whether s-wave susceptibility is measured
     if haskey(info,"PairGreens")
@@ -368,11 +373,11 @@ Write measurements to file.
 """
 function write_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2},bin::Int) where {T1,T2}
 
-    write_global_measurements!(    container.global_meas,    sim_params,model, bin)
-    write_onsite_measurements!(    container.onsite_meas,    sim_params,model, bin)
-    write_intersite_measurements!( container.intersite_meas, sim_params,model, bin)
-    write_correlations!(           container.onsite_corr,    sim_params,model, bin)
-    write_correlations!(           container.intersite_corr, sim_params,model, bin)
+    write_global_measurements!(    container.global_meas,    sim_params, model, bin)
+    write_onsite_measurements!(    container.onsite_meas,    sim_params, model, bin)
+    write_intersite_measurements!( container.intersite_meas, sim_params, model, bin)
+    write_correlations!(           container.onsite_corr,    sim_params, model, bin)
+    write_correlations!(           container.intersite_corr, sim_params, model, bin)
 
     return nothing
 end
@@ -476,21 +481,16 @@ Make global measurements.
 """
 function make_global_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction)
 
-    @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, NL, N, L = Gr
-    @unpack β = model
+    # measure density ⟨n̂⟩
+    n  = measure_density(model,Gr)
+    container.global_meas["density"] += n
 
-    # measure ⟨N⟩
-    nup = (NL - dot(M⁻¹r₁,r₁))/L
-    ndn = (NL - dot(M⁻¹r₂,r₂))/L
-    n   = nup + ndn
-    container.global_meas["density"] += n/N
+    # measure ⟨N̂²⟩
+    N² = measure_N²(model,Gr)
+    container.global_meas["Nsqr"] += N²
 
-    # measure ⟨N²⟩
-    n² = 4/L^2 * (NL-dot(r₁,M⁻¹r₁)) * (NL-dot(r₂,M⁻¹r₂))
-
-    # measure compressibility κ=(β/N)⋅(⟨N²⟩-⟨N⟩²)
-    κ = β*(n²-n^2)/N
-    container.global_meas["compressibility"] += κ
+    # measure μ
+    container.global_meas["mu"] += mean(model.μ)
 
     return nothing
 end
@@ -621,6 +621,8 @@ function make_onsite_measurements!(container::NamedTuple,model::HolsteinModel,Gr
                 onsite_meas["x2"][orbit] += x[index]^2 / normalization
                 # measure ⟨x⁴⟩
                 onsite_meas["x4"][orbit] += x[index]^4 / normalization
+                # measure chemical potential
+                onsite_meas["mu"][orbit] += model.μ[site] / normalization
             end
         end
     end
@@ -667,6 +669,8 @@ function make_onsite_measurements!(container::NamedTuple,model::SSHModel,Gr::Est
                 onsite_meas["density"][orbit] += ((1.0-G1)+(1.0-G2)) / normalization
                 # measure double occupancy
                 onsite_meas["double_occ"][orbit] += (1.0-G1)*(1.0-G2) / normalization
+                # measure chemical potential
+                onsite_meas["mu"][orbit] += model.μ[site] / normalization
             end
         end
     end
@@ -937,6 +941,72 @@ function write_correlation!(filename::String,correlations::Array{Complex{T},6},b
         end
     end
     return nothing
+end
+
+######################################
+## IMPLEMENTING GLOBAL MEASUREMENTS ##
+######################################
+
+"""
+Measure density ⟨n̂⟩.
+"""
+function measure_density(model::AbstractModel,estimator::EstimateGreensFunction)
+
+    @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, N, L = estimator
+
+    N₁ = 2*(N - dot(M⁻¹r₁,r₁)/L)
+    N₂ = 2*(N - dot(M⁻¹r₂,r₂)/L)
+    n  = (N₁+N₂)/(2*N)
+
+    return n
+end
+
+"""
+Measure ⟨N̂²⟩.
+"""
+function measure_N²(model::AbstractModel,estimator::EstimateGreensFunction)
+
+    @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, GΔ0, GΔ0_G0Δ, L, N, NL, nₛ = estimator
+    @unpack β = model
+
+    N₁      = 2*(N - dot(M⁻¹r₁,r₁)/L)
+    N₂      = 2*(N - dot(M⁻¹r₂,r₂)/L)
+    Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
+    N²      = N₁*N₂ + dot(M⁻¹r₁,r₁)/L + dot(M⁻¹r₂,r₂)/L - 2*(N/nₛ)*sum(Gr0_G0r)
+
+    return N²
+end
+
+"""
+Measure the compressibility κ.
+β  = inverse temperature
+N   = system size/sites in lattice
+N²  = ⟨N̂²⟩
+ΔN² = error in measurement of ⟨N̂²⟩
+n   = density ⟨n̂⟩
+Δn  = error in measurement of density ⟨n̂⟩
+"""
+function measure_κ(β,N,N²,ΔN²,n,Δn)
+
+    # calculate ⟨N̂⟩
+    N̄ = N * n
+
+    # calculate ⟨N̂⟩²
+    N̄² = (N̄)^2
+
+    # calculate error in measurement of ⟨N̂⟩
+    ΔN̄ = N*Δn
+
+    # calculate error in measurement of ⟨N̂⟩²
+    ΔN̄² = 2*N̄*ΔN̄
+
+    # calculate κ = β⋅(⟨N̂²⟩-⟨N̂⟩²)
+    κ = β*(N²-N̄²)
+
+    # calculate error in measurement of κ
+    Δκ = sqrt( ΔN²^2 + ΔN̄²^2 )
+
+    return κ/N, Δκ/N
 end
 
 ############################################################
