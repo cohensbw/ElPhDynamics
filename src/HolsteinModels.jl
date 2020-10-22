@@ -2,7 +2,7 @@ using Statistics
 using Printf
 
 using ..UnitCells: UnitCell
-using ..Lattices: Lattice, sorted_neighbor_table_perm, loc_to_site, calc_neighbor_table
+using ..Lattices: Lattice, sorted_neighbor_table_perm!, loc_to_site, calc_neighbor_table
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!, checkerboard_order, checkerboard_groups
 using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, BiCGStab, solve!
 using ..Utilities: get_index
@@ -455,7 +455,7 @@ function initialize_model!(holstein::HolsteinModel)
         holstein.sinht = @. sinh(holstein.Δτ*holstein.t)
 
         # sort neighbor_table
-        perm = sorted_neighbor_table_perm(holstein.neighbor_table)
+        perm = sorted_neighbor_table_perm!(holstein.neighbor_table)
         holstein.neighbor_table .= holstein.neighbor_table[:,perm]
         holstein.cosht          .= holstein.cosht[perm]
         holstein.sinht          .= holstein.sinht[perm]

@@ -384,7 +384,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     copyto!(v0,v)
 
     # log HMC state
-    if hmc.log & hmc.verbose
+    if hmc.log && hmc.verbose
         update_log(hmc)
     end
 
@@ -413,7 +413,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         @. v = v - Δt/2*QdSdx
 
         # log HMC state
-        if hmc.log & hmc.verbose
+        if hmc.log && hmc.verbose
             update_log(hmc)
         end
     end
@@ -498,7 +498,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     copyto!(v0,v)
 
     # log HMC state
-    if hmc.log & hmc.verbose
+    if hmc.log && hmc.verbose
         update_log(hmc)
     end
 
@@ -551,7 +551,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         @. v = v - Δt/2*QdSfdx
 
         # log HMC state
-        if hmc.log & hmc.verbose
+        if hmc.log && hmc.verbose
             update_log(hmc)
         end
     end

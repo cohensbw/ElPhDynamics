@@ -7,7 +7,7 @@ using ..UnitCells: UnitCell, monkhorst_pack_mesh, calc_site_pos!
 export Lattice
 export loc_to_cell, loc_to_site, site_to_site
 export translationally_equivalent_sets
-export calc_neighbor_table, sorted_neighbor_table_perm
+export calc_neighbor_table, sorted_neighbor_table_perm!
 export site_to_site_vec!, site_to_site_vec
 
 """
@@ -320,9 +320,20 @@ end
 Returns the permutation that sorts the neighbor table so that the first row is in strictly ascending order,
 and for fixed values in the first row, the second row is also in ascending order.
 """
-function sorted_neighbor_table_perm(neighbor_table::Matrix{Int})::Vector{Int}
+function sorted_neighbor_table_perm!(neighbor_table::Matrix{Int})::Vector{Int}
     
     @assert size(neighbor_table,1)==2
+
+    # make sure smaller number is always in first column of neighbor table
+    for i in 1:size(neighbor_table,2)
+        c1 = neighbor_table[1,i]
+        c2 = neighbor_table[2,i]
+        if c1 > c2
+            neighbor_table[1,i] = c2
+            neighbor_table[2,i] = c1
+        end
+    end
+
     vals = maximum(neighbor_table)*neighbor_table[1,:] + neighbor_table[2,:]
     perm = sortperm(vals)
     return perm

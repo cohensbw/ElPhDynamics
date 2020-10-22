@@ -4,7 +4,7 @@ using LinearAlgebra
 import LinearAlgebra: mul!, ldiv!, transpose!
 
 using ..UnitCells: UnitCell
-using ..Lattices: Lattice, sorted_neighbor_table_perm, loc_to_site, calc_neighbor_table
+using ..Lattices: Lattice, sorted_neighbor_table_perm!, loc_to_site, calc_neighbor_table
 using ..Checkerboard: checkerboard_order, checkerboard_groups, checkerboard_mul!, checkerboard_transpose_mul!
 using ..IterativeSolvers: GMRES, ConjugateGradient, BiCGStab
 using ..Utilities: get_index, get_τ, δ, reshaped
@@ -346,7 +346,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     end
 
     # sort neighbor_table
-    perm                = sorted_neighbor_table_perm(ssh.neighbor_table)
+    perm                = sorted_neighbor_table_perm!(ssh.neighbor_table)
     ssh.neighbor_table .= ssh.neighbor_table[:,perm]
 
     # get checkerboard groups

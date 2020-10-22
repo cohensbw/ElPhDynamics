@@ -193,7 +193,7 @@ function process_input_file(filename::String)
         else
             log = false
         end
-        if log & haskey(input["hmc"],"verbose")
+        if log && haskey(input["hmc"],"verbose")
             verbose = input["hmc"]["verbose"]
         else
             verbose = false
