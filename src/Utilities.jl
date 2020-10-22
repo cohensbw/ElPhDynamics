@@ -67,7 +67,7 @@ end
 """
 Simpson integration over vector.
 """
-function simpson(f::AbstractVector{T1},dx::T2) where {T1<:Number,T2<:Number}
+function simpson(f::AbstractVector{T1},dx::T2)::T1 where {T1<:Number,T2<:Number}
 
     L = length(f)
     F = T1(0.0)

@@ -628,7 +628,7 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
                                 # calculate average and error of measurement
                                 avg, err = mean_and_error(data)
                                 # write to file
-                                line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃,l₂,l₁,τ,avg,err)
+                                line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
                                 write(fout,line)
                                 write(statsout,line)
                             end
