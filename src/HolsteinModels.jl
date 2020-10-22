@@ -727,7 +727,7 @@ function write_phonons!(holstein::HolsteinModel,filename::String)
                             xi = x[i]
 
                             # write to file
-                            write(file, @sprintf("%d %d %d %d %d %.6f\n",τ-1,orbit,l1,l2,l3,xi))
+                            write(file, @sprintf("%d %d %d %d %d %.6f\n",l3,l2,l1,orbit,τ,xi))
                         end
                     end
                 end
@@ -756,11 +756,11 @@ function read_phonons!(holstein::HolsteinModel{T1,T2,T3},filename::String) where
             atoms = split(line," ")
 
             # extract info about location
-            τ     = parse(Int,atoms[1]) + 1
-            orbit = parse(Int,atoms[2])
+            τ     = parse(Int,atoms[5])
+            orbit = parse(Int,atoms[4])
             l1    = parse(Int,atoms[3])
-            l2    = parse(Int,atoms[4])
-            l3    = parse(Int,atoms[5])
+            l2    = parse(Int,atoms[2])
+            l3    = parse(Int,atoms[1])
 
             # get phonon field value
             xi = parse(T1,atoms[6])

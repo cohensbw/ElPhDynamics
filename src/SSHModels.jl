@@ -696,33 +696,30 @@ Writes the current phonon field configuration to file.
 """
 function write_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3}
 
-    # get info about size of lattice and number of phonons
-    Lₜ = ssh.Lτ
-    L₁ = ssh.lattice.L1
-    L₂ = ssh.lattice.L1
-    L₃ = ssh.lattice.L1
-    n  = ssh.nph
+    if ssh.Nph>0
 
-    # get phonon fields
-    x = reshaped(ssh.x,(Lₜ,L₁,L₂,L₃,n))
+        # get info about size of lattice and number of phonons
+        L  = ssh.Lτ
+        n  = ssh.nph
+        N  = div(ssh.Nph,n)
 
-    # open file
-    open(filename,"w") do file
+        # get phonon fields
+        x = reshaped(ssh.x,(L,N,n))
 
-        # write header to file
-        write(file, "phonon L3 L2 L1 Lt x\n")
+        # open file
+        open(filename,"w") do file
 
-        # iterate over phonon fileds
-        for phonon in 1:n
-            for l₃ in 0:L₃-1
-                for l₂ in 0:l₂-1
-                    for l₁ in 0:l₁-1
-                        for τ in 1:Lₜ
-                            # get phonon field
-                            x₀ = x[τ,l₁+1,l₂+1,l₃+1,phonon]
-                            # write to file
-                            write(file, @sprintf("%d %d %d %d %d %.6f\n",phonon,l₃,l₂,l₁,τ,x₀))
-                        end
+            # write header to file
+            write(file, "type loc tau x\n")
+
+            # iterate over phonon fileds
+            for phonon in 1:n
+                for i in 1:N
+                    for τ in 1:L 
+                        # get phonon field
+                        x₀ = x[τ,i,phonon]
+                        # write to file
+                        write(file, @sprintf("%d %d %d %.6f\n",phonon,i,τ,x₀))
                     end
                 end
             end
@@ -738,14 +735,12 @@ Read phonon config from file.
 function read_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3}
 
     # get info about size of lattice and number of phonons
-    Lₜ = ssh.Lτ
-    L₁ = ssh.lattice.L1
-    L₂ = ssh.lattice.L1
-    L₃ = ssh.lattice.L1
+    L  = ssh.Lτ
     n  = ssh.nph
+    N  = div(ssh.Nph,n)
 
     # get phonon fields
-    x = reshaped(ssh.x,(Lₜ,L₁,L₂,L₃,n))
+    x = reshaped(ssh.x,(L,N,n))
 
     # open file
     open(filename,"r") do file
@@ -761,14 +756,12 @@ function read_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3
 
             # extract info about phonon field and location
             phonon = parse(Int,atoms[1])
-            l₃     = parse(Int,atoms[2])
-            l₁     = parse(Int,atoms[3])
-            l₂     = parse(Int,atoms[4])
-            τ      = parse(Int,atoms[5])
-            x₀     = parse(T1, atoms[6])
+            cell   = parse(Int,atoms[2])
+            τ      = parse(Int,atoms[3])
+            x₀     = parse(T1, atoms[4])
 
             # record phonon field
-            x[τ,l₁+1,l₂+1,l₃+1,phonon] = x₀
+            x[τ,i,phonon] = x₀
         end
     end
 

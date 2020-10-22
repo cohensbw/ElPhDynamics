@@ -79,10 +79,13 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
     v    = model.v‴
     mul!(v,model,x)
     @. v = v - b
-    err  = norm(v)/norm(b)
-    # @info("Residual Error = "*string(err)*", Iterations = "*string(iters))
+    residual_error = norm(v)/norm(b)
+
+    if residual_error > sqrt(model.solver.tol)
+        error("Large Residual Error = "*string(residual_error)*", Iterations = "*string(iters))
+    end
     
-    return (iters,err)
+    return (iters,residual_error)
 end
 
 function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector)::Tuple{Int,T1} where {T1,T2,T3}
@@ -93,10 +96,13 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
     v    = model.v‴
     mul!(v,model,x)
     @. v = v - b
-    err  = norm(v)/norm(b)
-    # @info("Residual Error = "*string(err)*", Iterations = "*string(iters))
+    residual_error  = norm(v)/norm(b)
+    
+    if residual_error > sqrt(model.solver.tol)
+        error("Large Residual Error = "*string(residual_error)*", Iterations = "*string(iters))
+    end
 
-    return (iters,err)
+    return (iters,residual_error)
 end
 
 
