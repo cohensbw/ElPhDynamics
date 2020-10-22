@@ -2006,7 +2006,6 @@ function measure_swave!(container::NamedTuple,model::AbstractModel{T1,T2,T3}) wh
 
         # to container S-wave susceptibility measurement
         swave = container.onsite_meas.swave_susc
-        fill!(swave,0)
         
         # number of orbitals per unit cell
         nₒ = model.lattice.unit_cell.norbits::Int
@@ -2014,35 +2013,35 @@ function measure_swave!(container::NamedTuple,model::AbstractModel{T1,T2,T3}) wh
         L₂ = model.lattice.L2
         L₃ = model.lattice.L3
 
-        # array contain momentum space pair green's function
-        pairs = container.onsite_corr.PairGreens.momentum::Array{Complex{T1},6}
-
-        @uviews pairs begin
-            for o in 1:nₒ
-                p        = @view pairs[:,1,1,1,o,o]
-                swave[o] = simpson(p,model.Δτ)
-            end
-        end
-
-        # # array contain position space pair green's function
-        # pairs = container.onsite_corr.PairGreens.position::Array{Complex{T1},6}
+        # # array contain momentum space pair green's function
+        # pairs = container.onsite_corr.PairGreens.momentum::Array{Complex{T1},6}
 
         # @uviews pairs begin
-        #     # iterate over orbitals
         #     for o in 1:nₒ
-        #         # iterate over displacement vectors
-        #         for l₃ in 1:L₃
-        #             for l₂ in 1:L₂
-        #                 for l₁ in 1:L₁
-        #                     # get pair green's functions for current displacement vector
-        #                     p = @view pairs[:,l₁,l₂,l₃,o,o]
-        #                     # simpson integration of pair green's function to get pair susceptibility
-        #                     swave[o] += simpson(p,model.Δτ)
-        #                 end
-        #             end
-        #         end
+        #         p        = @view pairs[:,1,1,1,o,o]
+        #         swave[o] = simpson(p,model.Δτ)
         #     end
         # end
+
+        # array contain position space pair green's function
+        pairs = container.onsite_corr.PairGreens.position::Array{Complex{T1},6}
+
+        @uviews pairs begin
+            # iterate over orbitals
+            for o in 1:nₒ
+                # iterate over displacement vectors
+                for l₃ in 1:L₃
+                    for l₂ in 1:L₂
+                        for l₁ in 1:L₁
+                            # get pair green's functions for current displacement vector
+                            p = @view pairs[:,l₁,l₂,l₃,o,o]
+                            # simpson integration of pair green's function to get pair susceptibility
+                            swave[o] += simpson(p,model.Δτ)
+                        end
+                    end
+                end
+            end
+        end
     end
 
     return nothing

@@ -341,7 +341,7 @@ function initialize_holstein_model(filename::String)
     if "t" in keys(input["holstein"])
         for t in input["holstein"]["t"]
             stddev = 0.0
-            if "stddev" in keys(t)
+            if haskey(t,"stddev")
                 stddev = t["stddev"]
             end
             assign_t!(holstein, t["val"], stddev, t["orbit"][1], t["orbit"][2], Vector{Int}(t["dL"]))
