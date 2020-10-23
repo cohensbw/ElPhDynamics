@@ -20,8 +20,6 @@ include("IterativeSolvers.jl")
 
 include("TimeFreqFFTs.jl")
 
-include("TightBindingFFTs.jl")
-
 include("Models.jl")
 
 include("KPMPreconditioners.jl")
