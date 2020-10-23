@@ -38,6 +38,9 @@ function initialize_simulation_summary!(model::AbstractModel{T1,T2,T3},sim_param
 
         # write phonon definitions
         write_phonon_definitions!(fout,model)
+
+        # write chemical potential defintions
+        write_chemical_potential_definitions!(fout,model)
     end
 
     return nothing
@@ -171,8 +174,12 @@ function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,
         write(fout,"t_std = ", string(bond.σt), "\n")
         write(fout,"alpha_avg = ", string(bond.α),  "\n")
         write(fout,"alpha_std = ", string(bond.σα), "\n")
+        write(fout,"alpha2_avg = ", string(bond.α₂),  "\n")
+        write(fout,"alpha2_std = ", string(bond.σα₂), "\n")
         write(fout,"omega_avg = ", string(bond.ω),  "\n")
         write(fout,"omega_std = ", string(bond.σω), "\n")
+        write(fout,"omega4avg = ", string(bond.ω₄),  "\n")
+        write(fout,"omega4_std = ", string(bond.σω₄), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
         write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
         write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
@@ -182,6 +189,100 @@ function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,
 end
 
 function write_phonon_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,T2,T3}
+
+    write(fout,"#################################\n")
+    write(fout,"## HOLSTEIN PHONON DEFINITIONS ##\n")
+    write(fout,"#################################\n\n")
+
+    L₁ = model.lattice.L1
+    L₂ = model.lattice.L2
+    L₃ = model.lattice.L3
+    n  = model.lattice.unit_cell.norbits
+
+    ω  = reshape(model.ω,(n,L₁,L₂,L₃))
+    ω₄ = reshape(model.ω₄,(n,L₁,L₂,L₃))
+    λ  = reshape(model.λ,(n,L₁,L₂,L₃))
+    λ₂ = reshape(model.λ₂,(n,L₁,L₂,L₃))
+
+    for o in 1:n
+
+        write(fout,"Orbit = ", string(o), "\n")
+
+        vals  = @view ω[o,:,:,:]
+        avg   = mean(vals)
+        if length(vals)>1
+            stdev = std(vals)
+        else
+            stdev = 0.0
+        end
+        write(fout,"Omega_avg   = ", string(avg), "\n")
+        write(fout,"Omega_std   = ", string(stdev), "\n")
+
+        vals  = @view ω₄[o,:,:,:]
+        avg   = mean(vals)
+        if length(vals)>1
+            stdev = std(vals)
+        else
+            stdev = 0.0
+        end
+        write(fout,"Omega4_avg  = ", string(avg), "\n")
+        write(fout,"Omega4_std  = ", string(stdev), "\n")
+
+        vals  = @view λ[o,:,:,:]
+        avg   = mean(vals)
+        if length(vals)>1
+            stdev = std(vals)
+        else
+            stdev = 0.0
+        end
+        write(fout,"Lambda_avg  = ", string(avg), "\n")
+        write(fout,"Lambda_std  = ", string(stdev), "\n")
+
+        vals  = @view λ₂[o,:,:,:]
+        avg   = mean(vals)
+        if length(vals)>1
+            stdev = std(vals)
+        else
+            stdev = 0.0
+        end
+        write(fout,"Lambda2_avg = ", string(avg), "\n")
+        write(fout,"Lambda2_std = ", string(stdev), "\n","\n")
+    end
+
+    return nothing
+end
+
+"""
+Write chemical potential defintions to file.
+"""
+function write_chemical_potential_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+
+    bonds = model.bond_definitions
+
+    write(fout,"#########################\n")
+    write(fout,"## CHEMICAL POTENTIALS ##\n")
+    write(fout,"#########################\n\n")
+
+    L₁ = model.lattice.L1
+    L₂ = model.lattice.L2
+    L₃ = model.lattice.L3
+    n  = model.lattice.unit_cell.norbits
+
+    μ  = reshape(model.μ,(n,L₁,L₂,L₃))
+
+    for o in 1:n
+
+        vals  = @view μ[o,:,:,:]
+        avg   = mean(vals)
+        if length(vals)>1
+            stdev = std(vals)
+        else
+            stdev = 0.0
+        end
+        write(fout,"Orbit  = ", string(o), "\n")
+        write(fout,"Mu_avg = ", string(avg), "\n")
+        write(fout,"Mu_std = ", string(stdev), "\n", "\n")
+    end
 
     return nothing
 end

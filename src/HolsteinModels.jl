@@ -8,8 +8,8 @@ using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, BiCGStab, s
 using ..Utilities: get_index
 
 export HolsteinModel
-export assign_μ!, assign_ω!, assign_λ!, assign_ω4!
-export assign_t!, assign_ωij!
+export assign_μ!, assign_ω!, assign_λ!, assign_ω₄!
+export assign_t!, assign_ωᵢⱼ!
 export get_index, get_site, get_τ
 export setup_checkerboard!, update_model!
 export write_phonons, read_phonons
@@ -123,24 +123,27 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     "frequency of each phonon"
     ω::Vector{T1}
 
+    "coefficient for anharmonic term X^4"
+    ω₄::Vector{T1}
+
     "local electron-phonon coupling"
     λ::Vector{T1}
 
-    "coefficient for anharmonic term X^4"
-    ω4::Vector{T1}
+    "local non-linear electron-phonon coupling"
+    λ₂::Vector{T1}
 
     ###################################
     ## SPECIFIES HOLSTEIN DISPERSION ##
     ###################################
 
-    "extended holstein frequency of the form ωij(xᵢ±xⱼ)²"
-    ωij::Vector{T1}
+    "extended holstein frequency of the form ωᵢⱼ(xᵢ±xⱼ)²"
+    ωᵢⱼ::Vector{T1}
 
-    "specifies which two sites i,j that are coupled in ωij(xᵢ±xⱼ)²"
-    neighbor_table_ωij::Matrix{Int}
+    "specifies which two sites i,j that are coupled in ωᵢⱼ(xᵢ±xⱼ)²"
+    neighbor_table_ωᵢⱼ::Matrix{Int}
 
-    "specifies the sign: ωij(xᵢ+xⱼ)² or ωij(xᵢ-xⱼ)²"
-    sign_ωij::Vector{Int}
+    "specifies the sign: ωᵢⱼ(xᵢ+xⱼ)² or ωᵢⱼ(xᵢ-xⱼ)²"
+    sign_ωᵢⱼ::Vector{Int}
 
     #################################################
     ## VARIBALES FOR SOLVING M⋅x=g VIA ITERATIVELY ##
@@ -245,17 +248,20 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         # initialize electron-phonon coupling to zero
         λ = zeros(T1,Nph)
 
+        # initialize non-linear electron-phonon coupling to zero
+        λ₂ = zeros(T1,Nph)
+
         # initialize anharmonic X^4 term coefficient
-        ω4 = zeros(T1,Nph)
+        ω₄ = zeros(T1,Nph)
 
         # initizlize empty vector for inter-site phonon frequencies
-        ωij = Vector{T1}(undef,0)
+        ωᵢⱼ = Vector{T1}(undef,0)
 
         # intialize empty matrix for storing inter-site phonon frequency neighbor_table
-        neighbor_table_ωij = Matrix{Int}(undef,2,0)
+        neighbor_table_ωᵢⱼ = Matrix{Int}(undef,2,0)
 
-        # intialize empty vector for sign_ωij
-        sign_ωij = Vector{Int}(undef,0)
+        # intialize empty vector for sign_ωᵢⱼ
+        sign_ωᵢⱼ = Vector{Int}(undef,0)
 
         # temporary vectors
         v′ = zeros(T2,Ndim)
@@ -288,7 +294,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, x, expnΔτV,
                              bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
-                             μ, ω, λ, ω4, ωij, neighbor_table_ωij, sign_ωij,
+                             μ, ω, ω₄, λ, λ₂, ωᵢⱼ, neighbor_table_ωᵢⱼ, sign_ωᵢⱼ,
                              mul_by_M, transposed, v′, v″, v‴, solver)
     end
 
@@ -337,6 +343,25 @@ function assign_λ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T
 end
 
 """
+Assign electron-phonon coupling in model for given type of orbital.
+"""
+function assign_λ₂!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+
+    if orbit==0
+        R = randn(holstein.Nph)
+        @. holstein.λ₂ = μ0 + σ0 * R
+    else
+        for i in 1:holstein.Nph
+            if holstein.lattice.site_to_orbit[i]==orbit
+                holstein.λ₂[i] = μ0 + σ0 * randn()
+            end
+        end
+    end
+        
+    return nothing
+end
+
+"""
 Assign phonon frequency in model.
 """
 function assign_ω!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
@@ -358,15 +383,15 @@ end
 """
 Assign coefficient for quartic phonon term.
 """
-function assign_ω4!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
+function assign_ω₄!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
         R = randn(holstein.Nsites)
-        @. holstein.ω4 = μ0 + σ0 * R
+        @. holstein.ω₄ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nsites
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.ω4[i] = μ0 + σ0 * randn()
+                holstein.ω₄[i] = μ0 + σ0 * randn()
             end
         end
     end
@@ -408,7 +433,7 @@ end
 """
 Define phonon dispersion relationship between phonons.
 """
-function assign_ωij!(holstein::HolsteinModel{T1,T2,T3}, μω::T1, σω::T1, sgn::Int, o1::Int, o2::Int, v::AbstractVector{Int}) where {T1,T2,T3}
+function assign_ωᵢⱼ!(holstein::HolsteinModel{T1,T2,T3}, μω::T1, σω::T1, sgn::Int, o1::Int, o2::Int, v::AbstractVector{Int}) where {T1,T2,T3}
 
     # getting new neighbors accounting for periodic boundary conditions
     newneighbors = calc_neighbor_table(holstein.lattice,o1,o2,v)
@@ -420,14 +445,14 @@ function assign_ωij!(holstein::HolsteinModel{T1,T2,T3}, μω::T1, σω::T1, sgn
     holstein.neighbor_table = hcat(holstein.neighbor_table,newneighbors)
 
     # adding new hopping values
-    append!(holstein.ωij, fill(μω,Nnewneighbors) + σω*randn(Nnewneighbors) )
+    append!(holstein.ωᵢⱼ, fill(μω,Nnewneighbors) + σω*randn(Nnewneighbors) )
 
     # updating neighbor table and parameter values
-    assign_ωij!(holstein,μω,σω,o1,o2,v)
+    assign_ωᵢⱼ!(holstein,μω,σω,o1,o2,v)
 
-    # modifying holsteinmodel.sign_ωij array
+    # modifying holsteinmodel.sign_ωᵢⱼ array
     @assert abs(sgn)==1
-    append!( holstein.sign_ωij , fill(Int,sgn,Nnewneighbors) )
+    append!( holstein.sign_ωᵢⱼ , fill(Int,sgn,Nnewneighbors) )
 
     return nothing
 end
@@ -489,6 +514,7 @@ function update_model!(holstein::HolsteinModel)
 
     expnΔτV  = holstein.expnΔτV
     λ        = holstein.λ
+    λ₂       = holstein.λ₂
     μ        = holstein.μ
     x        = holstein.x
     Δτ       = holstein.Δτ
@@ -502,7 +528,7 @@ function update_model!(holstein::HolsteinModel)
             # getting index in vector
             index = get_index(τ,i,Lτ)
             # updating matrix element exp{-Δτ⋅Vᵢᵢ(τ)} = exp{-Δτ⋅(λᵢ⋅xᵢ(τ)-μᵢ)}
-            expnΔτV[index] = exp( -Δτ * ( λ[i] * x[index] - μ[i] ) )
+            expnΔτV[index] = exp( -Δτ * ( λ[i] * x[index] + λ₂[i] * x[index]^2 +  - μ[i] ) )
         end
     end
 
@@ -661,7 +687,7 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
         # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λᵢ⋅B(1)⋅v(1) for τ=1
         idx_1 = get_index(1,           i,  holstein.Lτ)
         idx_L = get_index(holstein.Lτ, i,  holstein.Lτ)
-        dMdx1_temp = -holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_1] * dMdx[idx_L]
+        dMdx1_temp = -holstein.Δτ * (holstein.λ[i] + 2*holstein.λ₂[i]*holstein.x[idx_1]) * holstein.expnΔτV[idx_1] * dMdx[idx_L]
 
         # iterating over time slices
         for τ in holstein.Lτ:-1:2
@@ -669,7 +695,7 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
             # ⟨∂M/∂xᵢⱼ(τ)⟩ = +Δτ⋅λ⋅B(τ)⋅v(τ) for τ>1
             idx_τ   = get_index(τ,   i, holstein.Lτ)
             idx_τm1 = get_index(τ-1, i, holstein.Lτ)
-            dMdx[idx_τ] = holstein.Δτ * holstein.λ[i] * holstein.expnΔτV[idx_τ] * dMdx[idx_τm1]
+            dMdx[idx_τ] = holstein.Δτ * (holstein.λ[i] + 2*holstein.λ₂[i]*holstein.x[idx_τ]) * holstein.expnΔτV[idx_τ] * dMdx[idx_τm1]
         end
 
         # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λ⋅B(1)⋅v(Lτ) for τ=1

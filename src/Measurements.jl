@@ -634,7 +634,7 @@ function make_onsite_measurements!(container::NamedTuple,model::HolsteinModel,Gr
                 Δx = x[get_index(τ%Lτ+1,site,Lτ)]-x[index]
                 onsite_meas.phonon_ke[orbit] += (0.5/Δτ-(Δx^2)/Δτ²/2) / normalization
                 # measuring phonon potential energy
-                onsite_meas.phonon_pe[orbit] += (model.ω[site]^2*x[index]^2/2 + model.ω4[site]*x[index]^4) / normalization
+                onsite_meas.phonon_pe[orbit] += (model.ω[site]^2*x[index]^2/2 + model.ω₄[site]*x[index]^4) / normalization
                 # measuring the electron phonon energy λ⟨x⋅(n₊+n₋)⟩
                 onsite_meas.elph_energy[orbit] += model.λ[site]*x[index]*(2.0-G1-G2) / normalization
                 # measure ⟨x⟩

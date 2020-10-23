@@ -11,8 +11,8 @@ using ..UnitCells: UnitCell
 using ..Lattices: Lattice
 using ..Models: HolsteinModel, SSHModel
 using ..MuFinder: MuTuner, update_μ!
-using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_ω4!
-using ..Models: assign_t!, assign_ωij!, assign_hopping!
+using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_λ₂!, assign_ω₄!
+using ..Models: assign_t!, assign_ωᵢⱼ!, assign_hopping!
 using ..Models: initialize_model!, update_model!, read_phonons!, mulM!, mulMᵀ!
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
@@ -302,43 +302,47 @@ function initialize_holstein_model(filename::String)
                              restart         = restart)
     
     # adding phonon frequencies
-    for d in input["holstein"]["omega"]
-        stddev = 0.0
-        if "stddev" in keys(d)
-            stddev = d["stddev"]
-        end
-        for orbit in d["orbit"]
-            assign_ω!(holstein,d["val"],stddev,orbit)
+    if haskey(input["holstein"],"omega")
+        for d in input["holstein"]["omega"]
+            stddev = 0.0
+            if haskey(d,"stddev")
+                stddev = d["stddev"]
+            end
+            for orbit in d["orbit"]
+                assign_ω!(holstein,d["val"],stddev,orbit)
+            end
         end
     end
     
     # adding chemical potential
-    for d in input["holstein"]["mu"]
-        stddev = 0.0
-        if "stddev" in keys(d)
-            stddev = d["stddev"]
-        end
-        for orbit in d["orbit"]
-            assign_μ!(holstein,d["val"],stddev,orbit)
+    if haskey(input["holstein"],"mu")
+        for d in input["holstein"]["mu"]
+            stddev = 0.0
+            if haskey(d,"stddev")
+                stddev = d["stddev"]
+            end
+            for orbit in d["orbit"]
+                assign_μ!(holstein,d["val"],stddev,orbit)
+            end
         end
     end
 
     # check in anharmic term defined
-    if "omega4" in keys(input["holstein"])
+    if haskey(input["holstein"],"omega4")
         # adding anharmoic term to holstein model
         for d in input["holstein"]["omega4"]
             stddev = 0.0
-            if "stddev" in keys(d)
+            if haskey(d,"stddev")
                 stddev = d["stddev"]
             end
             for orbit in d["orbit"]
-                assign_ω4!(holstein,d["val"],stddev,orbit)
+                assign_ω₄!(holstein,d["val"],stddev,orbit)
             end
         end
     end
     
     # check if any hopping defined
-    if "t" in keys(input["holstein"])
+    if haskey(input["holstein"],"t")
         for t in input["holstein"]["t"]
             stddev = 0.0
             if haskey(t,"stddev")
@@ -349,13 +353,28 @@ function initialize_holstein_model(filename::String)
     end
 
     # adding electron-phonon coupling
-    for d in input["holstein"]["lambda"]
-        stddev = 0.0
-        if "stddev" in keys(d)
-            stddev = d["stddev"]
+    if haskey(input["holstein"],"lambda")
+        for d in input["holstein"]["lambda"]
+            stddev = 0.0
+            if haskey(d,"stddev")
+                stddev = d["stddev"]
+            end
+            for orbit in d["orbit"]
+                assign_λ!(holstein,d["val"],stddev,orbit)
+            end
         end
-        for orbit in d["orbit"]
-            assign_λ!(holstein,d["val"],stddev,orbit)
+    end
+
+    # adding electron-phonon coupling
+    if haskey(input["holstein"],"lambda2")
+        for d in input["holstein"]["lambda2"]
+            stddev = 0.0
+            if haskey(d,"stddev")
+                stddev = d["stddev"]
+            end
+            for orbit in d["orbit"]
+                assign_λ₂!(holstein,d["val"],stddev,orbit)
+            end
         end
     end
 
@@ -434,6 +453,16 @@ function initialize_ssh_model(filename::String)
             else
                 σα = 0.0
             end
+            if haskey(d,"alpha2_avg")
+                α₂ = d["alpha2_avg"]
+            else
+                α₂ = 0.0
+            end
+            if haskey(d,"alpha2_std")
+                σα₂ = d["alpha2_std"]
+            else
+                σα₂ = 0.0
+            end
             if haskey(d,"omega_avg")
                 ω = d["omega_avg"]
             else
@@ -444,11 +473,21 @@ function initialize_ssh_model(filename::String)
             else
                 σω = 0.0
             end
+            if haskey(d,"omega4_avg")
+                ω₄ = d["omega4_avg"]
+            else
+                ω₄ = 0.0
+            end
+            if haskey(d,"omega4_std")
+                σω₄ = d["omega4_std"]
+            else
+                σω₄ = 0.0
+            end
             o₁ = d["orbits"][1]
             o₂ = d["orbits"][2]
             dL = zeros(Int,3)
             dL[1:length(d["dL"])] .= d["dL"]
-            assign_hopping!(ssh,t,σt,ω,σω,α,σα,o₁,o₂,dL)
+            assign_hopping!(ssh,t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,dL)
         end
     end
 

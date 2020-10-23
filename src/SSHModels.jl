@@ -23,11 +23,23 @@ struct SSHBond{T1<:AbstractFloat,T2<:Continuous} <: AbstractBond
     "Standard deviation phonon frequency."
     σω::T1
 
+    "Anharmonic term coefficient for ω₄⋅X⁴ term."
+    ω₄::T1
+
+    "Standard deviation in ω₄"
+    σω₄::T1
+
     "Average linear electron-phonon coupling"
     α::T1
 
     "Standard deviation linear electron-phonon coupling"
     σα::T1
+
+    "Non-linear electron phonon coupling of the form α₂⋅X²."
+    α₂::T1
+
+    "Standard deviation in α₂."
+    σα₂::T1
 
     "orbital"
     o₁::Int
@@ -41,13 +53,14 @@ struct SSHBond{T1<:AbstractFloat,T2<:Continuous} <: AbstractBond
     "whether or not a phonon lives on the bond."
     has_phonon::Bool
 
-    function SSHBond(t::T2,σt::T2,ω::T1,σω::T1,α::T1,σα::T1,o₁::Int,o₂::Int,v::AbstractVector{Int}) where {T1<:AbstractFloat,T2<:Continuous}
+    function SSHBond(t::T2,σt::T2,ω::T1,σω::T1,ω₄::T1,σω₄::T1,α::T1,σα::T1,α₂::T1,σα₂::T1,
+                     o₁::Int,o₂::Int,v::AbstractVector{Int}) where {T1<:AbstractFloat,T2<:Continuous}
 
         @assert length(v)==3
         v′ = zeros(Int,3)
         copyto!(v′,v)
         has_phonon = !iszero(ω)||!iszero(σω)
-        return new{T1,T2}(t,σt,ω,σω,α,σα,o₁,o₂,v′,has_phonon)
+        return new{T1,T2}(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v′,has_phonon)
     end
 end
 
@@ -98,8 +111,14 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     "Nph phonon frequencies. Ordered in vector by phonon defintion."
     ω::Vector{T1}
 
+    "Anharmonic phonon term ω₄⋅X⁴."
+    ω₄::Vector{T1}
+
     "Nph electron-phonon couplings. Ordered in vector by phonon defintion."
     α::Vector{T2}
+
+    "Non-linear electron-phonon coupling."
+    α₂::Vector{T2}
 
     "Chemical potential"
     μ::Vector{T1}
@@ -210,7 +229,9 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         x                  = Vector{T1}(undef,0)
         t                  = Vector{T2}(undef,0)
         ω                  = Vector{T1}(undef,0)
+        ω₄                 = Vector{T1}(undef,0)
         α                  = Vector{T2}(undef,0)
+        α₂                  = Vector{T2}(undef,0)
         μ                  = zeros(T1,Nsites)
         expΔτμ             = ones(T1,Nsites)
         t′                 = Matrix{T2}(undef,Lτ,0)
@@ -247,7 +268,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
         return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, bond_definitions,
-                             x,t,ω,α,μ,expΔτμ,t′,
+                             x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
                              field_to_phonon,field_to_τ,phonon_to_bond,bond_to_phonon,bond_to_definition,
                              checkerboard_perm,neighbor_table,cosht,sinht,
                              mul_by_M, transposed, v′, v″, v‴, solver)
@@ -257,11 +278,11 @@ end
 """
 Assign hopping (and phonon) in SSH model.
 """
-function assign_hopping!(ssh::SSHModel{T1,T2},t::T2,σt::T1,ω::T1,σω::T1,α::T1,σα::T1,
+function assign_hopping!(ssh::SSHModel{T1,T2},t::T2,σt::T1,ω::T1,σω::T1,ω₄::T1,σω₄::T1,α::T1,σα::T1,α₂::T1,σα₂::T1,
                          o₁::Int,o₂::Int,v::Vector{Int}) where {T1<:AbstractFloat,T2<:Continuous}
 
     # define ssh bond
-    sshbond = SSHBond(t,σt,ω,σω,α,σα,o₁,o₂,v)
+    sshbond = SSHBond(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v)
     push!(ssh.bond_definitions,sshbond)
 
     return nothing
@@ -329,9 +350,17 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             ω_new = @. fill(ω,Nnewbonds) + σω*randn(Nnewbonds)
             append!(ssh.ω, ω_new)
 
+            # adding anharmonic phonon coefficient
+            ω₄_new = @. fill(ω₄,Nnewbonds) + σω₄*randn(Nnewbonds)
+            append!(ssh.ω₄, ω₄_new)
+
             # adding new linear electron-phonon coupling
             α_new = @. phase * ( fill(α,Nnewbonds) + σα*randn(Nnewbonds) )
             append!(ssh.α, α_new)
+
+            # adding new non-linear electron-phonon coupling
+            α₂_new = @. phase * ( fill(α₂,Nnewbonds) + σα₂*randn(Nnewbonds) )
+            append!(ssh.α₂, α₂_new)
 
             # adding phonon to bond mapping
             append!(ssh.phonon_to_bond, collect((i-1)*Nnewbonds+1:i*Nnewbonds))
@@ -408,7 +437,7 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         # getting indexing for checkerboard order
         index = ssh.checkerboard_perm[bond]
         # update matrix elements of exp{-Δτ⋅K} = exp{Δτ⋅(t-α⋅x)}
-        t′                 = ssh.t[bond] - ssh.α[phonon] * ssh.x[field]
+        t′                 = ssh.t[bond] - ssh.α[phonon] * ssh.x[field] - ssh.α₂[phonon] * ssh.x[field]^2
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
         ssh.sinht[τ,index] = sinh(ssh.Δτ*t′)
@@ -604,7 +633,7 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
     #                = uᵀ(1)⋅[-Δτ⋅∂K(1)/∂xᵢⱼ(τ)⋅B(1)]⋅v(L)   for τ = 1
     #                = -uᵀ(1)⋅[Δτ⋅∂K(1)/∂xᵢⱼ(τ)]⋅[B(1)⋅v(L)] for τ = 1
 
-    @unpack cosht, sinht, neighbor_table, checkerboard_perm, Nbonds, Ndof, Nsites, Lτ, Δτ, expΔτμ, α = ssh
+    @unpack cosht, sinht, neighbor_table, checkerboard_perm, Nbonds, Ndof, Nsites, Lτ, Δτ, expΔτμ, α, α₂, x = ssh
     @unpack field_to_phonon, field_to_τ, phonon_to_bond = ssh
 
     ################################
@@ -671,12 +700,18 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
         # electron-phonon coupling associated with phonon
         αᵢⱼ = α[phonon]
 
+        # non-linear electron-phonon coupling
+        α₂ᵢⱼ = α₂[phonon]
+
         # get index into vectors associated (i,τ) and (j,τ) space-time coordinates
         iτ = get_index(τ,i,Lτ)
         jτ = get_index(τ,j,Lτ)
 
+        # get the phonon fields
+        x₀ = x[field]
+
         # ⟨∂M/∂xᵢⱼ(τ)⟩ = +uᵀ(τ)⋅[Δτ⋅∂K(τ)/∂xᵢⱼ(τ)]⋅[B(τ)⋅v(τ-1)]
-        dMdx[field] = Δτ * (αᵢⱼ*u[iτ]*Bv[jτ] + conj(αᵢⱼ)*u[jτ]*Bv[iτ])
+        dMdx[field] = Δτ * ((αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[iτ] * Bv[jτ] + conj(αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[jτ] * Bv[iτ])
 
         # ⟨∂M/∂xᵢⱼ(1)⟩ = -uᵀ(1)⋅[Δτ⋅∂K(1)/∂xᵢⱼ(1)]⋅[B(1)⋅v(L)]
         if τ==1
