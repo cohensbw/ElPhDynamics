@@ -166,7 +166,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     log filename
     """
-    logfile::String
+    logfile::IOStream
 
     """
     How many HMC updates have been performed.
@@ -204,7 +204,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     iters::Int
 
     function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
-                              log::Bool=false, verbose::Bool=false, logfile::String="") where {T<:AbstractFloat}
+                              log::Bool=false, verbose::Bool=false, logfilename::String="") where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
         @assert 0.0 <= α < 1.0
@@ -252,18 +252,15 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         K        = 0.0
         iters    = 0
 
-        if log
-            open(logfile,"w") do fout
-                write(fout,"updates accepted timestep tot_energy action kin_energy iters\n")
-            end
-        end
+        logfile = open(logfilename,"w")
+        write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
 
         return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
                      log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
 
     function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
-                              log::Bool=false, verbose::Bool=false, logfile::String="") where {T<:AbstractFloat}
+                              log::Bool=false, verbose::Bool=false, logfilename::String="") where {T<:AbstractFloat}
 
         @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u, y = hmc
         Nt  = round(Int,tr/Δt)
@@ -277,11 +274,8 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         K        = 0.0
         iters    = 0
 
-        if log
-            open(logfile,"w") do fout
-                write(fout,"updates accepted timestep tot_energy action kin_energy iters\n")
-            end
-        end
+        logfile = open(logfilename,"w")
+        write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
     
         return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
                       log, verbose, logfile, updates, t, accepted, H, S, K, iters)
@@ -294,7 +288,7 @@ Write status of HMC to log file.
 """
 function update_log(hmc::HybridMonteCarlo{T}) where {T<:AbstractFloat}
 
-    @unpack updates, t, accepted, H, S, K, iters = hmc
+    @unpack updates, t, accepted, H, S, K, iters, logfile = hmc
 
     if t==-1
         # outcome of HMC update accept/reject decision
@@ -304,9 +298,9 @@ function update_log(hmc::HybridMonteCarlo{T}) where {T<:AbstractFloat}
         outcome = -1
     end
 
-    open(hmc.logfile,"a") do fout
-        write(fout, @sprintf("%d %d %d %.3f %.3f %.3f %d\n", updates, outcome, t, H, S, K, iters))
-    end
+    write(logfile, @sprintf("%d %d %d %.3f %.3f %.3f %d\n", updates, outcome, t, H, S, K, iters))
+    flush(logfile)
+
     return nothing
 end
 

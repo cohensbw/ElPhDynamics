@@ -991,10 +991,15 @@ function measure_N²(model::AbstractModel,estimator::EstimateGreensFunction)
     @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, GΔ0, GΔ0_G0Δ, L, N, NL, nₛ = estimator
     @unpack β = model
 
-    N₁      = 2*(N - dot(M⁻¹r₁,r₁)/L)
-    N₂      = 2*(N - dot(M⁻¹r₂,r₂)/L)
-    Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
-    N²      = N₁*N₂ + dot(M⁻¹r₁,r₁)/L + dot(M⁻¹r₂,r₂)/L - 2*(N/nₛ)*sum(Gr0_G0r)
+    N² = 0.0
+    @uviews GΔ0_G0Δ begin
+        TrG₁    = dot(M⁻¹r₁,r₁)/L
+        TrG₂    = dot(M⁻¹r₂,r₂)/L
+        N₁      = 2*(N - TrG₁)
+        N₂      = 2*(N - TrG₂)
+        Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
+        N²     += N₁*N₂ + TrG₁ + TrG₂ - 2*(N/nₛ)*sum(Gr0_G0r)
+    end
 
     return N²
 end

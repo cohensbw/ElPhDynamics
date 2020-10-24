@@ -202,7 +202,8 @@ function process_input_file(filename::String)
         hmc_burnin_logfile     = joinpath(sim_params.datafolder,"hmc_burnin_log.out")
 
         @assert 0.0 <= α < 1.0
-        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, α, Nb, construct_guess, log=log, verbose=verbose, logfile=hmc_simulation_logfile)
+        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, α, Nb, construct_guess, log=log, verbose=verbose,
+                                               logfilename=hmc_simulation_logfile)
 
         # defining burnin dynamics
         if haskey(input["hmc"], "burnin")
@@ -224,7 +225,7 @@ function process_input_file(filename::String)
             @assert 0.0 <= α < 1.0
         end
         burnin_dyanmics = HybridMonteCarlo(simulation_dynamics, Δt, tr, α, Nb, construct_guess,
-                                           log=log, verbose=verbose, logfile=hmc_burnin_logfile)
+                                           log=log, verbose=verbose, logfilename=hmc_burnin_logfile)
 
     elseif input["langevin"]["update_method"]==1
 

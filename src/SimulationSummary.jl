@@ -178,7 +178,7 @@ function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,
         write(fout,"alpha2_std = ", string(bond.σα₂), "\n")
         write(fout,"omega_avg = ", string(bond.ω),  "\n")
         write(fout,"omega_std = ", string(bond.σω), "\n")
-        write(fout,"omega4avg = ", string(bond.ω₄),  "\n")
+        write(fout,"omega4_avg = ", string(bond.ω₄),  "\n")
         write(fout,"omega4_std = ", string(bond.σω₄), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
         write(fout,"Final Orbit   = ", string(bond.o₂), "\n")

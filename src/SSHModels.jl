@@ -319,7 +319,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     for i in 1:ssh.nbonds
 
         # getting parameters that define bond
-        @unpack t, σt, α, σα, ω, σω, o₁, o₂, v, has_phonon = ssh.bond_definitions[i]
+        @unpack t, σt, α, σα, α₂, σα₂, ω, σω, ω₄, σω₄, o₁, o₂, v, has_phonon = ssh.bond_definitions[i]
 
         # calculate new neighbors
         new_neighbors = calc_neighbor_table(ssh.lattice,o₁,o₂,v)
