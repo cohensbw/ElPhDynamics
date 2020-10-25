@@ -51,34 +51,20 @@ struct SimulationParameters
         # calculating the number of langevin time steps per bin
         bin_steps = meas_freq*bin_size
 
-        # formatting filepath
-        if !endswith(filepath,"/")
-            filepath *= "/"
-        end
-
         # data folder, including complete path to folder
-        datafolder = filepath*foldername
+        datafolder = joinpath(filepath,foldername)
 
-        # create datafolder
-        id = 0
+        # add ID number of foldername
+        ID = 0
         while true
-            id += 1
-            datafolderID = datafolder * "-" * string(id)
+            ID += 1
+            datafolderID = datafolder * "-" * string(ID)
+            foldernameID = foldername * "-" * string(ID)
             if !isdir(datafolderID)
                 datafolder = datafolderID
-                foldername = foldername * "-" * string(id)
+                foldername = foldernameID
                 break
             end
-        end
-
-        # formatting foldername
-        if !endswith(foldername,"/")
-            foldername *= "/"
-        end
-
-        # formatting datafolder name
-        if !endswith(datafolder,"/")
-            datafolder *= "/"
         end
 
         new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername,datafolder)

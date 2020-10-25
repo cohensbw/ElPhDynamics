@@ -1,0 +1,213 @@
+# NOTE: COMMAND TO RUN SIMULATION
+# julia -O3 -e "using Langevin; simulate(ARGS)" -- langevin_input.TOML
+
+######################
+## DEFINING LATTICE ##
+######################
+
+[lattice]
+
+# number of dimensions
+ndim = 2
+
+# number of orbitals/sites per unit cell
+norbits = 1
+
+# define lattice vectors.
+lattice_vectors = [[1.0,0.0], # first lattice vector
+                   [0.0,1.0]] # second lattice vector
+
+# define basis vectors
+basis_vectors = [[0.0,0.0]] # first basis vector
+
+# size of lattice
+L = 4
+
+#############################
+## DEFINING HOLSTEIN MODEL ##
+#############################
+
+[holstein]
+
+# whether to initialize phonons from file
+read_phonon_config = false
+
+# filename to read phonon config from
+phonon_config_file = "phonon_config.out"
+
+# discretization
+dtau = 0.1
+
+# setting temperature
+beta = 2.0
+
+# define hopping in lattice
+[[holstein.t]]
+val    = 1.0     # mean value
+stddev = 0.0       # (optional) standard deviation
+orbit  = [1, 1]    # orbital types being connected
+dL     = [1, 0, 0] # displacement vector in unit cells
+
+# define hopping in lattice
+[[holstein.t]]
+val   = 1.0
+orbit = [1, 1]
+dL    = [0, 1, 0]
+
+# define phonon frequency
+[[holstein.omega]]
+orbit  = [1] # which orbital types the omega value is applied to
+val    = 1.0 # mean value used for parameter
+stddev = 0.0 # (optional) standard deviation
+
+# define electron-phonon coupling
+[[holstein.lambda]]
+orbit = [1]
+val   = 1.0
+
+# define chemical potential
+[[holstein.mu]]
+orbit = [1]
+val   = -1.0
+
+# define anharmonic term of form X^4
+[[holstein.omega4]]
+orbit  = [1]
+val    = 0.0
+
+###################################
+## DEFINING FOURIER ACCELERATION ##
+###################################
+
+[[fourier_acceleration]]
+omega_min = 0.0
+omega_max = 10.0
+mass      = 0.5
+
+#########################
+## LANGEVIN PARAMETERS ##
+#########################
+
+[langevin]
+
+# thermaliztion timesteps
+burnin_timesteps = 100_000
+
+# simulation timesteps
+simulation_timesteps = 500_000
+
+# timestep size
+dt = 1e-3
+
+# measurement frequency ie how many time steps between measurements
+meas_freq = 1000
+
+# what type of update method to use.
+# 1: Euler Upate + Fourier Acceleration
+# 2: Runge-Kutta Update + Fourier Acceleration
+update_method = 2
+
+###########################
+## SIMULATION PARAMETERS ##
+###########################
+
+[simulation]
+
+# filepath to where to write data
+filepath = "."
+
+# name of folder for data to get dumped into
+foldername = "holstein_langevin_square"
+
+# Number of times measurements will be written to file.
+num_bins = 100
+
+# whether to write final M matrix to file or not at end of simulation
+write_M_matrix = false
+
+# (optional) random number generator seed.
+random_seed = 999999999
+
+##############################
+## LINEAR SOLVER PARAMETERS ##
+##############################
+
+[solver]
+
+# select linear solver algorithm to use.
+# the options are "CG", "GMRES" and "BiCGStab"
+type = "GMRES"
+
+# tolerace used in iterative solvers
+tol = 1e-4
+
+# maximum iteration for iterative solver
+maxiter = 10_000
+
+# restart parameter for GMRES solver.
+restart = 20
+
+######################################
+## (OPTIONAL) DEFINE PRECONDITIONER ##
+######################################
+
+[solver.preconditioner]
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_lo = 0.3
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_hi = 1.7
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c1 = 1.0
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c2 = 1.0
+
+##################
+## MEASUREMENTS ##
+##################
+
+[measurements]
+
+# number of random vectors used to make stochastic measurements
+num_random_vectors = 1
+
+# Electron Green's Function Measurement
+[measurements.Greens]
+measure        = true # whether or not to measure the quantity
+time_dependent = true # if measured, whether as equal time or unequal time measurement
+
+# Phonon Green's function
+[measurements.PhononGreens]
+measure        = true
+time_dependent = true
+
+# Density-Desnity Correlation Function Measurement
+[measurements.DenDen]
+measure        = true
+time_dependent = false
+
+# Pair Green's Function Measurement
+# Note 1: If the time depedent pair green's function is being
+# measured than the S-Wave Susceptibility is also calcualted.
+# Note 2: As a side note, it is probably only ever worth
+# measuring the time depedent Pair Green's function.
+[measurements.PairGreens]
+measure        = true
+time_dependent = true
+
+# Bond-Bond correlation function
+[measurements.BondBond]
+measure        = false
+time_dependent = false
+
+# Current-Current correlation function
+[measurements.CurrentCurrent]
+measure        = false
+time_dependent = false

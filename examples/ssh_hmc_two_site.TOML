@@ -1,0 +1,214 @@
+# NOTE: COMMAND TO RUN SIMULATION
+# julia -O3 -e "using Langevin; simulate(ARGS)" -- hmc_input.TOML
+
+######################
+## DEFINING LATTICE ##
+######################
+
+[lattice]
+
+# number of dimensions
+ndim = 1
+
+# number of orbitals/sites per unit cell
+norbits = 2
+
+# define lattice vectors.
+lattice_vectors = [[1.0]] # second lattice vector
+
+# define basis vectors
+basis_vectors = [[0.0],[0.5]] # first basis vector
+
+# size of lattice
+L = 1
+
+########################
+## DEFINING SSH MODEL ##
+########################
+
+[ssh]
+
+# whether to initialize phonons from file
+read_phonon_config = false
+
+# filename to read phonon config from
+phonon_config_file = "phonon_config.out"
+
+# discretization
+dtau = 0.1
+
+# setting temperature
+beta = 2.0
+
+# define hopping in lattice
+[[ssh.hopping]]
+t_avg      = 1.0 # bare hopping
+t_std      = 0.0 # standard deviation/noise on bare hopping
+alpha_avg  = 0.1 # electron-phonon coupling
+alpha_std  = 0.0 # standard deviation/noise electron-phonon coupling
+alpha2_avg = 0.0 # non-linear electron-phonon coupling
+alpha2_std = 0.0 # standard deviation non-linear electron-phonon coupling
+omega_avg  = 0.1 # phonon frequency
+omega_std  = 0.0 # standard deviation/noise on phonon frequency
+omega4_avg = 0.0 # anharmonic phonon coefficient
+omega4_std = 0.0 # standard deviation anharmonic phonon coefficient
+orbits    = [1, 2]    # orbital types being connected
+dL        = [0, 0, 0] # displacement vector in unit cells
+
+# define chemical potential
+[[holstein.mu]]
+orbit = [1]
+val   = 0.0
+
+###################################
+## DEFINING FOURIER ACCELERATION ##
+###################################
+
+[[fourier_acceleration]]
+omega_min = 0.0
+omega_max = 10.0
+mass      = 3.0
+
+###################################
+## HYBRID MONTE CARLO PARAMETERS ##
+###################################
+
+[hmc]
+
+# Number of smaller timesteps to evolve Sbose by
+num_multitimesteps = 10
+
+# thermalization updates
+burnin_updates = 5_000
+
+# simulation updates
+simulation_updates = 50_000
+
+# The duration of trajectories used in Hybrid Monte Carlo.
+trajectory_time = 1.0
+
+# timestep size
+dt = 0.1
+
+# number of hybrid monte carlo updates between measurements being made
+meas_freq = 1
+
+# Partial momentum refresh parameter ie what fraction of the momentum is refreshed.
+# For "standard" HMC set this value to 1.0 ie momentum is entirely refreshed before each trajectory.
+# Requirement: 0 <= momentum_conservation_fraction < 1
+momentum_conservation_fraction = 0.0
+
+# construct an initial guess for solution to linear system based on previous solutions.
+construct_guess = false
+
+# whether to write a log file for HMC dynamics
+log = false
+
+# if writing a log file, whether to write status at every timestep (true)
+# or just after a HMC update (false)
+verbose = false
+
+###########################
+## SIMULATION PARAMETERS ##
+###########################
+
+[simulation]
+
+# filepath to where to write data
+filepath = "."
+
+# name of folder for data to get dumped into
+foldername = "ssh_hmc_two_site"
+
+# number of times measurements will be written to file.
+num_bins = 100
+
+# whether to write final M matrix to file or not at end of simulation
+write_M_matrix = false
+
+# (optional) random number generator seed.
+random_seed = 999999999
+
+##############################
+## LINEAR SOLVER PARAMETERS ##
+##############################
+
+[solver]
+
+# select linear solver algorithm to use.
+# the options are "CG", "GMRES" and "BiCGStab"
+type = "CG"
+
+# tolerace used in iterative solvers
+tol = 1e-4
+
+# maximum iteration for iterative solver
+maxiter = 10_000
+
+# restart parameter for GMRES solver.
+restart = 20
+
+######################################
+## (OPTIONAL) DEFINE PRECONDITIONER ##
+######################################
+
+[solver.preconditioner]
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_lo = 0.3
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+lambda_hi = 1.7
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c1 = 1.0
+
+# preconditioner parameter
+# this parameter is ignored unless use_preconditioner = true
+c2 = 1.0
+
+##################
+## MEASUREMENTS ##
+##################
+
+[measurements]
+
+# number of random vectors used to make stochastic measurements
+num_random_vectors = 1
+
+# Electron Green's Function Measurement
+[measurements.Greens]
+measure        = true # whether or not to measure the quantity
+time_dependent = true # if measured, whether as equal time or unequal time measurement
+
+# Phonon Green's function
+[measurements.PhononGreens]
+measure        = true
+time_dependent = true
+
+# Density-Desnity Correlation Function Measurement
+[measurements.DenDen]
+measure        = true
+time_dependent = false
+
+# Pair Green's Function Measurement
+# Note 1: If the time depedent pair green's function is being
+# measured than the S-Wave Susceptibility is also calcualted.
+# Note 2: As a side note, it is probably only ever worth
+# measuring the time depedent Pair Green's function.
+[measurements.PairGreens]
+measure        = true
+time_dependent = true
+
+# Bond-Bond correlation function
+[measurements.BondBond]
+measure        = false
+time_dependent = false
+
+# Current-Current correlation function
+[measurements.CurrentCurrent]
+measure        = false
+time_dependent = false

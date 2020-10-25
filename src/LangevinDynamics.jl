@@ -5,7 +5,7 @@ using UnsafeArrays
 using LinearAlgebra
 
 using ..Utilities: get_index
-using ..Models: HolsteinModel, construct_expnΔτV!, mulMᵀ!, muldMdx!
+using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulMᵀ!, muldMdx!
 using ..PhononAction: calc_dSbosedx!
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 
@@ -25,29 +25,62 @@ abstract type Dynamics end
 
 struct EulerDynamics{T<:AbstractFloat} <: Dynamics
 
-    N::Int
+    """
+    Number of degrees of freedom (DOF) to update.
+    """
+    Ndof::Int
+
+    """
+    Dimension of M matrix.
+    """
+    Ndim::Int
+
+    """
+    Timestep.
+    """
     Δt::T
+
+    """
+    Derivative of action with respect to each DOF.
+    """
     dSdx::Vector{T}
+
+    """
+    Noise vector in Langevin dynamics.
+    """
     η::Vector{T}
+
+    """
+    Change in phonon fields.
+    """
     Δx::Vector{T}
+
+    """
+    Random noise vector.
+    """
     R::Vector{T}
+
+    """
+    M⁻¹⋅R
+    """
     M⁻¹R::Vector{T}
 
-    function EulerDynamics(N::Int, Δt::T) where {T<:AbstractFloat}
+    function EulerDynamics(model::AbstractModel, Δt::T) where {T<:AbstractFloat}
 
-        dSdx     = zeros(T,N)
-        η        = zeros(T,N)
-        Δx       = zeros(T,N)
-        R        = zeros(T,N)
-        M⁻¹R     = zeros(T,N)
+        Ndof     = model.Ndof
+        Ndim     = model.Ndim
+        dSdx     = zeros(T,Ndof)
+        η        = zeros(T,Ndof)
+        Δx       = zeros(T,Ndof)
+        R        = zeros(T,Ndim)
+        M⁻¹R     = zeros(T,Ndim)
 
-        return new{T}(N,Δt,dSdx,η,Δx,R,M⁻¹R)
+        return new{T}(Ndof,Ndim,Δt,dSdx,η,Δx,R,M⁻¹R)
     end
 end
 
-function evolve!(holstein::HolsteinModel{T1,T2}, dyn::EulerDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1<:AbstractFloat,T2<:Number}
+function evolve!(model::AbstractModel{T1,T2,T3}, dyn::EulerDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1,T2,T3}
 
-    N        = dyn.N
     Δt       = dyn.Δt
     dSdx     = dyn.dSdx
     QdSdx    = dyn.dSdx
@@ -59,14 +92,14 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::EulerDynamics{T1}, fa::Fou
 
     # update the exponentiated interaction matrix so that it reflects the current
     # phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     # itialize η as vector of gaussian random number
     randn!(η)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
     randn!(R)
-    iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
+    iters = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # dSdx ==> Q⋅dSdx
     fourier_accelerate!( QdSdx, fa , dSdx, 1.0 )
@@ -78,10 +111,10 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::EulerDynamics{T1}, fa::Fou
     @. Δx = sqrt(2.0*Δt)*sqrtQη - Δt*QdSdx
 
     # update phonon fields
-    @. holstein.x += Δx
+    @. model.x += Δx
 
     # update the exponentiated interaction matrix to reflect current phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     return iters
 end
@@ -102,7 +135,8 @@ end
 
 struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
 
-    N::Int
+    Ndof::Int
+    Ndim::Int
     Δt::T
     dSdx::Vector{T}
     dSdx′::Vector{T}
@@ -111,22 +145,23 @@ struct RungeKuttaDynamics{T<:AbstractFloat} <: Dynamics
     R::Vector{T}
     M⁻¹R::Vector{T}
 
-    function RungeKuttaDynamics(N::Int, Δt::T) where {T<:AbstractFloat}
+    function RungeKuttaDynamics(model::AbstractModel, Δt::T) where {T<:AbstractFloat}
 
-        dSdx     = zeros(T,N)
-        dSdx′    = zeros(T,N)
-        η        = zeros(T,N)
-        Δx       = zeros(T,N)
-        R        = zeros(T,N)
-        M⁻¹R     = zeros(T,N)
+        Ndof     = model.Ndof
+        Ndim     = model.Ndim
+        dSdx     = zeros(T,Ndof)
+        dSdx′    = zeros(T,Ndof)
+        η        = zeros(T,Ndof)
+        Δx       = zeros(T,Ndof)
+        R        = zeros(T,Ndim)
+        M⁻¹R     = zeros(T,Ndim)
 
-        return new{T}(N,Δt,dSdx,dSdx′,η,Δx,R,M⁻¹R)
+        return new{T}(Ndof,Ndim,Δt,dSdx,dSdx′,η,Δx,R,M⁻¹R)
     end
 end
 
-function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1<:AbstractFloat,T2<:Number}
+function evolve!(model::AbstractModel{T1,T2,T3}, dyn::RungeKuttaDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1,T2,T3}
 
-    N        = dyn.N
     Δt       = dyn.Δt
     dSdx     = dyn.dSdx
     QdSdx    = dyn.dSdx
@@ -136,19 +171,19 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     Δx       = dyn.Δx
     R        = dyn.R
     M⁻¹R     = dyn.M⁻¹R
-    x        = holstein.x
-    x′       = holstein.x
-    x″       = holstein.x
+    x        = model.x
+    x′       = model.x
+    x″       = model.x
 
     # update the exponentiated interaction matrix to reflect current phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     # itialize η as vector of gaussian random number
     randn!(η)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
     randn!(R)
-    iters = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
+    iters = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # get the update for the fields using euler method
     @. Δx = sqrt(2*Δt)*η - Δt*dSdx
@@ -157,17 +192,17 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     @. x′ = x + Δx
  
     # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
     randn!(R)
-    iters = calc_dSdx!(dSdx′, R, M⁻¹R, holstein, preconditioner)
+    iters = calc_dSdx!(dSdx′, R, M⁻¹R, model, preconditioner)
 
     # revert back to original phonon fields
     @. x = x′ - Δx
 
     # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     # get the partial derivative for the second RK step
     @. dSdx = (dSdx′+dSdx)/2.0
@@ -185,7 +220,7 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::RungeKuttaDynamics{T1}, fa
     @. x″ = x + Δx
 
     # update the exponentiated interaction matrix so that it reflects the current phonon field configuration.
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     return iters
 end
@@ -210,7 +245,8 @@ end
 
 struct HeunsDynamics{T<:AbstractFloat} <: Dynamics
 
-    N::Int
+    Ndof::Int
+    Ndim::Int
     Δt::T
     η::Vector{T}
     dSdx::Vector{T}
@@ -219,24 +255,26 @@ struct HeunsDynamics{T<:AbstractFloat} <: Dynamics
     R::Vector{T}
     M⁻¹R::Vector{T}
 
-    function HeunsDynamics(N::Int,Δt::T) where {T<:AbstractFloat}
+    function HeunsDynamics(model::AbstractModel,Δt::T) where {T<:AbstractFloat}
 
-        η     = zeros(T,N)
-        dSdx  = zeros(T,N)
-        dSdx′ = zeros(T,N)
-        Δx    = zeros(T,N)
-        R     = zeros(T,N)
-        M⁻¹R  = zeros(T,N)
+        Ndof  = model.Ndof
+        Ndim  = model.Ndim
+        η     = zeros(T,Ndof)
+        dSdx  = zeros(T,Ndof)
+        dSdx′ = zeros(T,Ndof)
+        Δx    = zeros(T,Ndof)
+        R     = zeros(T,Ndim)
+        M⁻¹R  = zeros(T,Ndim)
 
-        return new{T}(N,Δt,η,dSdx,dSdx′,Δx,R,M⁻¹R)
+        return new{T}(Ndof,Ndim,Δt,η,dSdx,dSdx′,Δx,R,M⁻¹R)
     end
 end
 
-function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1<:AbstractFloat,T2<:Number}
+function evolve!(model::AbstractModel{T1,T2,T3}, dyn::HeunsDynamics{T1}, fa::FourierAccelerator{T1}, preconditioner=I)::Int  where {T1,T2,T3}
 
-    x        = holstein.x
-    x′       = holstein.x
-    x″       = holstein.x
+    x        = model.x
+    x′       = model.x
+    x″       = model.x
     Δx       = dyn.Δx
     Δt       = dyn.Δt
     η        = dyn.η
@@ -255,9 +293,9 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::Fou
     fourier_accelerate!(ξ,fa,η,0.5)
 
     # 3. calcualte dS/dx
-    construct_expnΔτV!(holstein)
+    update_model!(model)
     randn!(R)
-    iters1 = calc_dSdx!(dSdx, R, M⁻¹R, holstein, preconditioner)
+    iters1 = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # 4. dΓ/dx  = [F⁻¹⋅Q⋅F]⋅dS/dx
     fourier_accelerate!(dΓdx,fa,dSdx,1.0)
@@ -267,11 +305,11 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::Fou
 
     # 6. x′ = x + Δx
     @. x′ = x + Δx
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     # 7. calculate dS/dx′
     randn!(R)
-    iters2 = calc_dSdx!(dSdx′, R, M⁻¹R, holstein, preconditioner)
+    iters2 = calc_dSdx!(dSdx′, R, M⁻¹R, model, preconditioner)
 
     # 8. dΓ/dx′ = [F⁻¹⋅Q⋅F]⋅dS/dx′
     fourier_accelerate!(dΓdx′,fa,dSdx′,1.0)
@@ -281,7 +319,7 @@ function evolve!(holstein::HolsteinModel{T1,T2}, dyn::HeunsDynamics{T1}, fa::Fou
 
     # 10. x″ = x + √(2Δt)⋅ξ - Δt⋅(dΓ/dx+dΓ/dx′)/2 
     @. x″ = x + sqrt(2*Δt)*ξ - Δt*(dΓdx+dΓdx′)/2
-    construct_expnΔτV!(holstein)
+    update_model!(model)
 
     return div(iters1+iters2,2)
 end
@@ -291,28 +329,17 @@ end
 #################################################
 
 """
-    function calc_dSdx!(dSdx::AbstractVector{T1},g::AbstractVector{T1},Mᵀg::AbstractVector{T1},M⁻¹g::AbstractVector{T1},holstein::HolsteinModel{T1,T2},tol::AbstractFloat)::Int where {T1<:AbstractFloat,T2<:Number}
-
 Calculates all of the partial derivatives ∂S/∂xᵢ(τ) and stores each partial derivative in a vector dSdx.
 The expression we are evaluating is `∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ[∂M/∂xᵢ(τ)]⋅M⁻¹g`.
-# Arguments
-- `dSdx::AbstractVector{T1}`: vector the will be modified to contain all the partial derivatives ∂S/∂xᵢ(τ)
-- `g::AbstractVector{T1}`: A random vector.
-- `Mᵀg::AbstractVector{T1}`: Vector containing the product Mᵀg
-- `M⁻¹g::AbstractVector{T1}`: A vector the will contain the solution of the linear equation M⋅v=g when computed.
-- `holstein::HolsteinModel{T1,T2}`: Type represent holstein model being simulated.
-- `tol::AbstractFloat`: The tolerance used when solving the linear equation M⋅v=g in order to get M⁻¹g.
-# Returns
-- `iters::Int`: Number of iterations used to solve for M⁻¹g.
 """
 function calc_dSdx!(dSdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::AbstractVector{T2},
-                    holstein::HolsteinModel{T1,T2}, preconditioner=I)::Int where {T1<:AbstractFloat,T2<:Number}
+                    model::AbstractModel{T1,T2,T3}, preconditioner=I)::Int where {T1,T2,T3}
     
     # ∂S/∂xᵢ(τ) = -2gᵀ⋅[∂M/∂xᵢ(τ)]⋅M⁻¹g
-    iters = calc_dSfdx!(dSdx, g, M⁻¹g, holstein, preconditioner)
+    iters = calc_dSfdx!(dSdx, g, M⁻¹g, model, preconditioner)
 
     # ∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ⋅[∂M/∂xᵢ(τ)]⋅M⁻¹g ==> All Done!
-    calc_dSbosedx!( dSdx , holstein )
+    calc_dSbosedx!( dSdx , model )
 
     # returning number of iterations in solving for M⁻¹g
     return iters
@@ -321,8 +348,8 @@ end
 """
 Calculate just the force associated with the fermionic part of the action.
 """
-function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T3},M⁻¹g::AbstractVector{T3},
-                     holstein::HolsteinModel{T1,T2}, preconditioner=I)::Int where {T1<:AbstractFloat,T2<:Number,T3<:Number}
+function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::AbstractVector{T2},
+                     model::AbstractModel{T1,T2,T3}, preconditioner=I)::Int where {T1,T2,T3}
 
 
     # NOTE: The method I use below for calculating all of the partial derivatives {∂S/∂xᵢ(τ)} works only
@@ -337,21 +364,22 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T3},M⁻¹g::Ab
     iters = 0
     setup!(preconditioner) # setup block preconditioner
     fill!(M⁻¹g,0.0)
-    if holstein.mul_by_M
+    if model.mul_by_M
         # solve M⋅x=g ==> x=M⁻¹⋅g
-        holstein.transposed = false
-        iters = ldiv!(M⁻¹g,holstein,g,preconditioner)
+        model.transposed = false
+        iters = ldiv!(M⁻¹g,model,g,preconditioner)
     else
+        model.transposed=false
         # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g
-        mulMᵀ!(holstein.Mᵀg,holstein,g)
-        iters = ldiv!(M⁻¹g,holstein,holstein.Mᵀg,preconditioner)
+        mulMᵀ!(model.v″,model,g)
+        iters = ldiv!(M⁻¹g,model,model.v″,preconditioner)
     end
 
-    # ∂Sf/∂xᵢ(τ) = ∂M/∂xᵢ(τ)⋅M⁻¹g
-    muldMdx!( dSfdx , holstein , M⁻¹g )
+    # ⟨∂M/∂xᵢ(τ)⟩=gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g
+    muldMdx!( dSfdx , g, model , M⁻¹g )
 
-    # ∂Sf/∂xᵢ(τ) = -2gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g
-    @. dSfdx = -2.0 * g * dSfdx
+    # ∂Sf/∂xᵢ(τ) = -2⟨∂M/∂xᵢ(τ)⟩ = -2gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g
+    @. dSfdx = -2.0 * dSfdx
 
     return iters
 end

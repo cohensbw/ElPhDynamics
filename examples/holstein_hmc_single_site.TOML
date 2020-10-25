@@ -8,20 +8,19 @@
 [lattice]
 
 # number of dimensions
-ndim = 2
+ndim = 1
 
 # number of orbitals/sites per unit cell
 norbits = 1
 
 # define lattice vectors.
-lattice_vectors = [[1.0,0.0], # first lattice vector
-                   [0.0,1.0]] # second lattice vector
+lattice_vectors = [[1.0,]] # second lattice vector
 
 # define basis vectors
-basis_vectors = [[0.0,0.0]] # first basis vector
+basis_vectors = [[0.0,]] # first basis vector
 
 # size of lattice
-L = 4
+L = 1
 
 #############################
 ## DEFINING HOLSTEIN MODEL ##
@@ -120,9 +119,6 @@ trajectory_time = 1.0
 # timestep size
 dt = 0.1
 
-# BDP thermostat time scale
-tau = "Inf"
-
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
 
@@ -132,7 +128,7 @@ meas_freq = 1
 momentum_conservation_fraction = 0.0
 
 # construct an initial guess for solution to linear system based on previous solutions.
-construct_guess = true
+construct_guess = false
 
 # whether to write a log file for HMC dynamics
 log = false
@@ -151,16 +147,16 @@ verbose = false
 filepath = "."
 
 # name of folder for data to get dumped into
-foldername = "test"
-
-# (optional) random number generator seed.
-random_seed = 38923
+foldername = "holstein_hmc_single_site"
 
 # number of times measurements will be written to file.
 num_bins = 100
 
 # whether to write final M matrix to file or not at end of simulation
 write_M_matrix = false
+
+# (optional) random number generator seed.
+random_seed = 999999999
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##
@@ -176,12 +172,15 @@ type = "GMRES"
 tol = 1e-4
 
 # maximum iteration for iterative solver
-maxiter = 20_000
+maxiter = 10_000
 
 # restart parameter for GMRES solver.
-restart = 30
+restart = 20
 
-# define preconditioner
+######################################
+## (OPTIONAL) DEFINE PRECONDITIONER ##
+######################################
+
 [solver.preconditioner]
 
 # preconditioner parameter
@@ -214,6 +213,11 @@ num_random_vectors = 1
 measure        = true # whether or not to measure the quantity
 time_dependent = true # if measured, whether as equal time or unequal time measurement
 
+# Phonon Green's function
+[measurements.PhononGreens]
+measure        = true
+time_dependent = true
+
 # Density-Desnity Correlation Function Measurement
 [measurements.DenDen]
 measure        = true
@@ -227,3 +231,13 @@ time_dependent = false
 [measurements.PairGreens]
 measure        = true
 time_dependent = true
+
+# Bond-Bond correlation function
+[measurements.BondBond]
+measure        = false
+time_dependent = false
+
+# Current-Current correlation function
+[measurements.CurrentCurrent]
+measure        = false
+time_dependent = false

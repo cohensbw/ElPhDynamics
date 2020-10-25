@@ -1,5 +1,7 @@
 module Utilities
 
+using FFTW
+
 ##############################
 ## INDEX MAPPTING FUNCTIONS ##
 ##############################
@@ -38,6 +40,44 @@ end
 
 function reshaped(a::AbstractArray{T,M}, dims::NTuple{N,Int}) where {T,N,M}
     return reshape(a, dims)
+end
+
+function reshaped(a::AbstractArray{T,M}, dims...) where {T,M}
+    return reshaped(a, dims)
+end
+
+"""
+Averages over translational symmetry between arrays `f` and `g` by doing an FFT accelerated convolution.
+The result is output into the array `fg`. The arrays `f` and `g` are left modified by this function.
+"""
+function translational_average!(fg::AbstractArray{T},f::AbstractArray{T},g::AbstractArray{T}) where {T<:Complex}
+    
+    fft!(f)
+    fft!(g)
+    N = length(f)
+    copyto!(fg,f)
+    circshift!(f, fg, size(fg,d)-1 for d in 1:ndims(fg) )
+    for (i,f_reverse) in enumerate(Iterators.reverse(f))
+        fg[i] = f_reverse * g[i] / N
+    end
+    ifft!(fg)
+    return nothing
+end
+
+"""
+Simpson integration over vector.
+"""
+function simpson(f::AbstractVector{T1},dx::T2)::T1 where {T1<:Number,T2<:Number}
+
+    L = length(f)
+    F = T1(0.0)
+    for i in 2:2:L-1
+        F += dx * ( 1/3*f[i-1] + 4/3*f[i] + 1/3*f[i+1] )
+    end
+    if iseven(L)
+        F += dx * ( 5/12*f[L] + 2/3*f[L-1] - 1/12*f[L-2] )
+    end
+    return F
 end
 
 ####################

@@ -7,7 +7,7 @@ using ..UnitCells: UnitCell, monkhorst_pack_mesh, calc_site_pos!
 export Lattice
 export loc_to_cell, loc_to_site, site_to_site
 export translationally_equivalent_sets
-export calc_neighbor_table, sort_neighbor_table!
+export calc_neighbor_table, sorted_neighbor_table_perm!
 export site_to_site_vec!, site_to_site_vec
 
 """
@@ -262,7 +262,7 @@ end
 
 Construct the neighbor table for a certain type of displacement in the lattice.
 """
-function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int})::Matrix{Int}
+function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displacement::AbstractVector{Int},remove_duplicates::Bool=true)::Matrix{Int}
 
     # number of orbits/sites per unit cell
     norbits = lattice.unit_cell.norbits::Int
@@ -294,64 +294,49 @@ function calc_neighbor_table(lattice::Lattice,orbit1::Int,orbit2::Int,displaceme
     end
 
     # remove duplicate neighbor pairs
-    keep = ones(Bool,N)
-    for i in 1:N-1
-        if keep[i]
-            isite = neighbor_table[1,i]
-            fsite = neighbor_table[2,i]
-            for j in i+1:N
-                isite′ = neighbor_table[1,j]
-                fsite′ = neighbor_table[2,j]
-                if (isite==isite′ && fsite==fsite′)||(isite==fsite′ && fsite==isite′)
-                    keep[j] = false
+    if remove_duplicates
+        keep = ones(Bool,N)
+        for i in 1:N-1
+            if keep[i]
+                isite = neighbor_table[1,i]
+                fsite = neighbor_table[2,i]
+                for j in i+1:N
+                    isite′ = neighbor_table[1,j]
+                    fsite′ = neighbor_table[2,j]
+                    if (isite==isite′ && fsite==fsite′)||(isite==fsite′ && fsite==isite′)
+                        keep[j] = false
+                    end
                 end
             end
         end
+        neighbor_table = neighbor_table[:,keep]
     end
-    neighbor_table = neighbor_table[:,keep]
 
     return neighbor_table
 end
 
 
 """
-    sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
-
-Sorts a neighbor table so that the first row is in strictly ascending order,
+Returns the permutation that sorts the neighbor table so that the first row is in strictly ascending order,
 and for fixed values in the first row, the second row is also in ascending order.
-Also returns the sorted permutation order of the neighbor_table based on the original ordering
-of the neighbor_table before sorting occured.
 """
-function sort_neighbor_table!(neighbor_table::AbstractMatrix{Int})::Vector{Int}
-
-    # making sure dimensions of neighbor table are valid
+function sorted_neighbor_table_perm!(neighbor_table::Matrix{Int})::Vector{Int}
+    
     @assert size(neighbor_table,1)==2
 
-    # getting the number of neighbor_table
-    nneighbor_table = size(neighbor_table,2)
-
-    # filling in array that will contain sorted neighbor relations.
-    # note that the third row will contain the sorted permutation order
-    # or the original neighbor table.
-    sorted_neighbor_table = Matrix{Int}(undef,3,nneighbor_table)
-    for i in 1:nneighbor_table
-        sorted_neighbor_table[1,i] = neighbor_table[1,i]
-        sorted_neighbor_table[2,i] = neighbor_table[2,i]
-        sorted_neighbor_table[3,i] = i
-        # making sure smaller site in neighbor pair is always in first column
-        if sorted_neighbor_table[1,i]>sorted_neighbor_table[2,i]
-            sorted_neighbor_table[1,i], sorted_neighbor_table[2,i] = sorted_neighbor_table[2,i], sorted_neighbor_table[1,i]
+    # make sure smaller number is always in first column of neighbor table
+    for i in 1:size(neighbor_table,2)
+        c1 = neighbor_table[1,i]
+        c2 = neighbor_table[2,i]
+        if c1 > c2
+            neighbor_table[1,i] = c2
+            neighbor_table[2,i] = c1
         end
     end
 
-    # sorting the neighbor_table
-    sorted_neighbor_table .= sortslices(sorted_neighbor_table,dims=2)
-
-    # recording sorted neighbor relations
-    neighbor_table .= @view sorted_neighbor_table[1:2,:]
-
-    # returning the sorted permuation order based on original ordering of neighbor table
-    return sorted_neighbor_table[3,:]
+    vals = maximum(neighbor_table)*neighbor_table[1,:] + neighbor_table[2,:]
+    perm = sortperm(vals)
+    return perm
 end
 
 """

@@ -6,7 +6,7 @@ using LinearAlgebra
 using FFTW
 using UnsafeArrays
 
-using ..Models: AbstractModel, mulMᵀ!
+using ..Models: AbstractModel, mulMᵀ!, mulM!, update_model!
 using ..Utilities: get_index, get_site, get_τ
 
 using ..KPMPreconditioners: setup!
@@ -21,11 +21,6 @@ export EstimateGreensFunction, update!, measure_GΔ0, measure_GΔ0_G0Δ, measure
 A type for facilitating the stochastic estimation needed to make measurements
 """
 struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
-
-    """
-    Number of random vector to use for making estimates.
-    """
-    n::Int
 
     """
     Number of degrees of freedom.
@@ -141,10 +136,10 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(model::AbstractModel{T},n::Int=1) where {T<:AbstractFloat}
+    function EstimateGreensFunction(model::AbstractModel{T}) where {T<:AbstractFloat}
 
-        NL      = model.nindices
-        N       = model.nsites
+        NL      = model.Ndim
+        N       = model.Nsites
         L       = model.Lτ
         L₃      = model.lattice.L3
         L₂      = model.lattice.L2
@@ -167,91 +162,87 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
         pifft   = plan_ifft(ab′, (1,4,5,6), flags=FFTW.PATIENT)
         Tfft    = typeof(pfft)
         Tifft   = typeof(pifft)
-        return new{T,Tfft,Tifft}(n,NL,L,N,L₃,L₂,L₁,nₛ,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab′,ab″,z)
+
+        return new{T,Tfft,Tifft}(NL,L,N,L₃,L₂,L₁,nₛ,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab′,ab″,z)
     end
 end
 
 """
 Updates the estimate of the Green's Function based on current phonon field configuration.
 """
-function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I, partial_update::Bool=false) where {T<:AbstractModel}
-    
+function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) where {T<:AbstractModel}
+
     r₁    = estimator.r₁
     r₂    = estimator.r₂
     M⁻¹r₁ = estimator.M⁻¹r₁
     M⁻¹r₂ = estimator.M⁻¹r₂
     L     = estimator.L
-    n     = estimator.n
 
     # initialize measured values to zero
-    if !partial_update
-        fill!(estimator.GΔ0,0.0)
-        fill!(estimator.GΔ0_GΔ0,0.0)
-        fill!(estimator.GΔ0_G0Δ,0.0)
-        fill!(estimator.GΔΔ_G00,0.0)
+    fill!(estimator.GΔ0,0.0)
+    fill!(estimator.GΔ0_GΔ0,0.0)
+    fill!(estimator.GΔ0_G0Δ,0.0)
+    fill!(estimator.GΔΔ_G00,0.0)
+
+    # initialize vectors to zero
+    fill!(M⁻¹r₁,0.0)
+    fill!(M⁻¹r₂,0.0)
+
+    # initialize random vectors
+    randn!(r₁)
+    randn!(r₂)
+
+    # setup preconditioner
+    setup!(preconditioner)
+
+    # solve linear system to get M⁻¹⋅r₁ and M⁻¹⋅r₂
+    if model.mul_by_M
+
+        model.transposed = false
+        # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
+        iters, err = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
+        # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
+        iters, err = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
+    else
+
+        Mᵀr = model.v″
+        model.transposed = false
+        # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₁
+        mulMᵀ!(Mᵀr, model, r₁)
+        iters, err = ldiv!(M⁻¹r₁, model, Mᵀr, preconditioner)
+        # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₂
+        mulMᵀ!(Mᵀr, model, r₂)
+        iters, err = ldiv!(M⁻¹r₂, model, Mᵀr, preconditioner)
     end
 
-    # iterate over number of random vectors used to make measurements
-    for i in 1:n
-    
-        # initialize random vectors
-        randn!(estimator.r₁)
-        randn!(estimator.r₂)
+    # vector to be convolved together
+    a = estimator.a
+    b = estimator.b
 
-        # solve linear system to get M⁻¹⋅r₁ and M⁻¹⋅r₂
-        iters = 0
-        fill!(M⁻¹r₁,0.0)
-        fill!(M⁻¹r₂,0.0)
-        setup!(preconditioner)
-        if model.mul_by_M
-            model.transposed = false
-            # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-            iters = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
-            # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
-            iters = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
-        else
-            # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₁
-            mulMᵀ!(model.Mᵀg, model, r₁)
-            iters = ldiv!(M⁻¹r₁, model, model.Mᵀg, preconditioner)
-            # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹⋅r₂
-            mulMᵀ!(model.Mᵀg, model, r₂)
-            iters = ldiv!(M⁻¹r₂, model, model.Mᵀg, preconditioner)
-        end
+    # calcualte G[Δ,0]
+    z = estimator.z
+    antiperiodic_copy!(a,r₁,L)
+    antiperiodic_copy!(z,r₂,L)
+    @. a = (a+z)/sqrt(2.0)
+    antiperiodic_copy!(b,M⁻¹r₁,L)
+    antiperiodic_copy!(z,M⁻¹r₂,L)
+    @. b = (b+z)/sqrt(2.0)
+    convolve!(estimator.GΔ0,a,b,estimator)
 
-        # if only doing a partial ppdates
-        if partial_update
-            break
-        end
+    # calculate G[Δ,0]⋅G[Δ,0]
+    periodic_product!(a,r₁,r₂,L)
+    periodic_product!(b,M⁻¹r₁,M⁻¹r₂,L)
+    convolve!(estimator.GΔ0_GΔ0,a,b,estimator)
 
-        # vector to be convolved together
-        a = estimator.a
-        b = estimator.b
+    # calculate G[Δ,Δ]⋅G[0,0]
+    periodic_product!(a,M⁻¹r₁,r₁,L)
+    periodic_product!(b,M⁻¹r₂,r₂,L)
+    convolve!(estimator.GΔΔ_G00,a,b,estimator)
 
-        # calcualte G[Δ,0]
-        z = estimator.z
-        antiperiodic_copy!(a,r₁,L)
-        antiperiodic_copy!(z,r₂,L)
-        @. a = (a+z)/sqrt(2.0)
-        antiperiodic_copy!(b,M⁻¹r₁,L)
-        antiperiodic_copy!(z,M⁻¹r₂,L)
-        @. b = (b+z)/sqrt(2.0)
-        convolve!(estimator.GΔ0,a,b,estimator,n)
-
-        # calculate G[Δ,0]⋅G[Δ,0]
-        periodic_product!(a,r₁,r₂,L)
-        periodic_product!(b,M⁻¹r₁,M⁻¹r₂,L)
-        convolve!(estimator.GΔ0_GΔ0,a,b,estimator,n)
-
-        # calculate G[Δ,Δ]⋅G[0,0]
-        periodic_product!(a,r₁,M⁻¹r₁,L)
-        periodic_product!(b,r₂,M⁻¹r₂,L)
-        convolve!(estimator.GΔΔ_G00,a,b,estimator,n)
-
-        # calculate G[Δ,0]⋅G[0,Δ]
-        periodic_product!(a,r₁,M⁻¹r₂,L)
-        periodic_product!(b,r₂,M⁻¹r₁,L)
-        convolve!(estimator.GΔ0_G0Δ,a,b,estimator,n)
-    end
+    # calculate G[Δ,0]⋅G[0,Δ]
+    periodic_product!(a,M⁻¹r₂,r₁,L)
+    periodic_product!(b,M⁻¹r₁,r₂,L)
+    convolve!(estimator.GΔ0_G0Δ,a,b,estimator)
 
     return nothing
 end
@@ -306,8 +297,10 @@ function estimate(estimator::EstimateGreensFunction,i::Int,j::Int,τ₂::Int,τ�
     n = get_index(τ₂,i,estimator.L)
     if σ==1
         Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₁[n] * estimator.r₁[m]
-    else
+    elseif σ==2
         Gᵢⱼτ₁τ₂ =  estimator.M⁻¹r₂[n] * estimator.r₂[m]
+    else
+        throw(DomainError())
     end
     return Gᵢⱼτ₁τ₂
 end
@@ -315,7 +308,7 @@ end
 """
 Calculate convolution a⋆b.
 """
-function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator::EstimateGreensFunction,n::Int=1)
+function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator::EstimateGreensFunction)
 
     b′  = estimator.z
     ab′ = estimator.ab′
@@ -336,7 +329,7 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
     mul!(b′,estimator.pfft,b)
 
     # normalization factor
-    V = 2*N*L/nₛ
+    V = 2*L*N/nₛ
 
     # perform elementwise multiplication
     @fastmath @inbounds for k₃ in 1:L₃
@@ -361,7 +354,7 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
     mul!(ab″,estimator.pifft,ab′)
 
     # add result to output vector
-    @. ab += ab″ / n
+    @. ab += ab″
 
     return nothing
 end

@@ -5,6 +5,7 @@ using LinearAlgebra
 using FFTW
 
 using ..Lattices:   Lattice
+using ..Utilities: reshaped
 
 struct TimeFreqFFT{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
 
@@ -93,11 +94,11 @@ function ω_to_τ!(vout::AbstractVector{Complex{T}},op::TimeFreqFFT{T},vin::Abst
     vtemp = op.vtemp::Array{Complex{T},2}
     @uviews vin vout begin
         # apply (ω ⟶ τ) FFT
-        uin  = reshape(vin, L,N)
+        uin  = reshaped(vin, L,N)
         mul!(vtemp,op.ifftplan,uin)
         # apply unitary transformation to restore anitperiodic boundary conditions
         # imaginary time direciton.
-        uout = reshape(vout,L,N)
+        uout = reshaped(vout,L,N)
         @fastmath @inbounds for i in 1:N
             for τ in 1:L
                 uout[τ,i] = conj(Θ[τ]) * vtemp[τ,i]

@@ -12,15 +12,8 @@ using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, 
 using ..HMC: HybridMonteCarlo
 import ..HMC
 
-using ..NonLocalMeasurements: make_nonlocal_measurements!, reset_nonlocal_measurements!
-using ..NonLocalMeasurements: process_nonlocal_measurements!, construct_nonlocal_measurements_container
-using ..NonLocalMeasurements: initialize_nonlocal_measurement_files
-using ..NonLocalMeasurements: write_nonlocal_measurements
-
-using ..LocalMeasurements: make_local_measurements!, reset_local_measurements!
-using ..LocalMeasurements: process_local_measurements!, construct_local_measurements_container
-using ..LocalMeasurements: initialize_local_measurements_file
-using ..LocalMeasurements: write_local_measurements
+using ..Measurements: initialize_measurements_container, initialize_measurement_files!
+using ..Measurements: make_measurements!, process_measurements!, write_measurements!, reset_measurements!
 
 export run_simulation!
 
@@ -29,22 +22,17 @@ Run Langevin simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_dynamics::Dynamics, burnin_dynamics::Dynamics, fa::FourierAccelerator,
-                         unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
+                         measurement_info::Dict, preconditioner)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    # declare container for storing non-local measurements in both
-    # position-space and momentum-space
-    container_rspace, container_kspace = construct_nonlocal_measurements_container(model, equaltime_meas, unequaltime_meas)
+    # initialize measurements container
+    container = initialize_measurements_container(model,measurement_info)
 
-    # constructing container to hold local measurements
-    local_meas_container = construct_local_measurements_container(model, unequaltime_meas)
-
-    # Creating files that data will be written to.
-    initialize_nonlocal_measurement_files(container_rspace, container_kspace, sim_params)
-    initialize_local_measurements_file(local_meas_container, sim_params)
+    # initialize measurement files
+    initialize_measurement_files!(container,sim_params)
 
     # keeps track of number of iterations needed to solve linear system
     iters = 0.0
@@ -76,7 +64,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         # update chemical potential
         if μ_tuner.active
             simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -87,11 +75,6 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     # iterate over bins
     for bin in 1:sim_params.num_bins
 
-        # reset values in measurement containers
-        reset_nonlocal_measurements!(container_rspace)
-        reset_nonlocal_measurements!(container_kspace)
-        reset_local_measurements!(local_meas_container)
-
         # iterating over the size of each bin i.e. the number of measurements made per bin
         for n in 1:sim_params.bin_size
 
@@ -101,36 +84,23 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 simulation_time += @elapsed iters += evolve!(model, simulation_dynamics, fa, preconditioner)
             end
 
-            # update stochastic estimates of the Green's functions
-            measurement_time += @elapsed update!(Gr,model,preconditioner)
-
-            # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, model, Gr)
-
-            # make local measurements
-            measurement_time += @elapsed make_local_measurements!(local_meas_container, model, Gr)
+            # making measurements
+            measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
             end
         end
 
-        # process non-local measurements. This includes normalizing the real-space measurements
-        # by the number of measurements made per bin, and also taking the Fourier Transform in order
-        # to get the momentum-space measurements.
-        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params)
+        # process measurements
+        measurement_time += @elapsed process_measurements!(container,sim_params,model)
 
-        # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, model,
-                                                                 container_rspace, container_kspace)
+        # write measurements to file
+        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
 
-        # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
-        write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,model,real_space=true)
-        write_time += @elapsed write_nonlocal_measurements(container_kspace,sim_params,model,real_space=false)
-
-        # write local measurements to file
-        write_time += @elapsed write_local_measurements(local_meas_container,sim_params,model)
+        # reset measurements container
+        measurement_time += @elapsed reset_measurements!(container,model)
     end
 
     # calculating the average number of iterations needed to solve linear system
@@ -142,7 +112,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     write_time       /= 60.0
     acceptance_rate   = 1.0
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end
 
 """
@@ -150,22 +120,17 @@ Run Hybrid Monte Carlo simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_hmc::HybridMonteCarlo, burnin_hmc::HybridMonteCarlo, fa::FourierAccelerator,
-                         unequaltime_meas::AbstractVector{String}, equaltime_meas::AbstractVector{String}, preconditioner)
+                         measurement_info::Dict, preconditioner)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    # declare container for storing non-local measurements in both
-    # position-space and momentum-space
-    container_rspace, container_kspace = construct_nonlocal_measurements_container(model, equaltime_meas, unequaltime_meas)
+    # initialize measurements container
+    container = initialize_measurements_container(model,measurement_info)
 
-    # constructing container to hold local measurements
-    local_meas_container = construct_local_measurements_container(model, unequaltime_meas)
-
-    # Creating files that data will be written to.
-    initialize_nonlocal_measurement_files(container_rspace, container_kspace, sim_params)
-    initialize_local_measurements_file(local_meas_container, sim_params)
+    # initialize measurement files
+    initialize_measurement_files!(container,sim_params)
 
     # keeps track of number of iterations needed to solve linear system
     iters = 0.0
@@ -198,8 +163,8 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
         # update chemical potential
         if μ_tuner.active
-            simulation_time += @elapsed update!(Gr,model,preconditioner,true)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
+            simulation_time += @elapsed update!(Gr,model,preconditioner)
+            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -209,11 +174,6 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
     # iterate over bins
     for bin in 1:sim_params.num_bins
-
-        # reset values in measurement containers
-        reset_nonlocal_measurements!(container_rspace)
-        reset_nonlocal_measurements!(container_kspace)
-        reset_local_measurements!(local_meas_container)
 
         # iterating over the size of each bin i.e. the number of measurements made per bin
         for n in 1:sim_params.bin_size
@@ -225,39 +185,25 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 simulation_time  += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
                 iters            += niters
                 accepted_updates += accepted
-
-                # update chemical potential
-                if μ_tuner.active
-                    simulation_time += @elapsed update!(Gr,model,preconditioner,true)
-                    simulation_time += @elapsed update_μ!(model.μ, μ_tuner, Gr.r₁, Gr.M⁻¹r₁, Gr.r₂, Gr.M⁻¹r₂)
-                end
             end
 
-            # update stochastic estimates of the Green's functions
-            measurement_time += @elapsed update!(Gr,model,preconditioner)
+            # making measurements
+            measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
-            # making non-local measurements
-            measurement_time += @elapsed make_nonlocal_measurements!(container_rspace, model, Gr)
-
-            # make local measurements
-            measurement_time += @elapsed make_local_measurements!(local_meas_container, model, Gr)
+            # update chemical potential
+            if μ_tuner.active
+                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
+            end
         end
 
-        # process non-local measurements. This includes normalizing the real-space measurements
-        # by the number of measurements made per bin, and also taking the Fourier Transform in order
-        # to get the momentum-space measurements.
-        measurement_time += @elapsed process_nonlocal_measurements!(container_rspace, container_kspace, sim_params)
+        # process measurements
+        measurement_time += @elapsed process_measurements!(container,sim_params,model)
 
-        # process local measurements. This includes calculating certain derived quantities (like S-wave Susceptibility)
-        measurement_time += @elapsed process_local_measurements!(local_meas_container, sim_params, model,
-                                                                 container_rspace, container_kspace)
+        # write measurements to file
+        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
 
-        # Write non-local measurements to file. Note that there is a little bit more averaging going on here as well.
-        write_time += @elapsed write_nonlocal_measurements(container_rspace,sim_params,model,real_space=true)
-        write_time += @elapsed write_nonlocal_measurements(container_kspace,sim_params,model,real_space=false)
-
-        # write local measurements to file
-        write_time += @elapsed write_local_measurements(local_meas_container,sim_params,model)
+        # reset measurements container
+        measurement_time += @elapsed reset_measurements!(container,model)
     end
 
     # calculating the average number of iterations needed to solve linear system
@@ -271,7 +217,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     measurement_time /= 60.0
     write_time       /= 60.0
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end
 
 end
