@@ -8,26 +8,25 @@
 [lattice]
 
 # number of dimensions
-ndim = 2
+ndim = 1
 
 # number of orbitals/sites per unit cell
 norbits = 1
 
 # define lattice vectors.
-lattice_vectors = [[1.0,0.0], # first lattice vector
-                   [0.0,1.0]] # second lattice vector
+lattice_vectors = [[1.0,]] # second lattice vector
 
 # define basis vectors
-basis_vectors = [[0.0,0.0]] # first basis vector
+basis_vectors = [[0.0,]] # first basis vector
 
 # size of lattice
-L = 4
+L = 1
 
-########################
-## DEFINING SSH MODEL ##
-########################
+#############################
+## DEFINING HOLSTEIN MODEL ##
+#############################
 
-[ssh]
+[holstein]
 
 # whether to initialize phonons from file
 read_phonon_config = false
@@ -42,31 +41,38 @@ dtau = 0.1
 beta = 2.0
 
 # define hopping in lattice
-[[ssh.hopping]]
-t_avg     = 1.0 # bare hopping
-t_std     = 0.0 # standard deviation/noise on bare hopping
-alpha_avg = 0.1 # electron-phonon coupling
-alpha_std = 0.0 # standard deviation/noise electron-phonon coupling
-omega_avg = 0.1 # phonon frequency
-omega_std = 0.0 # standard deviation/noise on phonon frequency
-orbits    = [1, 1]    # orbital types being connected
-dL        = [1, 0, 0] # displacement vector in unit cells
+[[holstein.t]]
+val    = 1.0       # mean value
+stddev = 0.0       # (optional) standard deviation
+orbit  = [1, 1]    # orbital types being connected
+dL     = [1, 0, 0] # displacement vector in unit cells
 
 # define hopping in lattice
-[[ssh.hopping]]
-t_avg     = 1.0 # bare hopping
-t_std     = 0.0 # standard deviation/noise on bare hopping
-alpha_avg = 0.1 # electron-phonon coupling
-alpha_std = 0.0 # standard deviation/noise electron-phonon coupling
-omega_avg = 0.1 # phonon frequency
-omega_std = 0.0 # standard deviation/noise on phonon frequency
-orbits    = [1, 1]    # orbital types being connected
-dL        = [0, 1, 0] # displacement vector in unit cells
+[[holstein.t]]
+val   = 1.0
+orbit = [1, 1]
+dL    = [0, 1, 0]
+
+# define phonon frequency
+[[holstein.omega]]
+orbit  = [1] # which orbital types the omega value is applied to
+val    = 1.0 # mean value used for parameter
+stddev = 0.0 # (optional) standard deviation
+
+# define electron-phonon coupling
+[[holstein.lambda]]
+orbit = [1]
+val   = 1.0
 
 # define chemical potential
 [[holstein.mu]]
 orbit = [1]
-val   = 0.0
+val   = -1.0
+
+# define anharmonic term of form X^4
+[[holstein.omega4]]
+orbit  = [1]
+val    = 0.0
 
 ################################################
 ## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
@@ -122,7 +128,7 @@ meas_freq = 1
 momentum_conservation_fraction = 0.0
 
 # construct an initial guess for solution to linear system based on previous solutions.
-construct_guess = true
+construct_guess = false
 
 # whether to write a log file for HMC dynamics
 log = false
@@ -141,16 +147,16 @@ verbose = false
 filepath = "."
 
 # name of folder for data to get dumped into
-foldername = "test"
-
-# (optional) random number generator seed.
-random_seed = 38923
+foldername = "holstein_hmc_single_site"
 
 # number of times measurements will be written to file.
 num_bins = 100
 
 # whether to write final M matrix to file or not at end of simulation
 write_M_matrix = false
+
+# (optional) random number generator seed.
+random_seed = 999999999
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##
@@ -166,12 +172,15 @@ type = "GMRES"
 tol = 1e-4
 
 # maximum iteration for iterative solver
-maxiter = 20_000
+maxiter = 10_000
 
 # restart parameter for GMRES solver.
-restart = 30
+restart = 20
 
-# define preconditioner
+######################################
+## (OPTIONAL) DEFINE PRECONDITIONER ##
+######################################
+
 [solver.preconditioner]
 
 # preconditioner parameter
@@ -204,10 +213,15 @@ num_random_vectors = 1
 measure        = true # whether or not to measure the quantity
 time_dependent = true # if measured, whether as equal time or unequal time measurement
 
+# Phonon Green's function
+[measurements.PhononGreens]
+measure        = true
+time_dependent = true
+
 # Density-Desnity Correlation Function Measurement
 [measurements.DenDen]
 measure        = true
-time_dependent = true
+time_dependent = false
 
 # Pair Green's Function Measurement
 # Note 1: If the time depedent pair green's function is being
@@ -220,5 +234,10 @@ time_dependent = true
 
 # Bond-Bond correlation function
 [measurements.BondBond]
-measure        = true
-time_dependent = true
+measure        = false
+time_dependent = false
+
+# Current-Current correlation function
+[measurements.CurrentCurrent]
+measure        = false
+time_dependent = false

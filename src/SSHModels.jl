@@ -796,12 +796,12 @@ function read_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3
             x₀     = parse(T1, atoms[4])
 
             # record phonon field
-            x[τ,i,phonon] = x₀
+            x[τ,cell,phonon] = x₀
         end
     end
 
     # construct exponentiated interaction matrix
-    update_model!(holstein)
+    update_model!(ssh)
 
     return nothing
 end

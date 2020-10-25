@@ -54,7 +54,7 @@ include("ProcessInputFile.jl")
 ####################################
 
 using ..RunSimulation: run_simulation!
-using ..ProcessInputFile: process_input_file, initialize_holstein_model
+using ..ProcessInputFile: process_input_file, initialize_model
 using ..Models: read_phonons!
 using ..MuFinder: MuTuner, update_μ!
 using ..SimulationSummary: write_simulation_summary!
@@ -101,12 +101,12 @@ function load_model(dir::String)
 
     files = readdir(dir)
     config = findall(f -> endswith(f, r"\.toml|\.TOML"), files)
-    phonon = findall(f -> endswith(f, "phonon_config.out"), files)
+    phonon = findall(f -> endswith(f, "_config.out"), files)
     @assert length(config) == length(phonon) == 1
     config_file = joinpath(dir, files[config[1]])
     phonon_file = joinpath(dir, files[phonon[1]])
     
-    model = initialize_holstein_model(config_file)
+    model = initialize_model(config_file)
     read_phonons!(model, phonon_file)
     
     return model

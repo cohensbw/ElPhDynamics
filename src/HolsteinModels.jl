@@ -606,6 +606,14 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     ## PERFORM MULTIPLICATION y = Mᵀ⋅v ##
     #####################################
 
+    #           EXAMPLE OF Mᵀ MATRIX CONVENTION
+    #      |    1   -Bᵀ(2)   0      0      0      0    |
+    #      |    0     1    -Bᵀ(3)   0      0      0    |
+    # Mᵀ = |    0     0      1    -Bᵀ(4)   0      0    |
+    #      |    0     0      0      1    -Bᵀ(5)   0    |
+    #      |    0     0      0      0      1    -Bᵀ(6) |
+    #      | +Bᵀ(1)   0      0      0      0      1    | 
+
     # Notes:
     # • y(τ)  = [Mᵀ⋅v](τ)  = v(τ)  - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
     # • y(Lτ) = [Mᵀ⋅v](Lτ) = v(Lτ) + Bᵀ(1)⋅v(1)     for τ = Lτ
@@ -656,6 +664,14 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
     ########################################
     ## PERFORM MULTIPLICATION y = ∂M/∂x⋅v ##
     ########################################
+
+    #           EXAMPLE OF dM/dx MATRIX CONVENTION
+    #         |     0        0        0        0        0   +dB₁/dx₂ |
+    #         | -dB₂/dx₂     0        0        0        0       0    |
+    # dM/dx = |     0    -dB₃/dx₃     0        0        0       0    |
+    #         |     0        0    -dB₄/dx₄     0        0       0    |
+    #         |     0        0        0    -dB₅/dx₅     0       0    |
+    #         |     0        0        0        0    -dB₆/dx₆    0    | 
 
     # Notes:
     # • Consider y = ∂M/∂xᵢ(τ)⋅v ==>

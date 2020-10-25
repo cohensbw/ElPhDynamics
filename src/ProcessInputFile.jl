@@ -86,34 +86,39 @@ function process_input_file(filename::String)
     ######################
     ## INITIALIZE MODEL ##
     ######################
+
+    # initialize model
+    model = initialize_model(filename)
     
+    # if hosltein model
     if haskey(input,"holstein")
 
-        # initialize model
-        model = initialize_holstein_model(filename)
+        if !haskey(input["holstein"],"read_phonon_config")
+            input["holstein"]["read_phonon_config"] = false
+        end
 
         # intialize phonon field
-        if input["holstein"]["read_phonon_config"]
+        if input["holstein"]["read_phonon_config"] # read in phonon field
             phononfile = input["holstein"]["phonon_config_file"]
             read_phonons!(model, phononfile)
             cp(filename, joinpath(sim_params.datafolder,phononfile))
-            update_model!(model)
-        else
+        else # initialize to random phonon field
             init_phonons_half_filled!(model)
         end
-
+    
+    # if ssh model
     elseif haskey(input,"ssh")
 
-        # initialize model
-        model = initialize_ssh_model(filename)
+        if !haskey(input["ssh"],"read_phonon_config")
+            input["ssh"]["read_phonon_config"] = false
+        end
 
         # intialize phonon field
-        if input["ssh"]["read_phonon_config"]
+        if input["ssh"]["read_phonon_config"] # read in phonon field
             phononfile = input["ssh"]["phonon_config_file"]
             read_phonons!(model, phononfile)
             cp(filename, joinpath(sim_params.datafolder,phononfile))
-            update_model!(model)
-        else
+        else # initialize to random phonon field
             init_phonons_half_filled!(model)
         end
     end
@@ -175,6 +180,11 @@ function process_input_file(filename::String)
     #####################
     ## DEFINE DYNAMICS ##
     #####################
+
+    # check to bugs
+    if haskey(input,"hmc") && haskey(input,"langevin")
+        error("Config file cannot include both hmc and langevin tables.")
+    end
 
     # number of degrees of freedom (phonon fields) to simulate
     NL = length(model)
@@ -269,12 +279,30 @@ end
 #####################################
 
 """
-Initialize Holstein Model from config file.
+Initialize a hamiltonian.
 """
-function initialize_holstein_model(filename::String)
+function initialize_model(filename::String)
 
     # read input file
     input = TOML.parsefile(filename)
+
+    if haskey(input,"holstein") && haskey(input,"ssh")
+        error("Config file cannot include both ssh and holstein tables.")
+    end
+
+    if haskey(input,"holstein")
+        return initialize_holstein_model(input)
+    elseif haskey(input,"ssh")
+        return initialize_ssh_model(input)
+    else
+        error("Neither holstein or ssh model defined.")
+    end
+end
+
+"""
+Initialize Holstein Model from config file.
+"""
+function initialize_holstein_model(input::Dict)
     
     # define lattice geometry
     unit_cell = UnitCell(input["lattice"]["ndim"],
@@ -389,10 +417,7 @@ end
 """
 Initialize SSH model from config file.
 """
-function initialize_ssh_model(filename::String)
-
-    # read input file
-    input = TOML.parsefile(filename)
+function initialize_ssh_model(input::Dict)
     
     # define lattice geometry
     unit_cell = UnitCell(input["lattice"]["ndim"],

@@ -64,7 +64,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         # update chemical potential
         if μ_tuner.active
             simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
+            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -89,7 +89,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
+                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
             end
         end
 
@@ -164,7 +164,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         # update chemical potential
         if μ_tuner.active
             simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
+            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -192,7 +192,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model.μ, μ_tuner, model, Gr)
+                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
             end
         end
 
