@@ -298,6 +298,9 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
         op.cosht̄[i] /= L
         op.sinht̄[i] /= L
     end
+
+    copyto!(op.expnΔτV̄,op.model.expΔτμ)
+    
     return nothing
 end
 
