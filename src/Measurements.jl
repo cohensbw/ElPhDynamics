@@ -736,7 +736,7 @@ function make_intersite_measurements!(container::NamedTuple,model::HolsteinModel
                 G2 = estimate(Gr,s₂,s₁,τ,τ,1)
                 G3 = estimate(Gr,s₁,s₂,τ,τ,2)
                 G4 = estimate(Gr,s₂,s₁,τ,τ,2)
-                h    = (1.0-G1) + (1.0-G2) + (1.0-G3) + (1.0-G4)
+                h  = -G1-G2-G3-G4
                 # calculate electron kinetic energy
                 container.intersite_meas.el_ke[bond_def] += -t*h/V
             end
@@ -812,7 +812,7 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
             G2 = estimate(Gr,s₂,s₁,τ,τ,1)
             G3 = estimate(Gr,s₁,s₂,τ,τ,2)
             G4 = estimate(Gr,s₂,s₁,τ,τ,2)
-            h   = (1.0-G1) + (1.0-G2) + (1.0-G3) + (1.0-G4)
+            h   = -G1-G2-G3-G4
             # calculate modulated hopping amplitude
             t′ = ssh.t′[τ,bond]
             # phonon potential energy
