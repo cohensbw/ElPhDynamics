@@ -40,19 +40,6 @@ dtau = 0.1
 # setting temperature
 beta = 2.0
 
-# define hopping in lattice
-[[holstein.t]]
-val    = 1.0       # mean value
-stddev = 0.0       # (optional) standard deviation
-orbit  = [1, 1]    # orbital types being connected
-dL     = [1, 0, 0] # displacement vector in unit cells
-
-# define hopping in lattice
-[[holstein.t]]
-val   = 1.0
-orbit = [1, 1]
-dL    = [0, 1, 0]
-
 # define phonon frequency
 [[holstein.omega]]
 orbit  = [1] # which orbital types the omega value is applied to

@@ -84,9 +84,9 @@ val   = -1.0
 orbit  = [1,2]
 val    = 0.0
 
-# ################################################
-# ## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
-# ################################################
+################################################
+## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
+################################################
 
 # [tune_density]
 
@@ -104,9 +104,10 @@ val    = 0.0
 ###################################
 
 [[fourier_acceleration]]
+
 omega_min = 0.0
 omega_max = 10.0
-mass      = 3.0
+mass      = 1.0
 
 ###################################
 ## HYBRID MONTE CARLO PARAMETERS ##
@@ -118,7 +119,7 @@ mass      = 3.0
 num_multitimesteps = 10
 
 # thermalization updates
-burnin_updates = 50_000
+burnin_updates = 10_000
 
 # simulation updates
 simulation_updates = 100_000
@@ -176,7 +177,7 @@ random_seed = 999999999
 
 # select linear solver algorithm to use.
 # the options are "CG", "GMRES" and "BiCGStab"
-type = "GMRES"
+type = "CG"
 
 # tolerace used in iterative solvers
 tol = 1e-4
