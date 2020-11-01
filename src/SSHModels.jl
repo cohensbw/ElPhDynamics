@@ -822,13 +822,18 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
             val = -val
         end
 
+        # normalize according to number of equivalent fields
+        val /= (ssh.num_equivalent_fields[field]+1)
+
         # record derivative
         dMdx[field] += val
 
         # account for equivalences
-        for l in 1:ssh.num_equivalent_fields[field]
-            field′        = ssh.equivalent_fields[l,field]
-            dMdx[field′] += val
+        if ssh.num_equivalent_fields[field] > 0
+            for l in 1:ssh.num_equivalent_fields[field]
+                field′        = ssh.equivalent_fields[l,field]
+                dMdx[field′] += val
+            end
         end
     end
 
