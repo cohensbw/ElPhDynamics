@@ -11,7 +11,7 @@ using Logging
 
 using ..Utilities: get_index
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulM!, muldMdx!, mulMᵀ!
-using ..PhononAction: calc_dSbosedx!, calc_Sbose
+using ..PhononAction: calc_dSbdx!, calc_Sb
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 import ..KPMPreconditioners
 
@@ -508,7 +508,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
 
         # calculate the initial dSb/dx value
         fill!(dSbdx,0.0)
-        calc_dSbosedx!(dSbdx,model)
+        calc_dSbdx!(dSbdx,model)
 
         # dSb/dx(t+Δt) ==> Q⋅dSb/dx(t+Δt)
         fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
@@ -524,7 +524,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
 
             # calculate dSb/dx(t+Δt) value
             fill!(dSbdx,0.0)
-            calc_dSbosedx!(dSbdx,model)
+            calc_dSbdx!(dSbdx,model)
 
             # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
             fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
@@ -695,7 +695,7 @@ function calc_S(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2})::T1 wher
     hmc.S = calc_Sf(hmc)
 
     # S = Sb + ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋/2
-    hmc.S += calc_Sbose(model)
+    hmc.S += calc_Sb(model)
 
     return hmc.S
 end
@@ -711,7 +711,7 @@ function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, prec
     calc_dSfdx!(hmc,model,preconditioner)
 
     # dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    calc_dSbosedx!(dSdx, model)
+    calc_dSbdx!(dSdx, model)
 
     return nothing
 end

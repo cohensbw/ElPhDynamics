@@ -6,7 +6,7 @@ using LinearAlgebra
 
 using ..Utilities: get_index
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulMᵀ!, muldMdx!
-using ..PhononAction: calc_dSbosedx!
+using ..PhononAction: calc_dSbdx!
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 
 using ..KPMPreconditioners: setup!
@@ -339,7 +339,7 @@ function calc_dSdx!(dSdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Abst
     iters = calc_dSfdx!(dSdx, g, M⁻¹g, model, preconditioner)
 
     # ∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ⋅[∂M/∂xᵢ(τ)]⋅M⁻¹g ==> All Done!
-    calc_dSbosedx!( dSdx , model )
+    calc_dSbdx!( dSdx , model )
 
     # returning number of iterations in solving for M⁻¹g
     return iters

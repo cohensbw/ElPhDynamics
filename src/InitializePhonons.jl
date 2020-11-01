@@ -40,13 +40,9 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
             x[field] = x0
 
             # iterate over eqivalent fields
-            for i in 1:size(ssh.equivalent_fields,1)
-                field′ = ssh.equivalent_fields[i,field]
-                if field′==0
-                    break
-                else
-                    x[field′] = x0
-                end
+            for i in 1:ssh.num_equivalent_fields[field]
+                field′    = ssh.equivalent_fields[i,field]
+                x[field′] = x0
             end
         end
     end
