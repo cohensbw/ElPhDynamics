@@ -1,7 +1,9 @@
 using Parameters
 using LinearAlgebra
+using Random
 
 import LinearAlgebra: mul!, ldiv!, transpose!
+import Random: randn!
 
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice, sorted_neighbor_table_perm!, loc_to_site, calc_neighbor_table
@@ -53,14 +55,22 @@ struct SSHBond{T1<:AbstractFloat,T2<:Continuous} <: AbstractBond
     "whether or not a phonon lives on the bond."
     has_phonon::Bool
 
+    "name of the phonon."
+    name::String
+
     function SSHBond(t::T2,σt::T2,ω::T1,σω::T1,ω₄::T1,σω₄::T1,α::T1,σα::T1,α₂::T1,σα₂::T1,
-                     o₁::Int,o₂::Int,v::AbstractVector{Int}) where {T1<:AbstractFloat,T2<:Continuous}
+                     o₁::Int,o₂::Int,v::AbstractVector{Int},name::String="") where {T1<:AbstractFloat,T2<:Continuous}
 
         @assert length(v)==3
+
+        if name==""
+            name = randstring(5)
+        end
+
         v′ = zeros(Int,3)
         copyto!(v′,v)
-        has_phonon = !iszero(ω)||!iszero(σω)
-        return new{T1,T2}(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v′,has_phonon)
+        has_phonon = (!iszero(ω))||(!iszero(σω))
+        return new{T1,T2}(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v′,has_phonon,name)
     end
 end
 
@@ -136,6 +146,9 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
     "Map Ndof phonon fields onto a time slice τ"
     field_to_τ::Vector{Int}
+
+    "Maps field onto an equivalent field."
+    equivalent_fields::Matrix{Int}
 
     "Map phonon to bond"
     phonon_to_bond::Vector{Int}
@@ -231,7 +244,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         ω                  = Vector{T1}(undef,0)
         ω₄                 = Vector{T1}(undef,0)
         α                  = Vector{T2}(undef,0)
-        α₂                  = Vector{T2}(undef,0)
+        α₂                 = Vector{T2}(undef,0)
         μ                  = zeros(T1,Nsites)
         expΔτμ             = ones(T1,Nsites)
         t′                 = Matrix{T2}(undef,Lτ,0)
@@ -241,6 +254,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         sinht              = Matrix{T2}(undef,Lτ,0)
         field_to_phonon    = Vector{Int}(undef,0)
         field_to_τ         = Vector{Int}(undef,0)
+        equivalent_fields  = Matrix{Int}(undef,0,0)
         phonon_to_bond     = Vector{Int}(undef,0)
         bond_to_phonon     = Vector{Int}(undef,0)
         bond_to_definition = Vector{Int}(undef,0)
@@ -269,7 +283,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, bond_definitions,
                              x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
-                             field_to_phonon,field_to_τ,phonon_to_bond,bond_to_phonon,bond_to_definition,
+                             field_to_phonon,field_to_τ,equivalent_fields,phonon_to_bond,bond_to_phonon,bond_to_definition,
                              checkerboard_perm,neighbor_table,cosht,sinht,
                              mul_by_M, transposed, v′, v″, v‴, solver)
     end
@@ -279,10 +293,10 @@ end
 Assign hopping (and phonon) in SSH model.
 """
 function assign_hopping!(ssh::SSHModel{T1,T2},t::T2,σt::T1,ω::T1,σω::T1,ω₄::T1,σω₄::T1,α::T1,σα::T1,α₂::T1,σα₂::T1,
-                         o₁::Int,o₂::Int,v::Vector{Int}) where {T1<:AbstractFloat,T2<:Continuous}
+                         o₁::Int,o₂::Int,v::Vector{Int},name::String="") where {T1<:AbstractFloat,T2<:Continuous}
 
     # define ssh bond
-    sshbond = SSHBond(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v)
+    sshbond = SSHBond(t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,v,name)
     push!(ssh.bond_definitions,sshbond)
 
     return nothing
@@ -315,11 +329,14 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # initially zero types of phonons
     ssh.nph = 0
 
+    # names of phonons
+    names = Vector{String}(undef,0)
+
     # iterate over types of bonds in lattices
     for i in 1:ssh.nbonds
 
         # getting parameters that define bond
-        @unpack t, σt, α, σα, α₂, σα₂, ω, σω, ω₄, σω₄, o₁, o₂, v, has_phonon = ssh.bond_definitions[i]
+        @unpack t, σt, α, σα, α₂, σα₂, ω, σω, ω₄, σω₄, o₁, o₂, v, has_phonon, name = ssh.bond_definitions[i]
 
         # calculate new neighbors
         new_neighbors = calc_neighbor_table(ssh.lattice,o₁,o₂,v)
@@ -345,6 +362,9 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
             # incrementing count of number of types of phonons
             ssh.nph += 1
+
+            # record phonon names
+            push!(names,name)
 
             # adding new phonon frequencies
             ω_new = @. fill(ω,Nnewbonds) + σω*randn(Nnewbonds)
@@ -418,6 +438,40 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         end
     end
 
+    # calculate how many times each phonon name is repeated
+    occurrences = map(j->count(i->i==j,names),names)
+
+    # get the maximum times a given phonon name occurs
+    max_equivalences = maximum(occurrences) - 1
+
+    # construct the equivalent_fields table
+    equivalent_fields  = zeros(Int,max_equivalences,ssh.Ndof)
+    equivalent_fields′ = reshape(equivalent_fields,(max_equivalences,div(ssh.Ndof,ssh.nph),ssh.nph))
+
+    # construct a tabluation of all the fields
+    fields = reshape(collect(1:ssh.Ndof),(div(ssh.Ndof,ssh.nph),ssh.nph))
+
+    # iterate over types of phonons
+    for ph_type in 1:ssh.nph
+        # if there is duplicate type of phonon
+        if occurrences[ph_type]>1
+            # number of matches
+            equivalences = 0
+            # iterate over types of phonons
+            for ph_type′ in 1:ssh.nph
+                # if the two types of phonons share a name
+                if (names[ph_type]==names[ph_type′]) && (ph_type!=ph_type′)
+                    # record equivalent fields
+                    equivalences += 1
+                    @views @. equivalent_fields′[equivalences,:,ph_type] = fields[:,ph_type′]
+                end
+            end
+        end
+    end
+
+    # record all equivalences
+    ssh.equivalent_fields = equivalent_fields
+    
     return nothing
 end
 
@@ -441,6 +495,47 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
         ssh.sinht[τ,index] = sinh(ssh.Δτ*t′)
+    end
+
+    # make sure equivalent fields are equal
+    max_equivalences = size(ssh.equivalent_fields,1)
+    if max_equivalences>0
+        for field in 1:ssh.Ndof
+            for l in 1:max_equivalences
+                field′ = ssh.equivalent_fields[l,field]
+                if field′==0
+                    break
+                elseif !(ssh.x[field]≈ssh.x[field′])
+                    error(@sprintf("x[%d]=%.10f uneqaul to x[%d]=%.10f\n",field,ssh.x[field],field′,ssh.x[field′]))
+                end
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
+Fill vector that will ultimate be used to update fields in model.
+"""
+function randn!(v::AbstractVector{T},ssh::SSHModel{T}) where {T}
+
+    # fill with random numbers
+    randn!(v)
+
+    # account for some fields being equivalent
+    max_equivalences = size(ssh.equivalent_fields,1)
+    if max_equivalences > 0
+        for field in 1:ssh.Ndof
+            for l in 1:max_equivalences
+                field′ = ssh.equivalent_fields[l,field]
+                if field′ == 0
+                    break
+                else
+                    v[field′] = v[field]
+                end
+            end
+        end
     end
 
     return nothing
@@ -678,6 +773,9 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
     ## CALCULATE ALL ⟨∂M/∂xᵢⱼ(τ)⟩ VALUES ##
     #######################################
 
+    # initialize output array to zeros
+    fill!(dMdx,0.0)
+
     # iterate over degrees of freedom
     @fastmath @inbounds for field in 1:Ndof
 
@@ -711,11 +809,27 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
         x₀ = x[field]
 
         # ⟨∂M/∂xᵢⱼ(τ)⟩ = +uᵀ(τ)⋅[Δτ⋅∂K(τ)/∂xᵢⱼ(τ)]⋅[B(τ)⋅v(τ-1)]
-        dMdx[field] = Δτ * ((αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[iτ] * Bv[jτ] + conj(αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[jτ] * Bv[iτ])
+        val = Δτ * ((αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[iτ] * Bv[jτ] + conj(αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[jτ] * Bv[iτ])
 
         # ⟨∂M/∂xᵢⱼ(1)⟩ = -uᵀ(1)⋅[Δτ⋅∂K(1)/∂xᵢⱼ(1)]⋅[B(1)⋅v(L)]
         if τ==1
-            dMdx[field] = -dMdx[field]
+            val = -val
+        end
+
+        # record derivative
+        dMdx[field] += val
+
+        # account for equivalences
+        max_equivalences = size(ssh.equivalent_fields,1)
+        if max_equivalences > 0
+            for l in 1:max_equivalences
+                field′ = ssh.equivalent_fields[l,field]
+                if field′==0
+                    break
+                else
+                    dMdx[field′] += val
+                end
+            end
         end
     end
 

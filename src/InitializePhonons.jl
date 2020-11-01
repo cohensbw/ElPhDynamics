@@ -17,7 +17,10 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     Nph = ssh.Nph
 
     # get phonon fields
-    x = reshaped(ssh.x,(Lτ,Nph))
+    x = ssh.x
+
+    # keeps track of the fields
+    field = 0
 
     # iterate over phonons
     for phonon in 1:Nph
@@ -30,8 +33,21 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
         # iterate over imaginary time slices
         for τ in 1:Lτ
 
+            # increment field count
+            field += 1
+
             # set phonon value
-            x[τ,phonon] = x0
+            x[field] = x0
+
+            # iterate over eqivalent fields
+            for i in 1:size(ssh.equivalent_fields,1)
+                field′ = ssh.equivalent_fields[i,field]
+                if field′==0
+                    break
+                else
+                    x[field′] = x0
+                end
+            end
         end
     end
 

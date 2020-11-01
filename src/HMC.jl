@@ -359,7 +359,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     update_model!(model)
 
     # refresh the velocity v
-    refresh_v!(hmc,fa)
+    refresh_v!(hmc,model,fa)
 
     # refresh ϕ
     refresh_ϕ!(hmc,model)
@@ -474,7 +474,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     update_model!(model)
 
     # refresh the velocity v
-    refresh_v!(hmc,fa)
+    refresh_v!(hmc,model,fa)
 
     # refresh ϕ
     refresh_ϕ!(hmc,model)
@@ -596,14 +596,14 @@ refresh the velocity `v` according `v=√(Q)⋅R` where `R` is a vector of norma
 and `Q` is the fourier acceleration matrix. More specifically, this function supports partial
 momentum refreshes of the form `v = α⋅v + √(1-α²)⋅v′` where `v′=√(Q)⋅R`⋅
 """
-function refresh_v!(hmc::HybridMonteCarlo{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
+function refresh_v!(hmc::HybridMonteCarlo{T},model::AbstractModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
     R       = hmc.y
     sqrtQR  = hmc.y
     v       = hmc.v
     α       = hmc.α
 
-    randn!(R)
+    randn!(R,model)
     fourier_accelerate!(sqrtQR,fa,R,-0.5,use_mass=true)
     @. v = α*v + sqrt(1.0-α^2)*sqrtQR
 

@@ -509,11 +509,16 @@ function initialize_ssh_model(input::Dict)
             else
                 σω₄ = 0.0
             end
+            if haskey(d,"name")
+                name = d["name"]
+            else
+                name = ""
+            end
             o₁ = d["orbits"][1]
             o₂ = d["orbits"][2]
             dL = zeros(Int,3)
             dL[1:length(d["dL"])] .= d["dL"]
-            assign_hopping!(ssh,t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,dL)
+            assign_hopping!(ssh,t,σt,ω,σω,ω₄,σω₄,α,σα,α₂,σα₂,o₁,o₂,dL,name)
         end
     end
 

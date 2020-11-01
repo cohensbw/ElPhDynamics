@@ -16,6 +16,7 @@ export write_phonons, read_phonons
 
 import Base: eltype, size, length, *
 import LinearAlgebra: mul!, ldiv!, transpose!
+import Random: randn!
 
 using LinearAlgebra
 
@@ -531,6 +532,17 @@ function update_model!(holstein::HolsteinModel)
             expnΔτV[index] = exp( -Δτ * ( λ[i] * x[index] + λ₂[i] * x[index]^2 +  - μ[i] ) )
         end
     end
+
+    return nothing
+end
+
+"""
+Fill vector that will ultimate be used to update fields in model.
+"""
+function randn!(v::AbstractVector{T},holstein::HolsteinModel{T}) where {T}
+
+    # fill with random numbers
+    randn!(v)
 
     return nothing
 end

@@ -145,7 +145,8 @@ function write_bond_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,
 
     for (id, bond) in enumerate(bonds)
 
-        write(fout,"Bond ID = ", string(id),      "\n")
+        write(fout,"Bond ID = ", string(id), "\n")
+        write(fout,"name = ",bond.name, "\n")
         write(fout,"t_avg = ", string(bond.t),  "\n")
         write(fout,"t_std = ", string(bond.σt), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
@@ -157,7 +158,7 @@ function write_bond_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,
 end
 
 """
-Write SSH Phonon definitions to file.
+Write Phonon definitions to file.
 """
 function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
@@ -167,22 +168,27 @@ function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,
     write(fout,"## SSH PHONON DEFINITIONS ##\n")
     write(fout,"############################\n\n")
 
-    for (id, bond) in enumerate(bonds)
+    id = 0
+    for bond in bonds
 
-        write(fout,"SSH Phonon ID = ", string(id),      "\n")
-        write(fout,"t_avg = ", string(bond.t),  "\n")
-        write(fout,"t_std = ", string(bond.σt), "\n")
-        write(fout,"alpha_avg = ", string(bond.α),  "\n")
-        write(fout,"alpha_std = ", string(bond.σα), "\n")
-        write(fout,"alpha2_avg = ", string(bond.α₂),  "\n")
-        write(fout,"alpha2_std = ", string(bond.σα₂), "\n")
-        write(fout,"omega_avg = ", string(bond.ω),  "\n")
-        write(fout,"omega_std = ", string(bond.σω), "\n")
-        write(fout,"omega4_avg = ", string(bond.ω₄),  "\n")
-        write(fout,"omega4_std = ", string(bond.σω₄), "\n")
-        write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
-        write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
-        write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
+        if bond.has_phonon
+            id += 1
+            write(fout,"SSH Phonon ID = ", string(id), "\n")
+            write(fout,"name = ",bond.name, "\n")
+            write(fout,"t_avg = ", string(bond.t),  "\n")
+            write(fout,"t_std = ", string(bond.σt), "\n")
+            write(fout,"alpha_avg = ", string(bond.α),  "\n")
+            write(fout,"alpha_std = ", string(bond.σα), "\n")
+            write(fout,"alpha2_avg = ", string(bond.α₂),  "\n")
+            write(fout,"alpha2_std = ", string(bond.σα₂), "\n")
+            write(fout,"omega_avg = ", string(bond.ω),  "\n")
+            write(fout,"omega_std = ", string(bond.σω), "\n")
+            write(fout,"omega4_avg = ", string(bond.ω₄),  "\n")
+            write(fout,"omega4_std = ", string(bond.σω₄), "\n")
+            write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
+            write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
+            write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
+        end
     end
 
     return nothing

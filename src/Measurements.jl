@@ -1941,19 +1941,6 @@ function measure_PhononGreens!(container::Array{Complex{T1},6},model::SSHModel{T
     nᵤ = model.lattice.ncells::Int
     nᵥ = model.nph::Int
 
-    # if given lattice dimension only has an extent of 2 unit cells then reduce to 1.
-    # need to make things like the two site limit work: in the two site limit there are
-    # 2 unit cells but only one phonon.
-    if L₁==2
-        L₁=1
-    end
-    if L₂==2
-        L₂=1
-    end
-    if L₃==2
-        L₃=1
-    end
-
     # length of axis corresponding to imaginary time axis.
     # L₀ = Lₜ+1 if unequal time measurement
     # L₀ = 1    if   equal time measurement

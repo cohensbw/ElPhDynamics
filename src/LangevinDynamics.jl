@@ -95,7 +95,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::EulerDynamics{T1}, fa::Fou
     update_model!(model)
 
     # itialize η as vector of gaussian random number
-    randn!(η)
+    randn!(η,model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
     randn!(R)
@@ -179,7 +179,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::RungeKuttaDynamics{T1}, fa
     update_model!(model)
 
     # itialize η as vector of gaussian random number
-    randn!(η)
+    randn!(η,model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
     randn!(R)
@@ -286,7 +286,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::HeunsDynamics{T1}, fa::Fou
     M⁻¹R     = dyn.M⁻¹R
 
     # 1. intialize η
-    randn!(η)
+    randn!(η,model)
 
     # 2. ξ = [F⁻¹⋅√Q⋅F]⋅η
     ξ = η
@@ -357,8 +357,8 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Ab
     # If a longer-range electron-phonon interaction were added of the form ∑(λᵢⱼ⋅xᵢ⋅nⱼ), then this way of doing
     # things would no longer work, and a loop over each individual phonon field xᵢ(τ) would need to be added.
 
-    # # intialize random vector g.
-    # randn!(g)
+    # intialize random vector g.
+    randn!(g)
 
     # solve linear system to get M⁻¹⋅g
     iters = 0
