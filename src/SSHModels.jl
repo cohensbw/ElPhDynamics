@@ -530,16 +530,12 @@ function randn!(v::AbstractVector{T},ssh::SSHModel{T}) where {T}
     randn!(v)
 
     # account for some fields being equivalent
-    max_equivalences = size(ssh.equivalent_fields,1)
+    max_equivalences = maximum(ssh.num_equivalent_fields)
     if max_equivalences > 0
         for field in 1:ssh.Ndof
-            for l in 1:max_equivalences
+            for l in 1:ssh.num_equivalent_fields[field]
                 field′ = ssh.equivalent_fields[l,field]
-                if field′ == 0
-                    break
-                else
-                    v[field′] = v[field]
-                end
+                v[field′] = v[field]
             end
         end
     end

@@ -290,9 +290,12 @@ end
 """
 Write status of HMC to log file.
 """
-function update_log(hmc::HybridMonteCarlo{T}) where {T<:AbstractFloat}
+function update_log(hmc::HybridMonteCarlo{T},model::AbstractModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
-    @unpack updates, t, accepted, H, S, K, iters, logfile = hmc
+    @unpack updates, t, accepted, iters, logfile = hmc
+
+    # get energies
+    H, S, K = calc_H(hmc, model, fa)
 
     if t==-1
         # outcome of HMC update accept/reject decision
@@ -302,7 +305,7 @@ function update_log(hmc::HybridMonteCarlo{T}) where {T<:AbstractFloat}
         outcome = -1
     end
 
-    write(logfile, @sprintf("%d %d %d %.3f %.3f %.3f %d\n", updates, outcome, t, H, S, K, iters))
+    write(logfile, @sprintf("%d %d %d %.4f %.4f %.4f %d\n", updates, outcome, t, H, S, K, iters))
     flush(logfile)
 
     return nothing
@@ -332,7 +335,7 @@ function update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::Fou
         # write output of logfile
         if hmc.log
             hmc.t = -1
-            update_log(hmc)
+            update_log(hmc,model,fa)
         end
 
         return accepted, iters
@@ -371,7 +374,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     H₀, S, K = calc_H(hmc, model, fa)
 
     # calculate the initial dS/dx value
-    iter_t = calc_dSdx!(hmc, model, preconditioner)
+    iter_t = calc_dSdx!(hmc, model)
     iters  = iter_t
 
     # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
@@ -383,8 +386,11 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
 
     # log HMC state
     if hmc.log && hmc.verbose
-        update_log(hmc)
+        update_log(hmc,model,fa)
     end
+
+    # keep track of iterations
+    iters = 0
 
     # iterate over time steps, doing leapfrog updates to the phonon fields
     for hmc.t in 1:Nt
@@ -402,7 +408,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
 
         # calculate dS/dx(t+Δt) value
-        calc_dSdx!(hmc, model, preconditioner)
+        calc_dSdx!(hmc, model)
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
         fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
@@ -412,7 +418,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
 
         # log HMC state
         if hmc.log && hmc.verbose
-            update_log(hmc)
+            update_log(hmc,model,fa)
         end
     end
 
@@ -486,7 +492,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     H₀, S, K = calc_H(hmc, model, fa)
 
     # calculate the initial dSf/dx value
-    calc_dSfdx!(hmc, model, preconditioner)
+    calc_dSfdx!(hmc, model)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
     fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -497,7 +503,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
 
     # log HMC state
     if hmc.log && hmc.verbose
-        update_log(hmc)
+        update_log(hmc,model,fa)
     end
 
     # iterate over timesteps
@@ -540,7 +546,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
 
         # calculate dSf/dx(t+Δt) value
-        calc_dSfdx!(hmc, model, preconditioner)
+        calc_dSfdx!(hmc, model)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
@@ -550,7 +556,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
 
         # log HMC state
         if hmc.log && hmc.verbose
-            update_log(hmc)
+            update_log(hmc,model,fa)
         end
     end
 
@@ -703,12 +709,12 @@ end
 """
 Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋
 """
-function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I) where {T1,T2}
+function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
     
     dSdx = hmc.dSdx
     
     # dS/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    calc_dSfdx!(hmc,model,preconditioner)
+    calc_dSfdx!(hmc,model)
 
     # dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
     calc_dSbdx!(dSdx, model)
@@ -737,7 +743,7 @@ end
 Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ + ₋ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
 More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
 """
-function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I) where {T1,T2}
+function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
     
     dSdx  = hmc.dSdx
     dMdx  = hmc.y
