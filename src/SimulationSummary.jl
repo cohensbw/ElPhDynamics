@@ -135,7 +135,7 @@ end
 """
 Write bond defintions to file.
 """
-function write_bond_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function write_bond_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
     bonds = model.bond_definitions
 
@@ -146,7 +146,28 @@ function write_bond_definitions!(fout,model::AbstractModel{T1,T2,T3}) where {T1,
     for (id, bond) in enumerate(bonds)
 
         write(fout,"Bond ID = ", string(id), "\n")
-        write(fout,"name = ",bond.name, "\n")
+        write(fout,"name  = ",bond.name, "\n")
+        write(fout,"t_avg = ", string(bond.t),  "\n")
+        write(fout,"t_std = ", string(bond.σt), "\n")
+        write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
+        write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
+        write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
+    end
+
+    return nothing
+end
+
+function write_bond_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,T2,T3}
+
+    bonds = model.bond_definitions
+
+    write(fout,"######################\n")
+    write(fout,"## BOND DEFINITIONS ##\n")
+    write(fout,"######################\n\n")
+
+    for (id, bond) in enumerate(bonds)
+
+        write(fout,"Bond ID = ", string(id), "\n")
         write(fout,"t_avg = ", string(bond.t),  "\n")
         write(fout,"t_std = ", string(bond.σt), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
