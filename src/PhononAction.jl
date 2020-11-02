@@ -103,7 +103,7 @@ end
 Calculates the dervative phonon action with respect to each phonon field and adds that value in place
 to the vector dSbdx.
 """
-function calc_dSbdxdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
+function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
 
     @assert length(dSbdx)==holstein.Ndof
 

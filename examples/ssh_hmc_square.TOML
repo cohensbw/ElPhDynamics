@@ -36,13 +36,14 @@ read_phonon_config = false
 phonon_config_file = "phonon_config.out"
 
 # discretization
-dtau = 0.1
+dtau = 0.05
 
 # setting temperature
-beta = 2.0
+beta = 2.00
 
 # define hopping in lattice
 [[ssh.hopping]]
+name       = "x"
 t_avg      = 1.0 # bare hopping
 t_std      = 0.0 # standard deviation/noise on bare hopping
 alpha_avg  = 0.1 # electron-phonon coupling
@@ -58,6 +59,7 @@ dL        = [1, 0, 0] # displacement vector in unit cells
 
 # define hopping in lattice
 [[ssh.hopping]]
+name       = "y"
 t_avg      = 1.0 # bare hopping
 t_std      = 0.0 # standard deviation/noise on bare hopping
 alpha_avg  = 0.1 # electron-phonon coupling
@@ -76,9 +78,9 @@ dL         = [0, 1, 0] # displacement vector in unit cells
 orbit = [1]
 val   = 0.0
 
-# ################################################
-# ## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
-# ################################################
+################################################
+## (OPTIONAL) TUNE DENSITY/CHEMICAL POTENTIAL ##
+################################################
 
 # [tune_density]
 
@@ -98,7 +100,7 @@ val   = 0.0
 [[fourier_acceleration]]
 omega_min = 0.0
 omega_max = 10.0
-mass      = 3.0
+mass      = 0.1
 
 ###################################
 ## HYBRID MONTE CARLO PARAMETERS ##
@@ -110,16 +112,16 @@ mass      = 3.0
 num_multitimesteps = 10
 
 # thermalization updates
-burnin_updates = 50_000
+burnin_updates = 5_000
 
 # simulation updates
-simulation_updates = 100_000
+simulation_updates = 50_000
 
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 1.0
 
 # timestep size
-dt = 0.1
+dt = 0.10
 
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
@@ -133,7 +135,7 @@ momentum_conservation_fraction = 0.0
 construct_guess = false
 
 # whether to write a log file for HMC dynamics
-log = false
+log = true
 
 # if writing a log file, whether to write status at every timestep (true)
 # or just after a HMC update (false)
@@ -158,7 +160,7 @@ num_bins = 100
 write_M_matrix = false
 
 # (optional) random number generator seed.
-random_seed = 999999999
+# random_seed = 999999999
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##
@@ -236,10 +238,10 @@ time_dependent = true
 
 # Bond-Bond correlation function
 [measurements.BondBond]
-measure        = false
-time_dependent = false
+measure        = true
+time_dependent = true
 
 # Current-Current correlation function
 [measurements.CurrentCurrent]
-measure        = false
-time_dependent = false
+measure        = true
+time_dependent = true

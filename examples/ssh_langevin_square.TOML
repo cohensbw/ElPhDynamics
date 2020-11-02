@@ -36,10 +36,10 @@ read_phonon_config = false
 phonon_config_file = "phonon_config.out"
 
 # discretization
-dtau = 0.1
+dtau = 0.05
 
 # setting temperature
-beta = 2.0
+beta = 2.00
 
 # define hopping in lattice
 [[ssh.hopping]]
@@ -98,7 +98,7 @@ val   = 0.0
 [[fourier_acceleration]]
 omega_min = 0.0
 omega_max = 10.0
-mass      = 3.0
+mass      = 0.1
 
 #########################
 ## LANGEVIN PARAMETERS ##
@@ -107,7 +107,7 @@ mass      = 3.0
 [langevin]
 
 # thermaliztion timesteps
-burnin_timesteps = 100_000
+burnin_timesteps = 50_000
 
 # simulation timesteps
 simulation_timesteps = 500_000
@@ -142,7 +142,7 @@ num_bins = 100
 write_M_matrix = false
 
 # (optional) random number generator seed.
-random_seed = 999999999
+random_seed = 904375938239483
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##

@@ -82,7 +82,7 @@ val    = 0.0
 [[fourier_acceleration]]
 omega_min = 0.0
 omega_max = 10.0
-mass      = 0.5
+mass      = 1.0
 
 #########################
 ## LANGEVIN PARAMETERS ##
@@ -126,7 +126,7 @@ num_bins = 100
 write_M_matrix = false
 
 # (optional) random number generator seed.
-random_seed = 999999999
+# random_seed = 999999999
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##
@@ -136,7 +136,7 @@ random_seed = 999999999
 
 # select linear solver algorithm to use.
 # the options are "CG", "GMRES" and "BiCGStab"
-type = "GMRES"
+type = "CG"
 
 # tolerace used in iterative solvers
 tol = 1e-4

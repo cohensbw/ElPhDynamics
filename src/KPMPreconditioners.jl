@@ -6,7 +6,7 @@ using UnsafeArrays
 
 import LinearAlgebra: ldiv!, mul!, transpose
 
-using ..Models: HolsteinModel, SSHModel, AbstractModel, Continuous
+using ..Models: HolsteinModel, SSHModel, AbstractModel, Continuous, update_model!
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index

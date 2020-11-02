@@ -56,8 +56,8 @@ orbits    = [1, 2]    # orbital types being connected
 dL        = [0, 0, 0] # displacement vector in unit cells
 
 # define chemical potential
-[[holstein.mu]]
-orbit = [1]
+[[ssh.mu]]
+orbit = [1,2]
 val   = 0.0
 
 ###################################
@@ -67,7 +67,7 @@ val   = 0.0
 [[fourier_acceleration]]
 omega_min = 0.0
 omega_max = 10.0
-mass      = 3.0
+mass      = 0.1
 
 ###################################
 ## HYBRID MONTE CARLO PARAMETERS ##
@@ -102,7 +102,7 @@ momentum_conservation_fraction = 0.0
 construct_guess = false
 
 # whether to write a log file for HMC dynamics
-log = false
+log = true
 
 # if writing a log file, whether to write status at every timestep (true)
 # or just after a HMC update (false)
@@ -127,7 +127,7 @@ num_bins = 100
 write_M_matrix = false
 
 # (optional) random number generator seed.
-random_seed = 999999999
+# random_seed = 98792347129
 
 ##############################
 ## LINEAR SOLVER PARAMETERS ##

@@ -489,6 +489,9 @@ Update SSH model.
 """
 function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
+    # account of updated chemical potential
+    @. ssh.expΔτμ = exp( ssh.Δτ * ssh.μ )
+
     # iterate of phonon fields
     for field in 1:ssh.Ndof
         # get phonon

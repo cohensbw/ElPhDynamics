@@ -4,7 +4,7 @@ using Parameters
 using Statistics
 using LinearAlgebra
 
-using ..Models: AbstractModel, HolsteinModel, SSHModel
+using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!
 using ..GreensFunctions: EstimateGreensFunction
 using ..Measurements: measure_N², measure_density
 
@@ -42,15 +42,10 @@ end
 """
 Update μ values in model.
 """
-function update_μ!(model::HolsteinModel{T},  tuner::MuTuner{T}, estimator::EstimateGreensFunction{T})::T where {T}
-
-    return update_μ!(model.μ, tuner, model, estimator)
-end
-
-function update_μ!(model::SSHModel{T},  tuner::MuTuner{T}, estimator::EstimateGreensFunction{T})::T where {T}
+function update_μ!(model::AbstractModel{T},  tuner::MuTuner{T}, estimator::EstimateGreensFunction{T})::T where {T}
 
     μ_new = update_μ!(model.μ, tuner, model, estimator)
-    @. model.expΔτμ = exp(model.Δτ*model.μ)
+    update_model!(model)
 
     return μ_new
 end
