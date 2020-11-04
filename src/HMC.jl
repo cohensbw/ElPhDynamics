@@ -305,7 +305,7 @@ function update_log(hmc::HybridMonteCarlo{T},model::AbstractModel{T},fa::Fourier
         outcome = -1
     end
 
-    write(logfile, @sprintf("%d %d %d %.4f %.4f %.4f %d\n", updates, outcome, t, H, S, K, iters))
+    write(logfile, @sprintf("%d %d %d %.8f %.8f %.8f %d\n", updates, outcome, t, H, S, K, iters))
     flush(logfile)
 
     return nothing

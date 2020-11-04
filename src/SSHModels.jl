@@ -167,6 +167,11 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     """
     checkerboard_perm::Vector{Int}
 
+    """
+    Inverse checkerboard order. Map neighbor table entry onto bond.
+    """
+    inv_checkerboard_perm::Vector{Int}
+
     "Neighbor table telling which sites in lattice are connect by bonds.
     Ordered according to checkerboard decomposition."
     neighbor_table::Matrix{Int}
@@ -252,6 +257,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         expΔτμ                = ones(T1,Nsites)
         t′                    = Matrix{T2}(undef,Lτ,0)
         checkerboard_perm     = Vector{Int}(undef,0)
+        inv_checkerboard_perm = Vector{Int}(undef,0)
         neighbor_table        = Matrix{Int}(undef,2,0)
         cosht                 = Matrix{T2}(undef,Lτ,0)
         sinht                 = Matrix{T2}(undef,Lτ,0)
@@ -289,7 +295,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
                              x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
                              field_to_phonon,field_to_τ,equivalent_fields,num_equivalent_fields,
                              phonon_to_bond, bond_to_phonon,bond_to_definition,
-                             checkerboard_perm,neighbor_table,cosht,sinht,
+                             checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
                              mul_by_M, transposed, v′, v″, v‴, solver)
     end
 end
@@ -408,8 +414,9 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
     # get checkerboard permutation and apply to neighbor table
     new_perm = checkerboard_order(groups)
-    ssh.checkerboard_perm = perm[new_perm]
-    ssh.neighbor_table   .= ssh.neighbor_table[:,new_perm]
+    ssh.checkerboard_perm     = perm[new_perm]
+    ssh.inv_checkerboard_perm = sortperm(ssh.checkerboard_perm)
+    ssh.neighbor_table       .= ssh.neighbor_table[:,new_perm]
 
     # number of bonds in lattice
     ssh.Nbonds = size(ssh.neighbor_table,2)
@@ -566,44 +573,28 @@ function mulM!(Mv::AbstractVector{T2},ssh::SSHModel{T1,T2},v::AbstractVector{T2}
     # Notes:
     # • [M⋅v](1) = v(1) + B(1)⋅v(Lτ)  for τ = 1
     # • [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1) for τ > 1
-    # • B(τ) = exp{Δτ⋅μ}⋅exp{-Δτ⋅K[x(τ)]}
+    # • B(τ) = exp{-Δτ⋅K[x(τ)]}⋅exp{Δτ⋅μ}
     # • exp{Δτ⋅μ} is represent an NxN diagonal matrix that is the same for all
     #   time slice τ and is stored as a vector.
     # • exp{-Δτ⋅K[x(τ)]} is applied to a vector/represented using the checkerboard approximation.
 
     @unpack cosht, sinht, neighbor_table, Nbonds, Nsites, Lτ, expΔτμ = ssh
 
-    # Calculate [M⋅v](τ) = v(τ-1)
+    # Calculate [M⋅v](τ) = exp{Δτ⋅μ}⋅v(τ-1)
 
     @fastmath @inbounds for i in 1:Nsites
+        expΔτμi = expΔτμ[i]
         for τ in 1:Lτ
             τm1    = mod1(τ-1,Lτ)
             iτ     = get_index(τ,  i,Lτ)
             iτm1   = get_index(τm1,i,Lτ)
-            Mv[iτ] = v[iτm1]
+            Mv[iτ] = expΔτμi * v[iτm1]
         end
     end
 
-    # Calculate [M⋅v](τ) = exp{-Δτ⋅K[x(τ)]}⋅v(τ-1)
+    # Calculate [M⋅v](τ) = B(τ)⋅v(τ-1) = exp{-Δτ⋅K[x(τ)]}⋅[exp{Δτ⋅μ}⋅v(τ-1)]
     
     checkerboard_mul!(Mv,neighbor_table,cosht,sinht)
-
-    # Calcualte [M⋅v](τ) = B(τ)⋅v(τ-1) = exp{Δτ⋅μ}⋅[exp{-Δτ⋅K[x(τ)]}⋅v(τ-1)]
-
-    # iterate of sites in lattice
-    @fastmath @inbounds for i in 1:Nsites
-
-        # get matrix elements 
-        expΔτμi = expΔτμ[i]
-
-        # iterate over time slices
-        for τ in 1:Lτ
-
-            # multiply vector element by matrix element
-            iτ     = get_index(τ,i,Lτ)
-            Mv[iτ] = expΔτμi * Mv[iτ]
-        end
-    end
 
     # Calculate [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1)
 
@@ -647,34 +638,16 @@ function mulMᵀ!(Mᵀv::AbstractVector{T2},ssh::SSHModel{T1,T2},v::AbstractVect
     # Notes:
     # • y(τ)  = [Mᵀ⋅v](τ)  = v(τ)  - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
     # • y(Lτ) = [Mᵀ⋅v](Lτ) = v(Lτ) + Bᵀ(1)⋅v(1)     for τ = Lτ
-    # • Bᵀ(τ) = exp{-Δτ⋅K[x(τ)]}ᵀ⋅exp{Δτ⋅μ}
+    # • Bᵀ(τ) = exp{Δτ⋅μ}⋅exp{-Δτ⋅K[x(τ)]}ᵀ
     # • exp{Δτ⋅μ} is represent an NxN diagonal matrix that is the same for all
     #   time slice τ and is stored as a vector.
     # • exp{-Δτ⋅K[x(τ)]} is applied to a vector/represented using the checkerboard approximation.
 
     @unpack cosht, sinht, neighbor_table, Nbonds, Nsites, Lτ, expΔτμ = ssh
 
-    # Calculate exp{Δτ⋅μ}⋅v(τ+1)
+    # Calculate exp{-Δτ⋅K[x(τ+1)]}ᵀ⋅v(τ+1)
 
-    # iterate of sites in lattice
-    @fastmath @inbounds for i in 1:Nsites
-
-        # get matrix elements 
-        expΔτμi = expΔτμ[i]
-
-        # iterate over time slices
-        for τ in 1:Lτ
-
-            # get index into output vector
-            iτ = get_index(τ,i,Lτ)
-
-            # multiply vector element by matrix element
-            Mᵀv[iτ] = expΔτμi * v[iτ]
-        end
-    end
-
-    # Caluclate Bᵀ(τ+1)⋅v(τ+1) = exp{-Δτ⋅K[x(τ+1)]}ᵀ⋅[exp{Δτ⋅μ}⋅v(τ+1)]
-
+    copyto!(Mᵀv,v)
     checkerboard_transpose_mul!(Mᵀv,neighbor_table,cosht,sinht)
 
     # Calculate [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1)
@@ -682,18 +655,20 @@ function mulMᵀ!(Mᵀv::AbstractVector{T2},ssh::SSHModel{T1,T2},v::AbstractVect
     # iterate over sites in lattice
     for i in 1:Nsites
 
-        # record [Mᵀ⋅v](L) = v(L) + Bᵀ(1)⋅v(1)
+        expΔτμi = expΔτμ[i]
+
+        # record [Mᵀ⋅v](L) = v(L) + Bᵀ(1)⋅v(1) = v(L) + exp{Δτ⋅μ}⋅exp{-Δτ⋅K[x(1)]}ᵀ⋅v(1)
         i1     = get_index(1 ,i,Lτ)
         iL     = get_index(Lτ,i,Lτ)
-        Mᵀv_iL = v[iL] + Mᵀv[i1]
+        Mᵀv_iL = v[iL] + expΔτμi * Mᵀv[i1]
 
         # iterate over time slices
         for τ in 1:Lτ-1
 
-            # [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1)
+            # [Mᵀ⋅v](τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) = v(τ) - exp{Δτ⋅μ}⋅exp{-Δτ⋅K[x(τ+1)]}ᵀ⋅v(τ+1)
             iτ      = get_index(τ,i,Lτ)
             iτp1    = get_index(τ+1,i,Lτ)
-            Mᵀv[iτ] = v[iτ] - Mᵀv[iτp1]
+            Mᵀv[iτ] = v[iτ] - expΔτμi * Mᵀv[iτp1]
         end
 
         # [Mᵀ⋅v](L) = v(L) + Bᵀ(1)⋅v(1)
@@ -710,16 +685,16 @@ writing each of the ⟨∂M/∂xᵢⱼ(τ)⟩ values to a vector dMdx.
 function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T1,T2},v::AbstractVector{T2}) where {T1,T2}
 
     #           EXAMPLE OF dM/dx MATRIX CONVENTION
-    #         |     0        0        0        0        0   +dB₁/dx₂ |
-    #         | -dB₂/dx₂     0        0        0        0       0    |
-    # dM/dx = |     0    -dB₃/dx₃     0        0        0       0    |
-    #         |     0        0    -dB₄/dx₄     0        0       0    |
-    #         |     0        0        0    -dB₅/dx₅     0       0    |
-    #         |     0        0        0        0    -dB₆/dx₆    0    | 
+    #          |     0        0        0        0        0       0    |
+    #          |     0        0        0        0        0       0    |
+    # dM/dx₃ = |     0    -dB₃/dx₃     0        0        0       0    |
+    #          |     0        0        0        0        0       0    |
+    #          |     0        0        0        0        0       0    |
+    #          |     0        0        0        0        0       0    | 
 
     # Notes:
-    # • B(τ)          = exp{Δτ⋅μ}⋅exp{-Δτ⋅K(τ)}
-    # • ∂B(τ)/∂xᵢⱼ(τ) = -Δτ⋅∂K(τ)/∂xᵢⱼ(τ)⋅exp{Δτ⋅μ}⋅exp{-Δτ⋅K(τ)} = -Δτ⋅∂K(τ)/∂xᵢⱼ(τ)⋅B(τ)
+    # • B(τ)          = exp{-Δτ⋅K(τ)}⋅exp{Δτ⋅μ}
+    # • ∂B(τ)/∂xᵢⱼ(τ) = -Δτ⋅∂K(τ)/∂xᵢⱼ(τ)⋅exp{-Δτ⋅K(τ)}⋅exp{Δτ⋅μ} = -Δτ⋅∂K(τ)/∂xᵢⱼ(τ)⋅B(τ)
     # • Kᵢⱼ(τ)        = -(tᵢⱼ-αᵢⱼ⋅xᵢⱼ(τ)) = matrix elements of a symmetric NxN matrix K(τ)
     # • ∂K(τ)/∂xᵢⱼ(τ) = a symmetric NxN matrix with two non-zero matrix elements given by ∂Kᵢⱼ(τ)/∂xᵢⱼ(τ) = αᵢⱼ
     #
@@ -733,105 +708,109 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
     #                = uᵀ(1)⋅[-Δτ⋅∂K(1)/∂xᵢⱼ(τ)⋅B(1)]⋅v(L)   for τ = 1
     #                = -uᵀ(1)⋅[Δτ⋅∂K(1)/∂xᵢⱼ(τ)]⋅[B(1)⋅v(L)] for τ = 1
 
-    @unpack cosht, sinht, neighbor_table, checkerboard_perm, Nbonds, Ndof, Nsites, Lτ, Δτ, expΔτμ, α, α₂, x = ssh
-    @unpack field_to_phonon, field_to_τ, phonon_to_bond = ssh
+    # Checkerboard Decomposition:           exp{-Δτ⋅K(τ)}  ≈ ∏(n=1...N)[exp{-Δτ⋅Kₙ(τ)}]
+    # Transpose Checkerboard Decomposition: exp{-Δτ⋅K(τ)}ᵀ ≈ ∏(n=N...1)[exp{-Δτ⋅Kₙ(τ)}]
+    # Note: exp{-Δτ⋅Kₙ(τ)}ᵀ = exp{-Δτ⋅Kₙ(τ)} [Hermitian]
 
-    ################################
-    ## FIRST CALUCATE B(τ)⋅v(τ-1) ##
-    ################################
+    @unpack cosht, sinht, neighbor_table, checkerboard_perm, inv_checkerboard_perm = ssh
+    @unpack Nbonds, Nph, Ndof, Nsites, Lτ, Δτ, expΔτμ, α, α₂, x = ssh
+    @unpack field_to_phonon, field_to_τ, phonon_to_bond, bond_to_phonon = ssh
+    @unpack equivalent_fields, num_equivalent_fields = ssh
 
-    # vector to represent B(τ)⋅v(τ-1)
-    Bv = ssh.v′
+    b = ssh.v′
+    c = ssh.v″
 
-    # Calculate [B⋅v](τ) = v(τ-1)
-    
+    # |b₀(τ)⟩ = exp{Δτ⋅μ}|v(τ-1)⟩
     @fastmath @inbounds for i in 1:Nsites
-        for τ in 1:Lτ
-            τm1    = mod1(τ-1,Lτ)
-            iτm1   = get_index(τm1,i,Lτ)
-            iτ     = get_index(τ,i,Lτ)
-            Bv[iτ] = v[iτm1]
-        end
-    end
-
-    # Calculate [B⋅v](τ) = exp{-Δτ⋅K[x(τ)]}⋅v(τ-1)
-    
-    checkerboard_mul!(Bv,neighbor_table,cosht,sinht)
-
-    # Calcualte [B⋅v](τ) = B(τ)⋅v(τ-1) = exp{Δτ⋅μ}⋅[exp{-Δτ⋅K[x(τ)]}⋅v(τ-1)]
-
-    # iterate of sites in lattice
-    @fastmath @inbounds for i in 1:Nsites
-
-        # get matrix elements 
         expΔτμi = expΔτμ[i]
-
-        # iterate over time slices
         for τ in 1:Lτ
-
-            # multiply vector element by matrix element
-            Bv[get_index(τ,i,Lτ)] *= expΔτμi
+            τm1   = mod1(τ-1,Lτ)
+            iτ    = get_index(τ,  i,Lτ)
+            iτm1  = get_index(τm1,i,Lτ)
+            b[iτ] = expΔτμi * v[iτm1]
         end
     end
 
-    #######################################
-    ## CALCULATE ALL ⟨∂M/∂xᵢⱼ(τ)⟩ VALUES ##
-    #######################################
+    # ⟨c₀(τ)| = ⟨u(τ)|exp{-Δτ⋅K(τ)} ⟹ |c₀(τ)⟩ = exp{-Δτ⋅K(τ)}ᵀ|u(τ)⟩
+    copyto!(c,u)
+    checkerboard_transpose_mul!(c,neighbor_table,cosht,sinht)
 
-    # initialize output array to zeros
+    # initialize dMdx to zero
     fill!(dMdx,0.0)
 
-    # iterate over degrees of freedom
-    @fastmath @inbounds for field in 1:Ndof
+    # iterate over bonds in checkerboard order
+    for n in 1:Nbonds
 
-        # field to phonon
-        phonon = field_to_phonon[field]
+        # get bond
+        bond = inv_checkerboard_perm[n]
 
-        # field to τ
-        τ = field_to_τ[field]
+        # get phonon
+        phonon = bond_to_phonon[bond]
 
-        # phonon to bond
-        bond  = phonon_to_bond[phonon]
+        # get pair of sites
+        i = neighbor_table[1,n]
+        j = neighbor_table[2,n]
 
-        # get index into neighbor table assoicated with bond
-        index = checkerboard_perm[bond]
+        # iterate over imaginary time
+        for τ in 1:Lτ
 
-        # the pair of sites associated with the bond/phonon
-        i = neighbor_table[1,index]
-        j = neighbor_table[2,index]
+            # get matrix elements of exp{-Δτ⋅Kₙ(τ)}
+            cosht′ = cosht[τ,n]
+            sinht′ = sinht[τ,n]
 
-        # electron-phonon coupling associated with phonon
-        αᵢⱼ = α[phonon]
+            # get indices into vectors
+            iτ = get_index(τ,i,Lτ)
+            jτ = get_index(τ,j,Lτ)
 
-        # non-linear electron-phonon coupling
-        α₂ᵢⱼ = α₂[phonon]
+            # |bₙ(τ)⟩ = exp{-Δτ⋅Kₙ(τ)}|bₙ₋₁(τ)⟩
+            biτ   = b[iτ]
+            bjτ   = b[jτ]
+            b[iτ] = cosht′ * biτ +      sinht′  * bjτ
+            b[jτ] = cosht′ * bjτ + conj(sinht′) * biτ
 
-        # get index into vectors associated (i,τ) and (j,τ) space-time coordinates
-        iτ = get_index(τ,i,Lτ)
-        jτ = get_index(τ,j,Lτ)
+            # |cₙ(τ)⟩ = exp{-Δτ⋅Kₙ(τ)}⁻¹|cₙ₋₁(τ)⟩
+            ciτ   = c[iτ]
+            cjτ   = c[jτ]
+            c[iτ] = cosht′ * ciτ -      sinht′  * cjτ
+            c[jτ] = cosht′ * cjτ - conj(sinht′) * ciτ
 
-        # get the phonon fields
-        x₀ = x[field]
+            # if there is a phonon on the bond
+            if phonon != 0
 
-        # ⟨∂M/∂xᵢⱼ(τ)⟩ = uᵀ⋅[∂M/∂xᵢⱼ(τ)]⋅v = +uᵀ(τ)⋅[Δτ⋅∂K(τ)/∂xᵢⱼ(τ)]⋅[B(τ)⋅v(τ-1)]
-        val = Δτ * ((αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[iτ] * Bv[jτ] + conj(αᵢⱼ + 2*α₂ᵢⱼ*x₀) * u[jτ] * Bv[iτ])
+                # get index to current field
+                field = get_index(τ,phonon,Lτ)
 
-        # ⟨∂M/∂xᵢⱼ(1)⟩ = uᵀ⋅[∂M/∂xᵢⱼ(1)]⋅v = -uᵀ(1)⋅[Δτ⋅∂K(1)/∂xᵢⱼ(1)]⋅[B(1)⋅v(L)]
-        if τ==1
-            val = -val
-        end
+                # get xₙ(τ)
+                xₙ = x[field]
 
-        # normalize according to number of equivalent fields
-        val /= (ssh.num_equivalent_fields[field]+1)
+                # calculate ∂Kₙ(τ)/∂xₙ(τ)
+                dKdx = α[phonon] + 2*α₂[phonon]*xₙ
 
-        # record derivative
-        dMdx[field] += val
+                # ⟨∂M/∂xᵢⱼ(τ)⟩ = ⟨cₙ(τ)|Δτ⋅∂Kₙ(τ)/∂xₙ(τ)|bₙ(τ)⟩
+                val = conj(c[jτ])*Δτ*dKdx*b[iτ] + conj(c[iτ]*Δτ*dKdx)*b[jτ]
 
-        # account for equivalences
-        if ssh.num_equivalent_fields[field] > 0
-            for l in 1:ssh.num_equivalent_fields[field]
-                field′        = ssh.equivalent_fields[l,field]
-                dMdx[field′] += val
+                # flip sign if τ=1
+                if τ==1
+                    val = -val
+                end
+
+                # number of equivalent fields
+                nef = num_equivalent_fields[field]
+
+                # normalize by number of equivalent fields
+                val /= (nef+1)
+
+                # record result
+                dMdx[field] += val
+
+                # if number of equivalent fields greater zero
+                if nef > 0
+                    # iterate over equivalent fields
+                    for ef in 1:nef
+                        field′        = equivalent_fields[ef,field]
+                        dMdx[field′] += val
+                    end
+                end
             end
         end
     end
