@@ -1,5 +1,6 @@
 using Statistics
 using Printf
+using Parameters
 
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice, sorted_neighbor_table_perm!, loc_to_site, calc_neighbor_table
@@ -571,40 +572,44 @@ function mulM!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::AbstractV
     # Notes:
     # • y(1) = [M⋅v](1) = v(1) + B(1)⋅v(Lτ)  for τ = 1
     # • y(τ) = [M⋅v](τ) = v(τ) - B(τ)⋅v(τ-1) for τ > 1
-    # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
+    # • B(τ) = exp{-Δτ⋅K}⋅exp{-Δτ⋅V[x(τ)]}
     # • exp{-Δτ⋅V[x(τ)]} is the exponentiated interaction matrix and is diagonal,
     #   and as such is stored as a vector
     # • exp{-Δτ⋅K} is given by the checkerboard approximation matrix.
 
-    # y = v
-    copyto!(y, v)
+    @unpack Nsites, Lτ, cosht, sinht, neighbor_table, expnΔτV = holstein
 
-    # y(τ) = exp{-Δτ⋅K}⋅v(τ)
-    checkerboard_mul!(y, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
-
-    # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.Nsites
-
-        # y(1) = v(1) + B(1)⋅v(Lτ)
-        idx_L   = get_index(holstein.Lτ, i,  holstein.Lτ)
-        idx_1   = get_index(1,           i,  holstein.Lτ)
-        y1_temp = v[idx_1] + holstein.expnΔτV[idx_1] * y[idx_L]
-
-        # iterating over time slices
-        for τ in holstein.Lτ:-1:2
-
-            # y(τ) = v(τ) - B(τ)⋅v(τ-1) for τ>1
-            idx_τ    = get_index(τ,   i, holstein.Lτ)
-            idx_τm   = get_index(τ-1, i, holstein.Lτ)
-            y[idx_τ] = v[idx_τ] - holstein.expnΔτV[idx_τ] * y[idx_τm]
+    # y(τ) = exp{-Δτ⋅V[x(τ)]}⋅v(τ-1)
+    for i in 1:Nsites
+        for τ in 1:Lτ
+            τm1  = mod1(τ-1,Lτ)
+            iτ   = get_index(τ,i,Lτ)
+            iτm1 = get_index(τm1,i,Lτ)
+            y[iτ] = expnΔτV[iτ] * v[iτm1]
         end
-
-        # y(1) = v(1) + B(1)⋅v(Lτ)
-        y[idx_1] = y1_temp
     end
 
-    # println("Mv")
-    # println(y)
+    # y(τ) = B(τ)⋅v(τ-1) = exp{-Δτ⋅K}⋅exp{-Δτ⋅V[x(τ)]}⋅v(τ-1)
+
+    checkerboard_mul!(y, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
+
+    # y(τ) = v(τ) - B(τ)⋅v(τ-1)
+
+    # iterate over sites in lattice
+    @fastmath @inbounds for i in 1:Nsites
+
+        # y(1) = v(1) + B(1)⋅v(Lτ)
+        i1     = get_index(1,i,Lτ)
+        y[i1] = v[i1] + y[i1]
+
+        # iterate of time slices
+        for τ in 2:Lτ
+
+            # y(τ) = v(τ) - B(τ)⋅v(τ-1)
+            iτ     = get_index(τ,i,Lτ)
+            y[iτ] = v[iτ] - y[iτ]
+        end
+    end
 
     return nothing
 end
@@ -629,39 +634,40 @@ function mulMᵀ!(y::AbstractVector{T2},holstein::HolsteinModel{T1,T3},v::Abstra
     # Notes:
     # • y(τ)  = [Mᵀ⋅v](τ)  = v(τ)  - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
     # • y(Lτ) = [Mᵀ⋅v](Lτ) = v(Lτ) + Bᵀ(1)⋅v(1)     for τ = Lτ
-    # • Bᵀ(τ) = exp{-Δτ⋅K}ᵀ⋅exp{-Δτ⋅V[x(τ)]}ᵀ 
-    # • exp{-Δτ⋅V[x(τ)]}ᵀ =exp{-Δτ⋅V[x(τ)]} is the exponentiated diagona interaction
+    # • Bᵀ(τ) = exp{-Δτ⋅V[x(τ)]}ᵀ⋅exp{-Δτ⋅K}ᵀ
+    # • exp{-Δτ⋅V[x(τ)]}ᵀ =exp{-Δτ⋅V[x(τ)]} is the exponentiated diagonal interaction
     #   matrix and is diagonal, and as such is stored as a vector
     # • [exp{-Δτ⋅K}]ᵀ is given by adjoint of the checkerboard approximation matrix.
 
-    # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.Nsites
+    @unpack Nsites, Lτ, cosht, sinht, neighbor_table, expnΔτV = holstein
 
-        # iterating over imaginary time slices
-        for τ in 1:holstein.Lτ-1
+    # y(τ+1) = exp{-Δτ⋅K}ᵀ⋅v(τ+1)
 
-            # y(τ) = -exp{-Δτ⋅V[x(τ+1)]}ᵀ⋅v(τ+1) for τ < Lτ
-            idx_τp   = get_index(τ+1, i, holstein.Lτ)
-            idx_τ    = get_index(τ,   i, holstein.Lτ)
-            y[idx_τ] = -conj(holstein.expnΔτV[idx_τp]) * v[idx_τp]
+    copyto!(y,v)
+    checkerboard_transpose_mul!(y, neighbor_table, cosht, sinht, Lτ)
+
+    # y(τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) = v(τ) - exp{-Δτ⋅V[x(τ+1)]}⋅exp{-Δτ⋅K}ᵀ⋅v(τ+1)
+
+    # iterate over sites in lattice
+    for i in 1:Nsites
+
+        # record y(L) = v(L) + Bᵀ(1)⋅v(1) = v(L) + exp{-Δτ⋅V[x(1)]}⋅exp{-Δτ⋅K}ᵀ⋅v(1)
+        i1   = get_index(1 ,i,Lτ)
+        iL   = get_index(Lτ,i,Lτ)
+        y_iL = v[iL] + expnΔτV[i1] * y[i1]
+
+        # iterate over time slices
+        for τ in 1:Lτ-1
+
+            # y(τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) = v(τ) - exp{-Δτ⋅V[x(τ+1)]}⋅exp{-Δτ⋅K}ᵀ⋅v(τ+1)
+            iτ    = get_index(τ,i,Lτ)
+            iτp1  = get_index(τ+1,i,Lτ)
+            y[iτ] = v[iτ] - expnΔτV[iτp1] * y[iτp1]
         end
 
-        # y(Lτ) = +exp{-Δτ⋅V[x(1)]}ᵀ⋅v(1) for τ=Lτ
-        idx_L    = get_index(holstein.Lτ, i, holstein.Lτ)
-        idx_1    = get_index(1,           i, holstein.Lτ)
-        y[idx_L] = conj(holstein.expnΔτV[idx_1]) * v[idx_1]
+        # y(L) = v(L) + Bᵀ(1)⋅v(1)
+        y[iL] = y_iL
     end
-
-    # y(τ) = -Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
-    # y(τ) = +Bᵀ(τ+1)⋅v(τ+1) for τ = Lτ 
-    checkerboard_transpose_mul!(y, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
-
-    # y(τ) = v(τ) - Bᵀ(τ+1)⋅v(τ+1) for τ < Lτ
-    # y(τ) = v(τ) + Bᵀ(τ+1)⋅v(τ+1) for τ = Lτ
-    @. y = v + y
-
-    # println("Mᵀv")
-    # println(y)
 
     return nothing
 end
@@ -691,50 +697,48 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
     # • ⟨∂M/∂xᵢ(τ)⟩ = -∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
     # • ⟨∂M/∂xᵢ(1)⟩ = +∂B/∂xᵢ(1)⋅vᵢ(L)   for τ = 1
     #
-    # • B(τ) = exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
-    # • ∂B/∂xᵢ(τ) = -Δτ⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
-    # • ∂B/∂xᵢ(τ) = -Δτ⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}
+    # • B(τ) = exp{-Δτ⋅K}⋅exp{-Δτ⋅V[x(τ)]}
+    # • ∂B/∂xᵢ(τ) = -Δτ⋅exp{-Δτ⋅K}⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}
+    # • ∂B/∂xᵢ(τ) = -Δτ⋅exp{-Δτ⋅K}⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}
     #
     # • Therefore the final expression is:
-    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅exp{-Δτ⋅K}⋅vᵢ(τ) for τ > 1
-    # • ⟨∂M/∂xᵢ(1)⟩  = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅exp{-Δτ⋅K}⋅vᵢ(L) for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = -Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅vᵢ(L)   for τ = 1
     #
     # • Simplifying a little bit:
     # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
     # • ⟨∂M/∂xᵢ(1)⟩ = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(L)   for τ = 1
 
-    # ⟨∂M/∂xᵢⱼ(τ)⟩ = v(τ)
-    copyto!(dMdx, v)
+    @unpack Nsites, Lτ, Δτ, cosht, sinht, neighbor_table, expnΔτV, λ, λ₂, x = holstein
 
-    # ⟨∂M/∂xᵢⱼ(τ)⟩ = exp{-Δτ⋅K}⋅v(τ)
-    checkerboard_mul!(dMdx, holstein.neighbor_table, holstein.cosht, holstein.sinht, holstein.Lτ)
+    y = holstein.v′
+
+    # ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅v(τ-1)
     
     # iterating over sites in lattice
-    @fastmath @inbounds for i in 1:holstein.Nsites
+    @fastmath @inbounds for i in 1:Nsites
 
-        # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λᵢ⋅B(1)⋅v(1) for τ=1
-        idx_1 = get_index(1,           i,  holstein.Lτ)
-        idx_L = get_index(holstein.Lτ, i,  holstein.Lτ)
-        dMdx1_temp = -holstein.Δτ * (holstein.λ[i] + 2*holstein.λ₂[i]*holstein.x[idx_1]) * holstein.expnΔτV[idx_1] * dMdx[idx_L]
+        # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅v(1) for τ=1
+        idx_1    = get_index(1,  i,  Lτ)
+        idx_L    = get_index(Lτ, i,  Lτ)
+        dMdx[idx_1] = -Δτ * (λ[i] + 2*λ₂[i]*x[idx_1]) * expnΔτV[idx_1] * v[idx_L]
 
         # iterating over time slices
-        for τ in holstein.Lτ:-1:2
+        for τ in 2:Lτ
 
-            # ⟨∂M/∂xᵢⱼ(τ)⟩ = +Δτ⋅λ⋅B(τ)⋅v(τ) for τ>1
-            idx_τ   = get_index(τ,   i, holstein.Lτ)
-            idx_τm1 = get_index(τ-1, i, holstein.Lτ)
-            dMdx[idx_τ] = holstein.Δτ * (holstein.λ[i] + 2*holstein.λ₂[i]*holstein.x[idx_τ]) * holstein.expnΔτV[idx_τ] * dMdx[idx_τm1]
+            # ⟨∂M/∂xᵢⱼ(τ)⟩ = +Δτ⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅v(τ-1) for τ>1
+            idx_τ   = get_index(τ,   i, Lτ)
+            idx_τm1 = get_index(τ-1, i, Lτ)
+            dMdx[idx_τ] = Δτ * (λ[i] + 2*λ₂[i]*x[idx_τ]) * expnΔτV[idx_τ] * v[idx_τm1]
         end
-
-        # ⟨∂M/∂xᵢⱼ(τ)⟩ = -Δτ⋅λ⋅B(1)⋅v(Lτ) for τ=1
-        dMdx[idx_1] = dMdx1_temp
     end
 
-    # finalize calculation of ⟨∂M/∂xᵢⱼ(τ)⟩ = uᵀ⋅[∂M/∂xᵢⱼ(τ)]⋅v
-    @. dMdx *= u
+    # y = exp{-Δτ⋅K}ᵀ⋅u ⟹ yᵀ = uᵀ⋅exp{-Δτ⋅K}
+    copyto!(y,u)
+    checkerboard_transpose_mul!(y, neighbor_table, cosht, sinht, Lτ)
 
-    # println("dMdx")
-    # println(dMdx)
+    # finalize calculation of ⟨∂M/∂xᵢⱼ(τ)⟩ = uᵀ⋅[∂M/∂xᵢⱼ(τ)]⋅v
+    @. dMdx = y * dMdx
 
     return nothing
 end

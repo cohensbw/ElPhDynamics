@@ -606,9 +606,8 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,
     cosht̄ = op.cosht̄::Vector{T2}
     sinht̄ = op.sinht̄::Vector{T2}
 
-    copyto!(v′,v)
+    @. v′ = expnΔτV̄ * v
     checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
-    @. v′ *= expnΔτV̄
 
     op.checkerboard_count += 1
 
@@ -626,8 +625,9 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2
     cosht̄ = op.cosht̄::Vector{T2}
     sinht̄ = op.sinht̄::Vector{T2}
 
-    @. v′ = expnΔτV̄ * v
+    copyto!(v′,v)
     checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,sinht̄)
+    @. v′ *= expnΔτV̄
 
     op.checkerboard_count += 1
 
@@ -647,12 +647,12 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T
     sinht̄ = op.sinht̄::Vector{T2}
 
     if P.transposed
-        @. v′ = expnΔτV̄ * v
-        checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,sinht̄)
-    else
         copyto!(v′,v)
-        checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
+        checkerboard_transpose_mul!(v′,neighbor_table,cosht̄,sinht̄)
         @. v′ *= expnΔτV̄
+    else
+        @. v′ = expnΔτV̄ * v
+        checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
     end
 
     op.checkerboard_count += 1
