@@ -120,8 +120,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
 end
 
 """
-Solve `A⋅x=b` using the Conjugate Gradient method with a left preconditioner
-such that `P⁻¹⋅A⋅x=P⁻¹⋅b`.
+Solve `A⋅x=b` using the Conjugate Gradient method with a preconditioner `P`.
+Based on pseudocode from: https://www-users.cs.umn.edu/~saad/Calais/PREC.pdf
 """
 function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},P)::Int where {Ttol,Tdata}
     
@@ -129,9 +129,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     p = cg.p
     z = cg.z
     
-    # |P⁻¹⋅b|
-    ldiv!(z,P,b)
-    normP⁻¹b = norm(z)
+    # |b|
+    normb = norm(b)
     
     # r₀ = b - A⋅x₀
     mul!(r,A,x)
@@ -157,17 +156,17 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         
         # rⱼ₊₁ = rⱼ - αⱼ⋅A⋅pⱼ
         axpy!(-α,z,r)
-        
-        # zⱼ₊₁ = P⁻¹⋅rⱼ₊₁
-        ldiv!(z,P,r)
 
-        # δ = |zⱼ₊₁|/|P⁻¹⋅b| = |P⁻¹(b-A⋅xⱼ₊₁)|/|P⁻¹⋅b|
-        δ = norm(z)/normP⁻¹b
+        # δ = |rⱼ₊₁|/|b|
+        δ = norm(r)/normb
         
         # check stop criteria
         if δ<cg.tol
             return j
         end
+        
+        # zⱼ₊₁ = P⁻¹⋅rⱼ₊₁
+        ldiv!(z,P,r)
         
         # βⱼ = (rⱼ₊₁⋅zⱼ₊₁)/(rⱼ⋅zⱼ)
         new_rdotz = dot(r,z)
