@@ -116,21 +116,23 @@ function estimate_μ(tuner::MuTuner{T})::Tuple{T,T} where {T<:AbstractFloat}
 
         μ_bar = tuner.μ_bar
 
-        # Run through and reconstruct the N̄ and κ̄ trajectories
+        # Run through and reconstruct the N_bar and N²_bar trajectories
         N_bar = tuner.N_traj[1]
-        κ_bar = tuner.κ_traj[1]
+        N²_bar = tuner.N²_traj[1]
         N_bar_traj = Vector{Float64}()
-        κ_bar_traj = Vector{Float64}()
+        N²_bar_traj = Vector{Float64}()
         sizehint!(N_bar_traj, length(tuner.N_traj))
-        sizehint!(κ_bar_traj, length(tuner.κ_traj))
+        sizehint!(N²_bar_traj, length(tuner.N²_traj))
         for i in 1:length(tuner.N_traj)
             N_bar = forgetful_mean((@view tuner.N_traj[1:i]), tuner.forgetful_c, N_bar)
-            κ_bar = forgetful_mean((@view tuner.κ_traj[1:i]), tuner.forgetful_c, κ_bar)
+            N²_bar = forgetful_mean((@view tuner.N²_traj[1:i]), tuner.forgetful_c, N²_bar)
             push!(N_bar_traj, N_bar)
-            push!(κ_bar_traj, κ_bar)
+            push!(N²_bar_traj, N²_bar)
         end
 
-        μ_corrections = (tuner.target_N .- N_bar_traj) ./ κ_bar_traj
+        κ_bar_traj = @. tuner.β * (N²_bar_traj - N_bar_traj^2)
+
+        μ_corrections = @. (tuner.target_N - N_bar_traj) / κ_bar_traj
         forgetful_idx = convert(Int, tuner.forgetful_c * length(μ_corrections))
         err_μ = sqrt(mean(μ_corrections[forgetful_idx:end] .^ 2))
 
