@@ -66,32 +66,34 @@ end
 
 function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
-    x   = ssh.x::Vector{T1}
-    N   = ssh.Nph::Int
-    Lτ  = ssh.Lτ::Int
-    Δτ  = ssh.Δτ::T1
-    ω   = ssh.ω::Vector{T1}
-    ω₄  = ssh.ω₄::Vector{T1}
-    Sb = 0.0::T1
+    x  = ssh.x::Vector{T1}
+    N  = ssh.Nph::Int
+    Lτ = ssh.Lτ::Int
+    Δτ = ssh.Δτ::T1
+    ω  = ssh.ω::Vector{T1}
+    ω₄ = ssh.ω₄::Vector{T1}
+    Sb = 0.0
 
     # iterate over sites in lattice
     for i in 1:N
         # iterate over time slice in lattice
         for τ in 1:Lτ
             # get τ-1 accounting for periodic boundary conditions
-            τm1 = (τ-2+Lτ)%Lτ+1
+            τm1   = mod1(τ-1,Lτ)
             # get field
             field = get_index(τ,i,Lτ)
             # xᵢ(τ)
-            xᵢτ = x[field]
+            xᵢτ   = x[field]
             # xᵢ(τ-1)
             xᵢτm1 = x[get_index(τm1,i,Lτ)]
             # calculate potential energy
-            val = ω[i]^2*xᵢτ^2/2 + ω₄[i]*xᵢτ^4
+            val   = Δτ*ω[i]^2*xᵢτ^2/2 + Δτ*ω₄[i]*xᵢτ^4
             # calculate kintetic energy
-            val += (xᵢτ-xᵢτm1)^2/Δτ^2/2
+            val  += (xᵢτ-xᵢτm1)^2/Δτ/2
+            # number of equivalent fields
+            nef   = ssh.num_equivalent_fields[field]
             # add to Sb total, normalizing by the number of equivalent fields there are
-            Sb += Δτ * val / (ssh.num_equivalent_fields[field]+1)
+            Sb   += val
         end
     end
     
@@ -192,9 +194,6 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
     ## With Local Phonon Frequency And Phonon Momentum ##
     #####################################################
 
-    # max number of equivalent fields
-    max_equivalencies = size(ssh.equivalent_fields,1)
-
     # iterating over phonons in lattice
     @fastmath @inbounds for i in 1:Nph
         Δτω²  = Δτ * ω[i] * ω[i]
@@ -202,9 +201,9 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
         # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
-            τp1      = mod1(τ+1,Lτ)
+            τp1       = mod1(τ+1,Lτ)
             # get τ-1 accounting for periodic boundary conditions
-            τm1      = mod1(τ-1,Lτ)
+            τm1       = mod1(τ-1,Lτ)
             # indexing offset into vectors associated with τ time slice
             field_τ   = get_index(τ,i,Lτ)
             # indexing offset into vectors associated with τ+1 time slice
@@ -212,12 +211,15 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
             # indexing offset into vectors associated with τ-1 time slice
             field_τm1 = get_index(τm1,i,Lτ)
             # phonon field at current time slice
-            xτ       = x[field_τ]
+            xτ        = x[field_τ]
             # updating partial derivative
             val  = Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
             val += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
             val -= ( x[field_τp1] + x[field_τm1] - 2.0*xτ )/Δτ # kinetic energy term
-            dSbdx[field_τ] += val / (ssh.num_equivalent_fields[field_τ]+1)
+            # number of equivalent fields
+            nef = ssh.num_equivalent_fields[field_τ]
+            # increment total derivative value
+            dSbdx[field_τ] += val
         end
     end
 
