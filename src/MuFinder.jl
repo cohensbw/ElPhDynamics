@@ -15,7 +15,7 @@ mutable struct MuTuner{T<:AbstractFloat}
     active      :: Bool
     μ_traj      :: Vector{T}
     N_traj      :: Vector{T}
-    κ_traj      :: Vector{T}
+    N²_traj     :: Vector{T}
     forgetful_c :: T
     μ           :: T
     N           :: Int
@@ -25,7 +25,7 @@ mutable struct MuTuner{T<:AbstractFloat}
     target_N    :: T
     μ_bar       :: T
     N_bar       :: T
-    κ_bar       :: T
+    N²_bar      :: T
     κ_min       :: T
 
     function MuTuner(active::Bool, init_μ::T, target_N::T, N::Int, β::T, Δτ::T, forgetful_c::T, κ_min::T=0.1) where{T<:AbstractFloat}
@@ -33,9 +33,9 @@ mutable struct MuTuner{T<:AbstractFloat}
         L      = round(Int,β/Δτ)
         μ_traj = [init_μ]
         N_traj = Vector{T}()
-        κ_traj = Vector{T}()
+        N²_traj = Vector{T}()
 
-        return new{T}(active, μ_traj, N_traj, κ_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, -1.0, 0.0, κ_min)
+        return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, -1.0, -1.0, κ_min)
     end
 end
 
@@ -86,17 +86,18 @@ Given a MuTuner, and a new set of measurements for N, N², updates the MuTuner a
 """
 function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
-    @unpack μ_traj, N_traj, κ_traj, forgetful_c, β, target_N, κ_min = tuner
+    @unpack μ_traj, N_traj, N²_traj, forgetful_c, β, target_N, κ_min = tuner
 
     tuner.μ_bar = forgetful_mean(μ_traj, forgetful_c, tuner.μ_bar)
 
     push!(N_traj, N)
     tuner.N_bar = forgetful_mean(N_traj, forgetful_c, tuner.N_bar)
 
-    κ = β * (N² - 2 * N * tuner.N_bar + tuner.N_bar^2)
-    push!(κ_traj, κ)
-    tuner.κ_bar = forgetful_mean(κ_traj, forgetful_c, tuner.κ_bar )
-    κ_update = max(tuner.κ_bar, κ_min / sqrt(length(κ_traj)))
+    push!(N²_traj, N²)
+    tuner.N²_bar = forgetful_mean(N²_traj, forgetful_c, tuner.N²_bar)
+
+    κ_bar = β * (tuner.N²_bar - tuner.N_bar^2)
+    κ_update = max(κ_bar, κ_min / sqrt(length(N_traj)))
 
     new_μ = tuner.μ_bar + (target_N - tuner.N_bar) / κ_update
     tuner.μ = new_μ
