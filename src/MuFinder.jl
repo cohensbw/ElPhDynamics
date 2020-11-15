@@ -117,6 +117,7 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     if tuner.active && tuner.log
         line = @sprintf("%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n",tuner.μ_bar, tuner.κ_bar, tuner.N_bar, tuner.N²_bar, tuner.μ, N, N²)
         write(tuner.logfile, line)
+        flush(tuner.logfile)
     end
 
     return new_μ
