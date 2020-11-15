@@ -112,6 +112,9 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     write_time       /= 60.0
     acceptance_rate   = 1.0
 
+    # close log files
+    close(μ_tuner.logfile)
+
     return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end
 
@@ -216,6 +219,10 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     simulation_time  /= 60.0
     measurement_time /= 60.0
     write_time       /= 60.0
+
+    # close log files
+    close(burnin_hmc.logfile)
+    close(simulation_hmc.logfile)
 
     return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
 end

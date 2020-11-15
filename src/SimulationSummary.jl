@@ -377,9 +377,9 @@ function write_global_measurements!(fout, model::AbstractModel{T1,T2,T3}, μ_tun
 
         # deal with chemical potential seperately due to μ-tuning algorithm
         if measurement=="mu"
-            avg, err = estimate_μ(μ_tuner)
-            stats[measurement][1] = avg
-            stats[measurement][2] = err
+            estimate_μ(μ_tuner)
+            stats[measurement][1] = μ_tuner.μ_avg
+            stats[measurement][2] = μ_tuner.μ_err
         else
             avg, err = mean_and_error(binned_data[measurement])
             stats[measurement][1] = avg
@@ -491,10 +491,11 @@ function write_onsite_measurements!(fout,model::AbstractModel{T1,T2,T3},μ_tuner
 
         # deal with chemical potential seperately due to μ-tuning algorithm
         if measurement=="mu"
-            μ      = reshaped(model.μ,(nₛ,div(model.Nsites,nₛ)))
-            μ″     = mean(μ)
-            μ′, Δμ = estimate_μ(μ_tuner)
-            dμ     = μ′-μ″
+            μ  = reshaped(model.μ,(nₛ,div(model.Nsites,nₛ)))
+            μ″ = mean(μ)
+            μ′ = μ_tuner.μ_avg
+            Δμ = μ_tuner.μ_err
+            dμ = μ′-μ″
             for orbit in 1:nₛ
                 μₒ = @view μ[orbit,:]
                 stats[measurement][1,orbit] = mean(μₒ) + dμ
