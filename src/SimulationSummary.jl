@@ -2,6 +2,7 @@ module SimulationSummary
 
 using Statistics
 using Printf
+using UnsafeArrays
 using Pkg.TOML
 
 using ..SimulationParams: SimulationParameters
@@ -667,7 +668,7 @@ end
 Write a correlation to file.
 """
 function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},6},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
-
+    
     # get size of conatiner
     Lₜ, L₁, L₂, L₃, n, extra = size(container)
 
@@ -686,26 +687,70 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
     if is_position
 
         # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, measurement*"_position.out")
+        datafn = joinpath(sim_params.datafolder, "$(measurement)_position.out")
 
         # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, measurement*"_position_stats.out")
+        statsfn = joinpath(sim_params.datafolder, "$(measurement)_position_stats.out")
 
         # header line
-        header = "n1 n2 r3 r2 r1 tau " * measurement * " error\n"
+        header = "n1 n2 r3 r2 r1 tau $(measurement) error\n"
     
     # if momentum space data
     else
 
         # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, measurement*"_momentum.out")
+        datafn = joinpath(sim_params.datafolder, "$(measurement)_momentum.out")
 
         # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, measurement*"_momentum_stats.out")
+        statsfn = joinpath(sim_params.datafolder, "$(measurement)_momentum_stats.out")
 
         # header line
-        header = "n1 n2 k3 k2 k1 tau " * measurement * " error\n"
+        header = "n1 n2 k3 k2 k1 tau $(measurement) error\n"
     end
+
+    # read in correlation data
+    read_correlation!(binned_data, datafn, N)
+
+    # open stats file
+    open(statsfn,"w") do statsout
+
+        # write header to file
+        write(fout,header)
+        write(statsout,header)
+
+        # iterate over all measurements
+        @uviews binned_data begin
+            for n₁ in 1:n
+                for n₂ in 1:n
+                    for l₃ in 1:L₃
+                        for l₂ in 1:L₂
+                            for l₁ in 1:L₁
+                                for τ in 1:Lₜ
+                                    data = @view binned_data[:,τ,l₁,l₂,l₃,n₂,n₁]
+                                    # calculate average and error of measurement
+                                    avg, err = mean_and_error(data)
+                                    # write to file
+                                    line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
+                                    write(fout,line)
+                                    write(statsout,line)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    write(fout,"\n")
+
+    return nothing
+end
+
+"""
+Read correlation data.
+"""
+function read_correlation!(binned_data::AbstractArray{T,7}, datafn::String, N::Int) where {T}
 
     # open data file
     open(datafn,"r") do fin
@@ -726,49 +771,18 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
             bin = div(nmeas-1,N) + 1
             
             # parse the data
-            n₁ = parse(Int,atoms[2])
-            n₂ = parse(Int,atoms[3])
-            l₃ = parse(Int,atoms[4])+1
-            l₂ = parse(Int,atoms[5])+1
-            l₁ = parse(Int,atoms[6])+1
-            τ  = parse(Int,atoms[7])+1
-            v  = parse(T1, atoms[8])
+            n₁ = parse(Int, atoms[2])
+            n₂ = parse(Int, atoms[3])
+            l₃ = parse(Int, atoms[4]) + 1
+            l₂ = parse(Int, atoms[5]) + 1
+            l₁ = parse(Int, atoms[6]) + 1
+            τ  = parse(Int, atoms[7]) + 1
+            v  = parse(T,   atoms[8])
 
             # record measurement
             binned_data[bin,τ,l₁,l₂,l₃,n₂,n₁] += v/N
         end
     end
-
-    # open stats file
-    open(statsfn,"w") do statsout
-
-        # write header to file
-        write(fout,header)
-        write(statsout,header)
-
-        # iterate over all measurements
-        for n₁ in 1:n
-            for n₂ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            for τ in 1:Lₜ
-                                data = @view binned_data[:,τ,l₁,l₂,l₃,n₂,n₁]
-                                # calculate average and error of measurement
-                                avg, err = mean_and_error(data)
-                                # write to file
-                                line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
-                                write(fout,line)
-                                write(statsout,line)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    write(fout,"\n")
 
     return nothing
 end

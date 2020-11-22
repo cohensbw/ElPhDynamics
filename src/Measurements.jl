@@ -993,12 +993,13 @@ function measure_N²(model::AbstractModel,estimator::EstimateGreensFunction)
 
     N² = 0.0
     @uviews GΔ0_G0Δ begin
-        TrG₁    = dot(M⁻¹r₁,r₁)/L
-        TrG₂    = dot(M⁻¹r₂,r₂)/L
-        N₁      = 2*(N - TrG₁)
-        N₂      = 2*(N - TrG₂)
+        TrG̃₁    = dot(M⁻¹r₁,r₁)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
+        TrG̃₂    = dot(M⁻¹r₂,r₂)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
+        N₁      = 2*(N - TrG̃₁)    # ⟨N̂⟩
+        N₂      = 2*(N - TrG̃₂)    # ⟨N̂⟩
+        N̄²      = N₁ * N₂         # ⟨N̂⟩² = ⟨N̂⟩⋅⟨N̂⟩
         Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
-        N²     += N₁*N₂ + TrG₁ + TrG₂ - 2*(N/nₛ)*sum(Gr0_G0r)
+        N²     += N̄² + TrG̃₁ + TrG̃₂ - 2*(N/nₛ)*sum(Gr0_G0r)
     end
 
     return N²
@@ -1006,7 +1007,7 @@ end
 
 """
 Measure the compressibility κ.
-β  = inverse temperature
+β   = inverse temperature
 N   = system size/sites in lattice
 N²  = ⟨N̂²⟩
 ΔN² = error in measurement of ⟨N̂²⟩
@@ -1018,20 +1019,20 @@ function measure_κ(β,N,N²,ΔN²,n,Δn)
     # calculate ⟨N̂⟩
     N̄ = N * n
 
-    # calculate ⟨N̂⟩²
-    N̄² = (N̄)^2
-
     # calculate error in measurement of ⟨N̂⟩
     ΔN̄ = N*Δn
 
+    # calculate ⟨N̂⟩²
+    N̄² = N̄^2
+
     # calculate error in measurement of ⟨N̂⟩²
-    ΔN̄² = 2*N̄*ΔN̄
+    ΔN̄² = N̄²*(2*ΔN̄/N̄)
 
     # calculate κ = β⋅(⟨N̂²⟩-⟨N̂⟩²)
     κ = β*(N²-N̄²)
 
     # calculate error in measurement of κ
-    Δκ = sqrt( ΔN²^2 + ΔN̄²^2 )
+    Δκ = β*sqrt(ΔN²^2 + ΔN̄²^2)
 
     return κ/N, Δκ/N
 end
