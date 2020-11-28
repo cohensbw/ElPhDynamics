@@ -121,7 +121,7 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
 
         forgetful_idx = ceil(Int, tuner.forgetful_c * length(tuner.μ_traj))
         μ_traj        = @view tuner.μ_traj[forgetful_idx:length(tuner.μ_traj)]
-        μ_err         = std( μ_traj )
+        μ_err         = stdm( μ_traj , median(μ_traj) )
         tuner.μ_avg   = tuner.μ_bar
         tuner.μ_err   = μ_err
 

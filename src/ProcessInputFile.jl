@@ -149,23 +149,42 @@ function process_input_file(filename::String)
     ## DEFINE PRECONDITIONER ##
     ###########################
 
-    if lowercase(input["solver"]["type"])=="cg"
-        if haskey(input["solver"],"preconditioner")
-            λ_lo = input["solver"]["preconditioner"]["lambda_lo"]
-            λ_hi = input["solver"]["preconditioner"]["lambda_hi"]
-            c1   = input["solver"]["preconditioner"]["c1"]
-            c2   = input["solver"]["preconditioner"]["c2"]
-            preconditioner = SymmetricKPMPreconditioner(model,λ_lo,λ_hi,c1,c2,false)
+    # intialize preconditioner to identity operator
+    preconditioner = I
+
+    if haskey(input["solver"],"preconditioner")
+
+        if haskey(input["solver"]["preconditioner"],"n")
+            n = input["solver"]["preconditioner"]["n"]
         else
-            preconditioner = I
+            n = 20
+        end
+
+        if haskey(input["solver"]["preconditioner"],"buf")
+            buf = input["solver"]["preconditioner"]["buf"]
+        else
+            buf = 0.1
+        end
+        @assert 0.0 < buf < 1.0
+
+        if haskey(input["solver"]["preconditioner"],"c1")
+            c1 = input["solver"]["preconditioner"]["c1"]
+        else
+            c1 = 1.0
+        end
+
+        if haskey(input["solver"]["preconditioner"],"c2")
+            c2 = input["solver"]["preconditioner"]["c2"]
+        else
+            c2 = 1.0
+        end
+
+        if lowercase(input["solver"]["type"])=="cg"
+            preconditioner = SymmetricKPMPreconditioner(model,n,buf,c1,c2,false)
+        else
+            preconditioner = LeftRightKPMPreconditioner(model,n,buf,c1,c2,false)
         end
     else
-        λ_lo = input["solver"]["preconditioner"]["lambda_lo"]
-        λ_hi = input["solver"]["preconditioner"]["lambda_hi"]
-        c1   = input["solver"]["preconditioner"]["c1"]
-        c2   = input["solver"]["preconditioner"]["c2"]
-        preconditioner = LeftRightKPMPreconditioner(model,λ_lo,λ_hi,c1,c2,false)
-    end
     
     #################################
     ## DEFINE FOURIER ACCELERATION ##

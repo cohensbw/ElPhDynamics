@@ -1,6 +1,7 @@
 module KPMPreconditioners
 
 using LinearAlgebra
+using Random
 using FFTW
 using UnsafeArrays
 
@@ -21,6 +22,18 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
     "Current frequency."
     ω::Int
 
+    "Dimension of Krylov subspace used to approximate eigenvalues"
+    n::Int
+
+    "Used by Arnoldi method, columns form orthonormal basis of Krylov subspace"
+    Q::Matrix{Complex{T1}}
+
+    "Used by Arnoldi method, A on Q basis, and t is upper Hessenberg"
+    h::Matrix{Complex{T1}}
+
+    "amount by which to buffer min/max eigenvalues to get λ_lo/λ_hi"
+    buf::T1
+
     "Min egeinvalues of A"
     λ_lo::T1
 
@@ -38,15 +51,6 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
 
     "order = c1/phi + c2"
     c2::T1
-
-    "minimum order expansion"
-    order_min::Int
-
-    "maximum order expansion"
-    order_max::Int
-
-    "number of order 1 expansions."
-    n_order_1::Int
 
     "model."
     model::T3
@@ -90,7 +94,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
     "Count total checkerboard multiplies."
     checkerboard_count::Int
 
-    function KPMExpansion(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+    function KPMExpansion(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1, jackson_kernel::Bool) where {T1,T2}
 
         N   = model.Nsites
         L   = model.Lτ
@@ -99,21 +103,20 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
 
         timefreqfft = TimeFreqFFT(model.lattice,L)
 
-        λ_avg   = (λ_hi+λ_lo)/2
-        λ_mag   = (λ_hi-λ_lo)/2
-        expnΔτV̄ = zeros(T1,N)
-        cosht̄   = zeros(T2,model.Nbonds)
-        sinht̄   = zeros(T2,model.Nbonds)
+        λ_lo      = 0.0
+        λ_hi      = 2.0
+        λ_avg     = (λ_hi+λ_lo)/2
+        λ_mag     = (λ_hi-λ_lo)/2
+        expnΔτV̄   = zeros(T1,N)
+        cosht̄     = zeros(T2,model.Nbonds)
+        sinht̄     = zeros(T2,model.Nbonds)
         ϕs        = [2*π/L*(ω+1/2) for ω in 0:Lo2-1]
-        order     = [max(1,round(Int,c1/ϕ + c2)) for ϕ in ϕs]
-        order_max = maximum(order)
-        order_min = minimum(order)
-        n_order_1 = count(i->i==1,order)
-        v1      = zeros(Complex{T1},NL)
-        v2      = zeros(Complex{T1},NL)
-        v3      = zeros(Complex{T1},N)
-        v4      = zeros(Complex{T1},N)
-        v5      = zeros(Complex{T1},N)
+        order     = ones(Int,length(ϕs))
+        v1        = zeros(Complex{T1},NL)
+        v2        = zeros(Complex{T1},NL)
+        v3        = zeros(Complex{T1},N)
+        v4        = zeros(Complex{T1},N)
+        v5        = zeros(Complex{T1},N)
 
         if typeof(model) <: HolsteinModel
             cosht̄ .= model.cosht
@@ -124,20 +127,14 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
             throw(TypeError())
         end
 
-        # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
-        coeff   = Vector{Vector{Complex{T1}}}()
-        for ω in 1:cld(L,2)
-            n = order[ω]
-            ϕ = ϕs[ω]
-            # calcualte real part of coefficient
-            coeff_re = kpm_coefficients(x->real(scalar_invM(x,ϕ)), n, λ_lo=λ_lo, λ_hi=λ_hi, jackson_kernel=jackson_kernel)
-            # calcualte imaginary part of coefficient
-            coeff_im = kpm_coefficients(x->imag(scalar_invM(x,ϕ)), n, λ_lo=λ_lo, λ_hi=λ_hi, jackson_kernel=jackson_kernel)
-            # record expansion coefficients
-            push!(coeff,coeff_re+im*coeff_im)
-        end
+        # matrices for arnolid method
+        Q = zeros(Complex{T1},NL,n+1)
+        h = zeros(Complex{T1},n+1,n)
 
-        return new{T1,T2,typeof(model)}(1,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,order_min,order_max,n_order_1,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
+        # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
+        coeff = [zeros(Complex{T1},2*order[ω]) for ω in 1:Lo2]
+
+        return new{T1,T2,typeof(model)}(1,n,Q,h,buf,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
     end
 end
 
@@ -156,8 +153,8 @@ mutable struct LeftKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
-        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+    function LeftKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
         return new{T1,T2,typeof(model)}(expansion)
     end
 
@@ -175,9 +172,9 @@ mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
 
-    function RightKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+    function RightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
 
-        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
         T3        = typeof(model)
         return new{T1,T2,T3}(expansion)
     end
@@ -198,9 +195,9 @@ mutable struct LeftRightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T
     rkpm::RightKPMPreconditioner{T1,T2,T3}
     expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftRightKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function LeftRightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
 
-        lkpm = LeftKPMPreconditioner(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        lkpm = LeftKPMPreconditioner(model,n,buf,c1,c2,jackson_kernel)
         rkpm = transpose(lkpm)
         expansion = lkpm.expansion
 
@@ -217,9 +214,9 @@ mutable struct SymmetricKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T
     expansion::KPMExpansion{T1,T2,T3}
     transposed::Bool
 
-    function SymmetricKPMPreconditioner(model::AbstractModel{T1,T2},λ_lo::T1, λ_hi::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+    function SymmetricKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
 
-        expansion = KPMExpansion(model,λ_lo,λ_hi,c1,c2,jackson_kernel)
+        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
         T3        = typeof(model)
         return new{T1,T2,T3}(expansion,false)
     end
@@ -258,15 +255,53 @@ function setup!(op::KPMPreconditioner)
 end
 
 """
+Update the preconditioner.
+"""
+function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
+
+    # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
+    update_A!(op)
+
+    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v1, op.v2)
+
+    # update λ_lo and λ_hi
+    op.λ_lo  = (1-op.buf)*e_min
+    op.λ_hi  = (1+op.buf)*e_max
+    op.λ_avg = (op.λ_hi+op.λ_lo)/2
+    op.λ_mag = (op.λ_hi-op.λ_lo)/2
+
+    # update expansions
+    for ω in 1:length(op.ϕs)
+        # calculate order of expansion
+        c = op.coeff[ω]
+        ϕ = op.ϕs[ω]
+        n = round(Int, op.λ_mag*(op.c1/ϕ + op.c2))
+        n = max(1,n)
+        # resize vector containing expansion coefficients
+        resize!(c,2*n)
+        # calculate expansion coefficients
+        kpm_coefficients!(c, n, op.λ_lo, op.λ_hi, ϕ) 
+    end
+
+    return nothing
+end
+
+function setup!(op)
+
+    return nothing
+end
+
+"""
 Calculate exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
 """
-function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:HolsteinModel}
+function update_A!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:HolsteinModel}
 
     N  = op.model.Nsites::Int
     L  = op.model.Lτ::Int
     Δτ = op.model.Δτ
 
-    # calulcate diagonal matrix exp{-Δτ⋅V̄} = (1/L)∑exp{-Δτ⋅V(τ)}
+    # calulcate diagonal matrix exp{-Δτ⋅V̄}
     expnΔτV = op.model.expnΔτV::Vector{T2}
     @fastmath @inbounds for i in 1:N
         op.expnΔτV̄[i] = 0.0
@@ -275,15 +310,17 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:HolsteinModel}
         end
         op.expnΔτV̄[i] /= L
     end
+
     return nothing
 end
 
-function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
+function update_A!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
 
     N  = op.model.Nbonds::Int
     L  = op.model.Lτ::Int
     Δτ = op.model.Δτ
 
+    # calulcate checkerboard representation of matrix exp{-Δτ⋅K̄}
     cosht       = op.model.cosht::Matrix{T2}
     sinht       = op.model.sinht::Matrix{T2}
     t′          = op.model.t′::Matrix{T2}
@@ -299,13 +336,9 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
         op.sinht̄[i] /= L
     end
 
+    # calulcate diagonal matrix exp{-Δτ⋅V̄}
     copyto!(op.expnΔτV̄,op.model.expΔτμ)
     
-    return nothing
-end
-
-function setup!(op)
-
     return nothing
 end
 
@@ -348,7 +381,7 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
             op.ω = ω
 
             # multiply by KPM approximation to M⁻¹[ω,ω]
-            mul!(u2,P,u1)
+            mulM⁻¹!(u2,P,u1)
 
             # accounting for symmetry
             for i in 1:N
@@ -376,7 +409,7 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω] or M⁻ᵀ[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op    = P.expansion::KPMExpansion{T1,T2,T3}
     model = op.model::T3
@@ -384,9 +417,9 @@ function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1
     rkpm  = P.rkpm::RightKPMPreconditioner{T1,T2,T3}
 
     if model.transposed
-        mul!(v′,rkpm,v)
+        mulM⁻¹!(v′,rkpm,v)
     else
-        mul!(v′,lkpm,v)
+        mulM⁻¹!(v′,lkpm,v)
     end
 
     return nothing
@@ -395,7 +428,7 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op    = P.expansion::KPMExpansion{T1,T2,T3}
     ω     = op.ω # current frequency
@@ -441,7 +474,7 @@ end
 """
 Multiply by KPM approximation for M⁻ᵀ[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     ω     = op.ω # current frequency
@@ -486,7 +519,7 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]⋅M⁻ᵀ[ω,ω]
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mulMω!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     ω     = op.ω # current frequency
@@ -569,7 +602,7 @@ function mulA′!(v′::AbstractVector{Complex{T}},P::KPMPreconditioner,v::Abstr
 
     λ_avg = P.expansion.λ_avg::T
     λ_mag = P.expansion.λ_mag::T
-    mulA!(v′,P,v)
+    mul!(v′,P,v)
     @. v′ = (1/λ_mag)*v′ - (λ_avg/λ_mag)*v
 
     return nothing
@@ -579,7 +612,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     model = op.model::T3
@@ -587,9 +620,9 @@ function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T
     rkpm  = P.rkpm::RightKPMPreconditioner{T1,T2}
 
     if model.transposed
-        mulA!(v′,rkpm,v)
+        mul!(v′,rkpm,v)
     else
-        mulA!(v′,lkpm,v)
+        mul!(v′,lkpm,v)
     end
 
     return nothing
@@ -598,7 +631,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -617,7 +650,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -638,7 +671,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
-function mulA!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -662,47 +695,90 @@ end
 
 
 """
-This subroutine is completely general. Given a scalar function f(x), the goal is
-to calculate coefficients c_m of a polynomial approximation,
-   f(x) ~ sum_m c_m T_m(x)
+Calculate coefficients c_m of a polynomial approximation,
+    M⁻¹[ω,ω] ~ sum_m c_m T_m(x)
 valid for all x in the range
-   λ_lo < x < λ_hi
-
+    λ_lo < x < λ_hi.
 A Chebyshev approximation naturally lies in the range -1 < x < 1, so some rescaling
 factors are necessary.
 """
-function kpm_coefficients(f::Function, order::Int; λ_lo::T, λ_hi::T, jackson_kernel::Bool=false) where {T<:AbstractFloat}    
+function kpm_coefficients!(c::AbstractVector, order::Int, λ_lo, λ_hi, ϕ)
     
-    M = order
-    λ_avg = (λ_hi + λ_lo) / 2.0
-    λ_mag = (λ_hi - λ_lo) / 2.0
+    M     = order
+    N_M   = 2*M
 
-    c = zeros(T, M)
-    N_M = 2*M
-    f_orig = [f(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg) for n in 0:(N_M-1)]
-    f_hat = FFTW.dct(f_orig) / 2
+    λ_avg = (λ_hi+λ_lo)/2
+    λ_mag = (λ_hi-λ_lo)/2
+
+    for n in 0:N_M-1
+        c[n+1] = scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ)
+    end
+    FFTW.dct!(c)
+    c /= 2
     
     # FFTW uses the "unitary" normalization. Undo that.
-    f_hat[1] *= sqrt(4*N_M)
-    @. f_hat[2:N_M] *= sqrt(2*N_M)
+    c    *= sqrt(2*N_M)
+    c[1] *= sqrt(2)
     
     for m in 0:(M-1)
-        if jackson_kernel
-            # Lorentz kernel
-            # λ = 0.1
-            # g_m = sinh(λ * (1 - m/M)) / sinh(λ)
-            
-            # Jackson kernel
-            g_m = ((M-m+1) * cos(π*m/(M+1)) + sin(π*m/(M+1)) / tan(π/(M+1))) / (M+1)
-        else
-            g_m = 1
-        end
         q_m = π / (m == 0 ? 1 : 2)
-        c[m+1] = (π * g_m * f_hat[m+1]) / (N_M * q_m)
+        c[m+1] = (π * c[m+1]) / (N_M * q_m)
     end
     return c
 end
 
+"""
+Computes a basis of the (n + 1)-Krylov subspace of A: the space spanned by {b, Ab, ..., A^n b}.
+Then use this to approximate the min and max eigenvalues of A.
+"""
+function arnoldi_eigenvalue_bounds!(A, Q, h, b, v)
+
+    @uviews Q h begin
+
+        # dimension of Krylov subspace, must be >= 1
+        n = size(h,2)
+
+        # dimension of A matrix
+        m = size(A,1)
+
+        # randomize input vector
+        randn!(b)
+
+        # normalize input vector
+        b /= norm(b)
+
+        # Use it as the first Krylov vector
+        Q1 = @view Q[:,1]
+        copyto!(Q1,b)
+
+        l = n
+        for k = 1:n
+            mul!(v,A,b) # Generate a new candidate vector
+            for j = 1:k # Subtract the projections on previous vectors
+                Qj      = @view Q[:, j]
+                h[j, k] = dot(Qj, v)
+                @. v    = v - h[j, k] * Qj
+            end
+            h[k+1, k] = norm(v)
+            # Add the produced vector to the list, unless the zero vector is produced
+            if h[k+1, k] > 1e-12
+                @. b    = v / h[k + 1, k]
+                Qkp1    = @view Q[:, k+1]
+                @. Qkp1 = b
+            else  # If that happens, stop iterating.
+                l = k
+                break
+            end
+        end
+
+        # calulcate min and max eigenvalues
+        h′       = @view h[1:l, 1:l]
+        eigvs    = eigvals!(h′)
+        @. eigvs = real(eigvs)
+    end
+
+    return minimum(eigvs), maximum(eigvs)
+end
 
 """
 Scalar function of x where x has replaced A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K} in

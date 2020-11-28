@@ -1034,7 +1034,7 @@ function measure_κ(β,N,N²,ΔN²,n,Δn)
     # calculate error in measurement of κ
     Δκ = β*sqrt(ΔN²^2 + ΔN̄²^2)
 
-    return κ/N, Δκ/N
+    return κ/N, Δκ/N^2
 end
 
 ############################################################
