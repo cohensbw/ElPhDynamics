@@ -8,7 +8,7 @@ using UnsafeArrays
 import LinearAlgebra: ldiv!, mul!, transpose
 
 using ..Models: HolsteinModel, SSHModel, AbstractModel, Continuous, update_model!
-using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
+using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!, checkerboard_inverse_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
 
@@ -26,10 +26,10 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
     n::Int
 
     "Used by Arnoldi method, columns form orthonormal basis of Krylov subspace"
-    Q::Matrix{Complex{T1}}
+    Q::Matrix{T1}
 
     "Used by Arnoldi method, A on Q basis, and t is upper Hessenberg"
-    h::Matrix{Complex{T1}}
+    h::Matrix{T1}
 
     "amount by which to buffer min/max eigenvalues to get λ_lo/λ_hi"
     buf::T1
@@ -127,9 +127,12 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
             throw(TypeError())
         end
 
+        # size of krylov subspace
+        n = min(n,N)
+
         # matrices for arnolid method
-        Q = zeros(Complex{T1},NL,n+1)
-        h = zeros(Complex{T1},n+1,n)
+        Q = zeros(T1,N,n+1)
+        h = zeros(T1,n+1,n)
 
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
         coeff = [zeros(Complex{T1},2*order[ω]) for ω in 1:Lo2]
@@ -236,6 +239,7 @@ function transpose(P::LeftKPMPreconditioner)
     return RightKPMPreconditioner(P.expansion)
 end
 
+
 """
 Return LeftKPMPreconditioner given RightKPMPreconditioner.
 """
@@ -254,6 +258,7 @@ function setup!(op::KPMPreconditioner)
     return nothing
 end
 
+
 """
 Update the preconditioner.
 """
@@ -263,10 +268,10 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
     update_A!(op)
 
     # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v1, op.v2)
+    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
     # update λ_lo and λ_hi
-    op.λ_lo  = (1-op.buf)*e_min
+    op.λ_lo  = max(0.0, (1-op.buf)*e_min)
     op.λ_hi  = (1+op.buf)*e_max
     op.λ_avg = (op.λ_hi+op.λ_lo)/2
     op.λ_mag = (op.λ_hi-op.λ_lo)/2
@@ -276,7 +281,7 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
         # calculate order of expansion
         c = op.coeff[ω]
         ϕ = op.ϕs[ω]
-        n = round(Int, op.λ_mag*(op.c1/ϕ + op.c2))
+        n = round(Int, 2*op.λ_mag*op.c1/ϕ + op.c2)
         n = max(1,n)
         # resize vector containing expansion coefficients
         resize!(c,2*n)
@@ -291,6 +296,7 @@ function setup!(op)
 
     return nothing
 end
+
 
 """
 Calculate exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
@@ -314,6 +320,10 @@ function update_A!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:HolsteinModel}
     return nothing
 end
 
+
+"""
+Update the matrix A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+"""
 function update_A!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
 
     N  = op.model.Nbonds::Int
@@ -339,6 +349,45 @@ function update_A!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3<:SSHModel}
     # calulcate diagonal matrix exp{-Δτ⋅V̄}
     copyto!(op.expnΔτV̄,op.model.expΔτμ)
     
+    return nothing
+end
+
+
+"""
+Perform A⋅v where A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
+"""
+function mul!(v′::AbstractVector{T4},op::KPMExpansion{T1,T2,T3},v::AbstractVector{T4}) where {T1,T2,T3,T4<:Continuous}
+
+    expnΔτV̄ = op.expnΔτV̄::Vector{T1}
+    neighbor_table = op.model.neighbor_table::Matrix{Int}
+    cosht̄ = op.cosht̄::Vector{T2}
+    sinht̄ = op.sinht̄::Vector{T2}
+
+    @. v′ = expnΔτV̄ * v
+    checkerboard_mul!(v′,neighbor_table,cosht̄,sinht̄)
+
+    op.checkerboard_count += 1
+
+    return nothing
+end
+
+
+"""
+Perform A⁻¹⋅v where =Aexp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
+"""
+function ldiv!(v′::AbstractVector{T4},op::KPMExpansion{T1,T2,T3},v::AbstractVector{T4}) where {T1,T2,T3,T4<:Continuous}
+
+    expnΔτV̄ = op.expnΔτV̄::Vector{T1}
+    neighbor_table = op.model.neighbor_table::Matrix{Int}
+    cosht̄ = op.cosht̄::Vector{T2}
+    sinht̄ = op.sinht̄::Vector{T2}
+
+    copyto!(v′,v)
+    checkerboard_inverse_mul!(v′,neighbor_table,cosht̄,sinht̄)
+    @. v′ /= expnΔτV̄
+
+    op.checkerboard_count += 1
+
     return nothing
 end
 
@@ -381,7 +430,7 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
             op.ω = ω
 
             # multiply by KPM approximation to M⁻¹[ω,ω]
-            mulM⁻¹!(u2,P,u1)
+            mul!(u2,P,u1)
 
             # accounting for symmetry
             for i in 1:N
@@ -399,6 +448,7 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
     return nothing
 end
 
+
 function ldiv!(op::KPMPreconditioner,v::AbstractVector)
 
     ldiv!(v,op,v)
@@ -409,7 +459,7 @@ end
 """
 Multiply by KPM approximation for M⁻¹[ω,ω] or M⁻ᵀ[ω,ω]
 """
-function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op    = P.expansion::KPMExpansion{T1,T2,T3}
     model = op.model::T3
@@ -417,18 +467,19 @@ function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditio
     rkpm  = P.rkpm::RightKPMPreconditioner{T1,T2,T3}
 
     if model.transposed
-        mulM⁻¹!(v′,rkpm,v)
+        mul!(v′,rkpm,v)
     else
-        mulM⁻¹!(v′,lkpm,v)
+        mul!(v′,lkpm,v)
     end
 
     return nothing
 end
 
+
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]
 """
-function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op    = P.expansion::KPMExpansion{T1,T2,T3}
     ω     = op.ω # current frequency
@@ -474,7 +525,7 @@ end
 """
 Multiply by KPM approximation for M⁻ᵀ[ω,ω]
 """
-function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     ω     = op.ω # current frequency
@@ -516,10 +567,11 @@ function mulM⁻¹!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{
     return nothing
 end
 
+
 """
 Multiply by KPM approximation for M⁻¹[ω,ω]⋅M⁻ᵀ[ω,ω]
 """
-function mulMω!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     ω     = op.ω # current frequency
@@ -602,7 +654,7 @@ function mulA′!(v′::AbstractVector{Complex{T}},P::KPMPreconditioner,v::Abstr
 
     λ_avg = P.expansion.λ_avg::T
     λ_mag = P.expansion.λ_mag::T
-    mul!(v′,P,v)
+    mulA!(v′,P,v)
     @. v′ = (1/λ_mag)*v′ - (λ_avg/λ_mag)*v
 
     return nothing
@@ -612,7 +664,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K}⋅exp{-Δτ⋅V̄}
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
+function mulA!(v′::AbstractVector{Complex{T1}},P::LeftRightKPMPreconditioner{T1,T2},v::AbstractVector{Complex{T1}}) where {T1<:AbstractFloat,T2<:Number}
 
     op    = P.expansion::KPMExpansion{T1,T2}
     model = op.model::T3
@@ -631,7 +683,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mulA!(v′::AbstractVector{Complex{T1}},P::LeftKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -650,7 +702,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mulA!(v′::AbstractVector{Complex{T1}},P::RightKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -671,7 +723,7 @@ end
 """
 Perform A⋅v where A=exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄} or A=exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
-function mul!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
+function mulA!(v′::AbstractVector{Complex{T1}},P::SymmetricKPMPreconditioner{T1,T2,T3},v::AbstractVector{Complex{T1}}) where {T1,T2,T3}
 
     op      = P.expansion::KPMExpansion{T1,T2,T3}
     expnΔτV̄ = op.expnΔτV̄::Vector{T1}
@@ -731,7 +783,7 @@ end
 Computes a basis of the (n + 1)-Krylov subspace of A: the space spanned by {b, Ab, ..., A^n b}.
 Then use this to approximate the min and max eigenvalues of A.
 """
-function arnoldi_eigenvalue_bounds!(A, Q, h, b, v)
+function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}) where {T1<:Continuous,T2<:Continuous}
 
     @uviews Q h begin
 
@@ -739,45 +791,94 @@ function arnoldi_eigenvalue_bounds!(A, Q, h, b, v)
         n = size(h,2)
 
         # dimension of A matrix
-        m = size(A,1)
+        m = size(Q,1)
+
+        ################################
+        ## Arnoldi for Max Eigenvalue ##
+        ################################
 
         # randomize input vector
-        randn!(b)
+        for i in 1:m
+            b[i] = randn(T1)
+        end
 
         # normalize input vector
-        b /= norm(b)
+        @. b /= norm(b)
 
         # Use it as the first Krylov vector
         Q1 = @view Q[:,1]
-        copyto!(Q1,b)
+        @. Q1 = real(b)
 
         l = n
-        for k = 1:n
+        for k in 1:n
             mul!(v,A,b) # Generate a new candidate vector
-            for j = 1:k # Subtract the projections on previous vectors
+            for j in 1:k # Subtract the projections on previous vectors
                 Qj      = @view Q[:, j]
-                h[j, k] = dot(Qj, v)
-                @. v    = v - h[j, k] * Qj
+                h[j, k] = real(dot(Qj, v))
+                @. v   -= h[j, k] * Qj
             end
             h[k+1, k] = norm(v)
             # Add the produced vector to the list, unless the zero vector is produced
             if h[k+1, k] > 1e-12
                 @. b    = v / h[k + 1, k]
                 Qkp1    = @view Q[:, k+1]
-                @. Qkp1 = b
+                @. Qkp1 = real(b)
             else  # If that happens, stop iterating.
-                l = k
-                break
+               l = k
+               break
             end
         end
 
         # calulcate min and max eigenvalues
-        h′       = @view h[1:l, 1:l]
+        h′       = @view h[1:l,1:l]
         eigvs    = eigvals!(h′)
         @. eigvs = real(eigvs)
-    end
+        e_max    = maximum(real, eigvs)
 
-    return minimum(eigvs), maximum(eigvs)
+        ################################
+        ## Arnoldi for Min Eigenvalue ##
+        ################################
+
+        # randomize input vector
+        for i in 1:m
+            b[i] = randn(T1)
+        end
+
+        # normalize input vector
+        @. b /= norm(b)
+
+        # Use it as the first Krylov vector
+        Q1 = @view Q[:,1]
+        @. Q1 = real(b)
+
+        l = n
+        for k in 1:n
+            ldiv!(v,A,b) # Generate a new candidate vector
+            for j in 1:k # Subtract the projections on previous vectors
+                Qj      = @view Q[:, j]
+                h[j, k] = real(dot(Qj, v))
+                @. v   -= h[j, k] * Qj
+            end
+            h[k+1, k] = norm(v)
+            # Add the produced vector to the list, unless the zero vector is produced
+            if h[k+1, k] > 1e-12
+                @. b    = v / h[k + 1, k]
+                Qkp1    = @view Q[:, k+1]
+                @. Qkp1 = real(b)
+            else  # If that happens, stop iterating.
+               l = k
+               break
+            end
+        end
+
+        # calulcate min and max eigenvalues
+        h′       = @view h[1:l,1:l]
+        eigvs    = eigvals!(h′)
+        @. eigvs = real(eigvs)
+        e_min    = 1/maximum(real, eigvs)
+
+        return e_min, e_max
+    end
 end
 
 """

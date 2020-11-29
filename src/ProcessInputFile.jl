@@ -149,9 +149,6 @@ function process_input_file(filename::String)
     ## DEFINE PRECONDITIONER ##
     ###########################
 
-    # intialize preconditioner to identity operator
-    preconditioner = I
-
     if haskey(input["solver"],"preconditioner")
 
         if haskey(input["solver"]["preconditioner"],"n")
@@ -185,6 +182,10 @@ function process_input_file(filename::String)
             preconditioner = LeftRightKPMPreconditioner(model,n,buf,c1,c2,false)
         end
     else
+
+        # default preconditioner to identity
+        preconditioner = I
+    end
     
     #################################
     ## DEFINE FOURIER ACCELERATION ##
