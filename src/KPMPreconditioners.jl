@@ -281,7 +281,7 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
         # calculate order of expansion
         c = op.coeff[ω]
         ϕ = op.ϕs[ω]
-        n = round(Int, 2*op.λ_mag*op.c1/ϕ + op.c2)
+        n = round(Int, 2*(op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
         n = max(1,n)
         # resize vector containing expansion coefficients
         resize!(c,2*n)
@@ -876,6 +876,8 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         eigvs    = eigvals!(h′)
         @. eigvs = real(eigvs)
         e_min    = 1/maximum(real, eigvs)
+
+        println("$e_min $e_max")
 
         return e_min, e_max
     end
