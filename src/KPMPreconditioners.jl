@@ -135,7 +135,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         h = zeros(T1,n+1,n)
 
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
-        coeff = [zeros(Complex{T1},2*order[ω]) for ω in 1:Lo2]
+        coeff = [zeros(Complex{T1},order[ω]) for ω in 1:Lo2]
 
         return new{T1,T2,typeof(model)}(1,n,Q,h,buf,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
     end
@@ -267,12 +267,17 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
     # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
     update_A!(op)
 
-    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
+    # # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+    # e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # update λ_lo and λ_hi
-    op.λ_lo  = max(0.0, (1-op.buf)*e_min)
-    op.λ_hi  = (1+op.buf)*e_max
+    # # update λ_lo and λ_hi
+    # op.λ_lo  = max(0.0, (1-op.buf)*e_min)
+    # op.λ_hi  = (1+op.buf)*e_max
+    # op.λ_avg = (op.λ_hi+op.λ_lo)/2
+    # op.λ_mag = (op.λ_hi-op.λ_lo)/2
+
+    op.λ_lo  = 0.0
+    op.λ_hi  = 2.0
     op.λ_avg = (op.λ_hi+op.λ_lo)/2
     op.λ_mag = (op.λ_hi-op.λ_lo)/2
 
@@ -281,10 +286,11 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
         # calculate order of expansion
         c = op.coeff[ω]
         ϕ = op.ϕs[ω]
-        n = round(Int, 2*(op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
+        n = round(Int, op.c1/ϕ + op.c2)
+        # n = round(Int, 2*(op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
         n = max(1,n)
         # resize vector containing expansion coefficients
-        resize!(c,2*n)
+        resize!(c,n)
         # calculate expansion coefficients
         kpm_coefficients!(c, n, op.λ_lo, op.λ_hi, ϕ) 
     end
@@ -754,28 +760,57 @@ valid for all x in the range
 A Chebyshev approximation naturally lies in the range -1 < x < 1, so some rescaling
 factors are necessary.
 """
-function kpm_coefficients!(c::AbstractVector, order::Int, λ_lo, λ_hi, ϕ)
+function kpm_coefficients!(c::AbstractVector{T}, order::Int, λ_lo, λ_hi, ϕ) where {T<:Complex}
     
     M     = order
     N_M   = 2*M
-
     λ_avg = (λ_hi+λ_lo)/2
     λ_mag = (λ_hi-λ_lo)/2
 
+    # initialize coefficients to zero
+    fill!(c,0)
+
+    # declare temporary array
+    c′ = zeros(T,N_M)
+
+    #####################################
+    ## Real Part Exapnsion Coefficient ##
+    #####################################
+
     for n in 0:N_M-1
-        c[n+1] = scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ)
+        c′[n+1] = real(scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ))
     end
-    FFTW.dct!(c)
-    c /= 2
+    FFTW.dct!(c′)
+    @. c′ /= 2
     
     # FFTW uses the "unitary" normalization. Undo that.
-    c    *= sqrt(2*N_M)
-    c[1] *= sqrt(2)
+    @. c′ *= sqrt(2*N_M)
+    c′[1] *= sqrt(2)
     
     for m in 0:(M-1)
         q_m = π / (m == 0 ? 1 : 2)
-        c[m+1] = (π * c[m+1]) / (N_M * q_m)
+        c[m+1] += (π * c′[m+1]) / (N_M * q_m)
     end
+
+    ##########################################
+    ## Imaginary Part Exapnsion Coefficient ##
+    ##########################################
+
+    for n in 0:N_M-1
+        c′[n+1] = imag(scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ))
+    end
+    FFTW.dct!(c′)
+    @. c′ /= 2
+    
+    # FFTW uses the "unitary" normalization. Undo that.
+    @. c′ *= sqrt(2*N_M)
+    c′[1] *= sqrt(2)
+    
+    for m in 0:(M-1)
+        q_m = π / (m == 0 ? 1 : 2)
+        c[m+1] += im * (π * c′[m+1]) / (N_M * q_m)
+    end
+
     return c
 end
 
@@ -877,7 +912,7 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         @. eigvs = real(eigvs)
         e_min    = 1/maximum(real, eigvs)
 
-        println("$e_min $e_max")
+        # println("$e_min $e_max")
 
         return e_min, e_max
     end
