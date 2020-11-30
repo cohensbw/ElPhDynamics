@@ -290,7 +290,7 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
             coeff       = op.coeff[ω]
             ϕ           = op.ϕs[ω]
             # order       = round(Int, op.c1/ϕ + op.c2)
-            order       = round(Int, (op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
+            order       = round(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
             order       = max(1,order)
             op.order[ω] = order
             # resize vector containing expansion coefficients
