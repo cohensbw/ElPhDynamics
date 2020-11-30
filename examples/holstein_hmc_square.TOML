@@ -170,7 +170,7 @@ write_M_matrix = false
 type = "CG"
 
 # tolerace used in iterative solvers
-tol = 1e-4
+tol = 1e-5
 
 # maximum iteration for iterative solver
 maxiter = 10_000
@@ -184,13 +184,11 @@ restart = 20
 
 [solver.preconditioner]
 
-# preconditioner parameter
-# this parameter is ignored unless use_preconditioner = true
-lambda_lo = 0.3
+# size of krylov subspace used for arnoldi method
+n = 10
 
-# preconditioner parameter
-# this parameter is ignored unless use_preconditioner = true
-lambda_hi = 1.7
+# amount to buffer min/max eigenvalues by to bound spectrum
+buf = 0.01
 
 # preconditioner parameter
 # this parameter is ignored unless use_preconditioner = true
