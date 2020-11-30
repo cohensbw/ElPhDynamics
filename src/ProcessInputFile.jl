@@ -158,13 +158,13 @@ function process_input_file(filename::String)
         if haskey(input["solver"]["preconditioner"],"n")
             n = input["solver"]["preconditioner"]["n"]
         else
-            n = 20
+            n = 10
         end
 
         if haskey(input["solver"]["preconditioner"],"buf")
             buf = input["solver"]["preconditioner"]["buf"]
         else
-            buf = 0.1
+            buf = 0.01
         end
 
         if haskey(input["solver"]["preconditioner"],"c1")
