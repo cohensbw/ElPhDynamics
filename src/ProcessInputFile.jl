@@ -10,9 +10,10 @@ using LibGit2
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice
 using ..Models: HolsteinModel, SSHModel
-using ..MuFinder: MuTuner, update_μ!
 using ..Models: assign_μ!, assign_ω!, assign_λ!, assign_λ₂!, assign_ω₄!
 using ..Models: assign_t!, assign_ωᵢⱼ!, assign_hopping!
+using ..Models: assign_datafolder!
+using ..MuFinder: MuTuner, update_μ!
 using ..Models: initialize_model!, update_model!, read_phonons!, mulM!, mulMᵀ!
 using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
@@ -81,7 +82,7 @@ function process_input_file(filename::String)
     
     # write current git commit tag of code to log file
     @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
-    flush(logio)
+    flush(logger.stream)
 
     ######################
     ## INITIALIZE MODEL ##
@@ -122,6 +123,9 @@ function process_input_file(filename::String)
             init_phonons_half_filled!(model)
         end
     end
+
+    # assign data folder to model
+    assign_datafolder!(model,sim_params.datafolder)
 
     #####################################
     ## TUNE DENSITY/CHEMICAL POTENTIAL ##

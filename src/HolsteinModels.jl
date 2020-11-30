@@ -175,6 +175,11 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     """
     solver::T3
 
+    """
+    data folder
+    """
+    datafolder::String
+
     #######################
     ## INNER CONSTRUCTOR ##
     #######################
@@ -297,7 +302,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
                              lattice, x, expnΔτV,
                              bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
                              μ, ω, ω₄, λ, λ₂, ωᵢⱼ, neighbor_table_ωᵢⱼ, sign_ωᵢⱼ,
-                             mul_by_M, transposed, v′, v″, v‴, solver)
+                             mul_by_M, transposed, v′, v″, v‴, solver,"")
     end
 
 end

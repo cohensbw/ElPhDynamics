@@ -208,6 +208,12 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     """
     solver::T3
 
+    """
+    data folder
+    """
+    datafolder::String
+
+
     function SSHModel(lattice::Lattice{T1}, β::T1, Δτ::T1;
                      is_complex::Bool=false, iterativesolver::String="cg",
                      tol::T1=1e-4, maxiter::Int=10000, restart::Int=-1) where {T1<:AbstractFloat}
@@ -296,7 +302,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
                              field_to_phonon,field_to_τ,equivalent_fields,num_equivalent_fields,
                              phonon_to_bond, bond_to_phonon,bond_to_definition,
                              checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
-                             mul_by_M, transposed, v′, v″, v‴, solver)
+                             mul_by_M, transposed, v′, v″, v‴, solver,"")
     end
 end
 

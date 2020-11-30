@@ -11,7 +11,7 @@ using ..IterativeSolvers: IterativeSolver, GMRES, ConjugateGradient, BiCGStab, s
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!
 using ..Utilities: get_index
 
-export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix
+export mulM!, mulMᵀ!, mulMᵀM!, muldMdx!, construct_M, write_M_matrix!
 
 """
 Abstract type to represent continuous real or complex numbers.
@@ -81,11 +81,19 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
     @. v = v - b
     residual_error = norm(v)/norm(b)
 
+    # if large residual error then attempt solve without preconditioner
     if residual_error > sqrt(model.solver.tol)
-        error("Large Residual Error = "*string(residual_error)*", Iterations = "*string(iters))
+
+        @info("Large Residual Error = $residual_error, Iterations = $iters")
+        logger = global_logger()
+        flush(logger.stream)
+        fill!(x,0)
+
+        return ldiv!(x,model,b)
+    else # if small residual error return result
+
+        return (iters,residual_error)
     end
-    
-    return (iters,residual_error)
 end
 
 function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector)::Tuple{Int,T1} where {T1,T2,T3}
@@ -99,7 +107,10 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
     residual_error  = norm(v)/norm(b)
     
     if residual_error > sqrt(model.solver.tol)
-        error("Large Residual Error = "*string(residual_error)*", Iterations = "*string(iters))
+
+        write_phonons!(model, joinpath(model.datafolder, "failing_phonons.out"))
+        write_M_matrix!(model, joinpath(model.datafolder, "failing_matrix.out"))
+        error("Large Residual Error = $residual_error, Iterations = $iters")
     end
 
     return (iters,residual_error)
@@ -205,9 +216,19 @@ end
 
 
 """
+Assign data folder.
+"""
+function assign_datafolder!(model::AbstractModel,datafolder::String)
+
+    model.datafolder = datafolder
+    return nothing
+end
+
+
+"""
 Returns the M matrix as a sparse matrix.
 """
-function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-10) where {T1<:AbstractFloat,T2<:Number}
+function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-10) where {T1,T2}
 
     # to contain M[row,col]=val info for constructing sparse matrix
     rows = Int[]
@@ -215,7 +236,7 @@ function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-10) where {T1
     vals = T2[]
 
     # size of model model
-    NLτ = length(model)
+    NLτ = size(model,1)
 
     # represents unit vector
     unitvector = zeros(T2,NLτ)
@@ -227,8 +248,8 @@ function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-10) where {T1
     for col in 1:NLτ
 
         # constructing unitvector
-        unitvector[(col+NLτ-2)%NLτ+1] = 0.0
-        unitvector[col] = 1.0
+        unitvector[mod1(col-1,NLτ)] = 0.0
+        unitvector[col]             = 1.0
 
         # multiply unit vector by M matrix
         mulM!(colvector,model,unitvector)
@@ -254,7 +275,7 @@ end
 """
 Write M matrix to file.
 """
-function write_M_matrix(model::AbstractModel{T1,T2}, filename::String, threshold::T1=1e-10) where {T1<:AbstractFloat,T2<:Number}
+function write_M_matrix!(model::AbstractModel{T1,T2}, filename::String, threshold::T1=1e-10) where {T1,T2}
 
     # construct M matrix
     rows, cols, vals = construct_M(model,threshold)
@@ -269,7 +290,7 @@ function write_M_matrix(model::AbstractModel{T1,T2}, filename::String, threshold
         for i in 1:length(rows)
 
             # write matrix element to file
-            write( file , @sprintf( "%d %d %.6f %.6f\n", cols[i], rows[i], real(vals[i]), imag(vals[i]) ) )
+            write( file , @sprintf( "%d %d %.10f %.10f\n", cols[i], rows[i], real(vals[i]), imag(vals[i]) ) )
         end
     end
 

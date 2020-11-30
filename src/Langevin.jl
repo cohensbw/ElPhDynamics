@@ -88,7 +88,7 @@ function simulate(args)
     ## SUMARIZING SIMULATION RESULTS ##
     ###################################
 
-    write_simulation_summary!(model, sim_params, μ_tuner, container, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+    write_simulation_summary!(model, sim_params, μ_tuner, container, input, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
 
 end
 

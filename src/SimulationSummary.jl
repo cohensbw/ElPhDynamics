@@ -8,7 +8,7 @@ using Pkg.TOML
 using ..SimulationParams: SimulationParameters
 using ..Models: AbstractBond, SSHBond, Bond
 using ..Models: AbstractModel, SSHModel, HolsteinModel, write_phonons!
-using ..Models: write_phonons!, write_M_matrix
+using ..Models: write_phonons!, write_M_matrix!
 using ..Measurements: measure_κ
 using ..MuFinder: MuTuner, update_μ!, estimate_μ
 using ..Utilities: reshaped
@@ -51,7 +51,7 @@ end
 Write results of simulation to simulation summary file.
 """
 function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::SimulationParameters,
-                                   μ_tuner::MuTuner{T1}, container::NamedTuple,
+                                   μ_tuner::MuTuner{T1}, container::NamedTuple, input::Dict,
                                    simulation_time::T1, measurement_time::T1, write_time::T1,
                                    iters::T1, acceptance_rate::T1,Nbins::Int=10) where {T1,T2,T3}
 
@@ -62,10 +62,17 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
     foldername = sim_params.foldername
 
     # write phonon fields to file
-    write_phonons!(model,joinpath(datafolder,foldername *"_config.out"))
+    write_phonons!(model,joinpath(datafolder,"$(foldername)_config.out"))
+
+    # write M matrix to file
+    if haskey(input["simulation"],"write_M_matrix")
+        if input["simulation"]["write_M_matrix"]
+            write_M_matrix!(model, joinpath(datafolder,"$(foldername)_matrix.out"))
+        end
+    end
 
     # construct filename for summary file
-    filename = joinpath(datafolder, foldername * "_summary.out")
+    filename = joinpath(datafolder, "$(foldername)_summary.out")
 
     # open summary file
     open(filename,"a") do fout
