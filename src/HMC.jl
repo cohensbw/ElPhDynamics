@@ -420,6 +420,16 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
+
+        # # calculate energy
+        # Hₜ, S, K = calc_H(hmc, model, fa)
+        # ΔHₜ = Hₜ - H₀
+        # if ΔHₜ > 10.0
+        #     @info("Instability has occurred, dH = $(ΔHₜ)\n")
+        #     logger = global_logger()
+        #     flush(logger.stream)
+        #     break
+        # end
     end
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
@@ -558,6 +568,16 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
+
+        # # calculate energy
+        # Hₜ, S, K = calc_H(hmc, model, fa)
+        # ΔHₜ = Hₜ - H₀
+        # if ΔHₜ > 10.0
+        #     @info("Instability has occurred, dH = $(ΔHₜ)\n")
+        #     logger = global_logger()
+        #     flush(logger.stream)
+        #     break
+        # end
     end
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
