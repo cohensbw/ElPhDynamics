@@ -162,7 +162,6 @@ function process_input_file(filename::String)
         else
             buf = 0.1
         end
-        @assert 0.0 < buf < 1.0
 
         if haskey(input["solver"]["preconditioner"],"c1")
             c1 = input["solver"]["preconditioner"]["c1"]
@@ -177,9 +176,9 @@ function process_input_file(filename::String)
         end
 
         if lowercase(input["solver"]["type"])=="cg"
-            preconditioner = SymmetricKPMPreconditioner(model,n,buf,c1,c2,false)
+            preconditioner = SymmetricKPMPreconditioner(model,n,buf,c1,c2)
         else
-            preconditioner = LeftRightKPMPreconditioner(model,n,buf,c1,c2,false)
+            preconditioner = LeftRightKPMPreconditioner(model,n,buf,c1,c2)
         end
     else
 

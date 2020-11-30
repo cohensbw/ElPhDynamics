@@ -94,7 +94,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
     "Count total checkerboard multiplies."
     checkerboard_count::Int
 
-    function KPMExpansion(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1, jackson_kernel::Bool) where {T1,T2}
+    function KPMExpansion(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1) where {T1,T2}
 
         N   = model.Nsites
         L   = model.Lτ
@@ -111,7 +111,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         cosht̄     = zeros(T2,model.Nbonds)
         sinht̄     = zeros(T2,model.Nbonds)
         ϕs        = [2*π/L*(ω+1/2) for ω in 0:Lo2-1]
-        order     = ones(Int,length(ϕs))
+        order     = ones(Int,Lo2)
         v1        = zeros(Complex{T1},NL)
         v2        = zeros(Complex{T1},NL)
         v3        = zeros(Complex{T1},N)
@@ -135,7 +135,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         h = zeros(T1,n+1,n)
 
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
-        coeff = [zeros(Complex{T1},order[ω]) for ω in 1:Lo2]
+        coeff = [zeros(Complex{T1},1) for ω in 1:Lo2]
 
         return new{T1,T2,typeof(model)}(1,n,Q,h,buf,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
     end
@@ -156,8 +156,8 @@ mutable struct LeftKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
-        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
+    function LeftKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1) where {T1,T2}
+        expansion = KPMExpansion(model,n,buf,c1,c2)
         return new{T1,T2,typeof(model)}(expansion)
     end
 
@@ -175,9 +175,9 @@ mutable struct RightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T3}
 
     expansion::KPMExpansion{T1,T2,T3}
 
-    function RightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+    function RightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1) where {T1,T2}
 
-        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
+        expansion = KPMExpansion(model,n,buf,c1,c2)
         T3        = typeof(model)
         return new{T1,T2,T3}(expansion)
     end
@@ -198,9 +198,9 @@ mutable struct LeftRightKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T
     rkpm::RightKPMPreconditioner{T1,T2,T3}
     expansion::KPMExpansion{T1,T2,T3}
 
-    function LeftRightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1<:AbstractFloat,T2<:Number}
+    function LeftRightKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1) where {T1<:AbstractFloat,T2<:Number}
 
-        lkpm = LeftKPMPreconditioner(model,n,buf,c1,c2,jackson_kernel)
+        lkpm = LeftKPMPreconditioner(model,n,buf,c1,c2)
         rkpm = transpose(lkpm)
         expansion = lkpm.expansion
 
@@ -217,9 +217,9 @@ mutable struct SymmetricKPMPreconditioner{T1,T2,T3} <: KPMPreconditioner{T1,T2,T
     expansion::KPMExpansion{T1,T2,T3}
     transposed::Bool
 
-    function SymmetricKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1,jackson_kernel::Bool) where {T1,T2}
+    function SymmetricKPMPreconditioner(model::AbstractModel{T1,T2}, n::Int, buf::T1, c1::T1, c2::T1) where {T1,T2}
 
-        expansion = KPMExpansion(model,n,buf,c1,c2,jackson_kernel)
+        expansion = KPMExpansion(model,n,buf,c1,c2)
         T3        = typeof(model)
         return new{T1,T2,T3}(expansion,false)
     end
@@ -267,32 +267,37 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
     # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
     update_A!(op)
 
-    # # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-    # e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
+    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # # update λ_lo and λ_hi
-    # op.λ_lo  = max(0.0, (1-op.buf)*e_min)
-    # op.λ_hi  = (1+op.buf)*e_max
-    # op.λ_avg = (op.λ_hi+op.λ_lo)/2
-    # op.λ_mag = (op.λ_hi-op.λ_lo)/2
+    # compute λ_lo and λ_hi
+    λ_lo  = max( 0.0 , floor( (1-op.buf)*e_min , digits=1) )
+    λ_hi  = ceil( (1+op.buf)*e_max , digits=1 )
 
-    op.λ_lo  = 0.0
-    op.λ_hi  = 2.0
-    op.λ_avg = (op.λ_hi+op.λ_lo)/2
-    op.λ_mag = (op.λ_hi-op.λ_lo)/2
+    # if λ_lo or λ_hi has changed recompute expansion coefficients
+    if (λ_lo != op.λ_lo) || (λ_hi != op.λ_hi)
 
-    # update expansions
-    for ω in 1:length(op.ϕs)
-        # calculate order of expansion
-        c = op.coeff[ω]
-        ϕ = op.ϕs[ω]
-        n = round(Int, op.c1/ϕ + op.c2)
-        # n = round(Int, 2*(op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
-        n = max(1,n)
-        # resize vector containing expansion coefficients
-        resize!(c,n)
-        # calculate expansion coefficients
-        kpm_coefficients!(c, n, op.λ_lo, op.λ_hi, ϕ) 
+        op.λ_lo  = λ_lo
+        op.λ_hi  = λ_hi
+        op.λ_avg = (op.λ_hi+op.λ_lo)/2
+        op.λ_mag = (op.λ_hi-op.λ_lo)/2
+        
+        # println("Update $(op.λ_lo) $(op.λ_hi)")
+
+        # update expansions
+        for ω in 1:length(op.ϕs)
+            # calculate order of expansion
+            coeff       = op.coeff[ω]
+            ϕ           = op.ϕs[ω]
+            # order       = round(Int, op.c1/ϕ + op.c2)
+            order       = round(Int, (op.λ_hi-op.λ_lo)*op.c1/ϕ + op.c2)
+            order       = max(1,order)
+            op.order[ω] = order
+            # resize vector containing expansion coefficients
+            resize!(coeff,order)
+            # calculate expansion coefficients
+            kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
+        end
     end
 
     return nothing
@@ -379,7 +384,7 @@ end
 
 
 """
-Perform A⁻¹⋅v where =Aexp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
+Perform A⁻¹⋅v where A = exp{-Δτ⋅K̄}⋅exp{-Δτ⋅V̄}
 """
 function ldiv!(v′::AbstractVector{T4},op::KPMExpansion{T1,T2,T3},v::AbstractVector{T4}) where {T1,T2,T3,T4<:Continuous}
 
@@ -777,14 +782,13 @@ function kpm_coefficients!(c::AbstractVector{T}, order::Int, λ_lo, λ_hi, ϕ) w
     ## Real Part Exapnsion Coefficient ##
     #####################################
 
-    for n in 0:N_M-1
+    for n in 0:(N_M-1)
         c′[n+1] = real(scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ))
     end
     FFTW.dct!(c′)
-    @. c′ /= 2
     
     # FFTW uses the "unitary" normalization. Undo that.
-    @. c′ *= sqrt(2*N_M)
+    c′    *= sqrt(2*N_M)/2
     c′[1] *= sqrt(2)
     
     for m in 0:(M-1)
@@ -796,14 +800,13 @@ function kpm_coefficients!(c::AbstractVector{T}, order::Int, λ_lo, λ_hi, ϕ) w
     ## Imaginary Part Exapnsion Coefficient ##
     ##########################################
 
-    for n in 0:N_M-1
+    for n in 0:(N_M-1)
         c′[n+1] = imag(scalar_invM(λ_mag*cos(π*(n+0.5)/N_M)+λ_avg,ϕ))
     end
     FFTW.dct!(c′)
-    @. c′ /= 2
     
     # FFTW uses the "unitary" normalization. Undo that.
-    @. c′ *= sqrt(2*N_M)
+    c′    *= sqrt(2*N_M)/2
     c′[1] *= sqrt(2)
     
     for m in 0:(M-1)
@@ -811,7 +814,7 @@ function kpm_coefficients!(c::AbstractVector{T}, order::Int, λ_lo, λ_hi, ϕ) w
         c[m+1] += im * (π * c′[m+1]) / (N_M * q_m)
     end
 
-    return c
+    return nothing
 end
 
 """
@@ -867,8 +870,8 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         # calulcate min and max eigenvalues
         h′       = @view h[1:l,1:l]
         eigvs    = eigvals!(h′)
-        @. eigvs = real(eigvs)
         e_max    = maximum(real, eigvs)
+        # e_min    = minimum(real, eigvs)
 
         ################################
         ## Arnoldi for Min Eigenvalue ##
@@ -909,7 +912,6 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         # calulcate min and max eigenvalues
         h′       = @view h[1:l,1:l]
         eigvs    = eigvals!(h′)
-        @. eigvs = real(eigvs)
         e_min    = 1/maximum(real, eigvs)
 
         # println("$e_min $e_max")
