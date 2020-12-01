@@ -270,9 +270,6 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
     # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
     e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
-
     # compute λ_lo and λ_hi
     λ_lo = max(0.0 , (1-2*op.buf)*e_min)
     λ_hi = (1+2*op.buf)*e_max
@@ -285,8 +282,6 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
         op.λ_hi  = λ_hi
         op.λ_avg = (op.λ_hi+op.λ_lo)/2
         op.λ_mag = (op.λ_hi-op.λ_lo)/2
-        
-        # println("Update $(op.λ_lo) $(op.λ_hi)")
 
         # update expansions
         for ω in 1:length(op.ϕs)
@@ -875,7 +870,6 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         h′       = @view h[1:l,1:l]
         eigvs    = eigvals!(h′)
         e_max    = maximum(real, eigvs)
-        # e_min    = minimum(real, eigvs)
 
         ################################
         ## Arnoldi for Min Eigenvalue ##
@@ -917,8 +911,6 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         h′       = @view h[1:l,1:l]
         eigvs    = eigvals!(h′)
         e_min    = 1/maximum(real, eigvs)
-
-        # println("$e_min $e_max")
 
         return e_min, e_max
     end
