@@ -270,12 +270,16 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
     # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
     e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # compute λ_lo and λ_hi
-    λ_lo  = max( 0.0 , floor( (1-op.buf)*e_min , digits=1) )
-    λ_hi  = ceil( (1+op.buf)*e_max , digits=1 )
+    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # if λ_lo or λ_hi has changed recompute expansion coefficients
-    if (λ_lo != op.λ_lo) || (λ_hi != op.λ_hi)
+    # compute λ_lo and λ_hi
+    λ_lo = max(0.0 , (1-2*op.buf)*e_min)
+    λ_hi = (1+2*op.buf)*e_max
+
+    # if λ_lo or λ_hi has changed by a factor of more than op.buf,
+    # recompute expansion coefficients
+    if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
 
         op.λ_lo  = λ_lo
         op.λ_hi  = λ_hi

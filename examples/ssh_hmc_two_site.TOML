@@ -155,10 +155,10 @@ restart = 20
 [solver.preconditioner]
 
 # size of krylov subspace used for arnoldi method
-n = 10
+n = 20
 
 # amount to buffer min/max eigenvalues by to bound spectrum
-buf = 0.01
+buf = 0.05
 
 # preconditioner parameter
 # this parameter is ignored unless use_preconditioner = true
