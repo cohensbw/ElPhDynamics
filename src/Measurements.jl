@@ -1071,7 +1071,7 @@ function measure_DenDen(model::AbstractModel,estimator::EstimateGreensFunction,
     Gᵣᵣττ_G₀₀00 = measure_GΔΔ_G00(estimator,l₁,l₂,l₃,o₁,o₂,τ%L)
     Gᵣ₀τ0_G₀ᵣ0τ = measure_GΔ0_G0Δ(estimator,l₁,l₂,l₃,o₁,o₂,τ%L)
     δᵣ          = δ(l₁)*δ(l₂)*δ(l₃)*δ(o₁,o₂)
-    nᵣτ_n₀0     = 4.0 * ( 1.0 - Gᵣᵣττ - G₀₀00 + Gᵣᵣττ_G₀₀00 + 0.5 * ( δᵣ*δ(τ)*Gᵣ₀τ0 - Gᵣ₀τ0_G₀ᵣ0τ ) )
+    nᵣτ_n₀0     = 4.0 * ( 1.0 - Gᵣᵣττ - G₀₀00 + Gᵣᵣττ_G₀₀00 + 0.5 * ( δᵣ*δ(τ%L)*Gᵣ₀τ0 - Gᵣ₀τ0_G₀ᵣ0τ ) )
 
     return nᵣτ_n₀0
 end
