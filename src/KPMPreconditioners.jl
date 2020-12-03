@@ -912,6 +912,8 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         eigvs    = eigvals!(h′)
         e_min    = 1/maximum(real, eigvs)
 
+        # println("$e_min $e_max")
+
         return e_min, e_max
     end
 end

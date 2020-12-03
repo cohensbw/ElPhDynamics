@@ -1,6 +1,7 @@
 using Parameters
 using LinearAlgebra
 using Random
+using Logging
 
 import LinearAlgebra: mul!, ldiv!, transpose!
 import Random: randn!
@@ -505,6 +506,9 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # account of updated chemical potential
     @. ssh.expΔτμ = exp( ssh.Δτ * ssh.μ )
 
+    # if the sign of any hopping energy flipped
+    flipped_sign = false
+
     # iterate of phonon fields
     for field in 1:ssh.Ndof
         # get phonon
@@ -520,6 +524,17 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
         ssh.sinht[τ,index] = sinh(ssh.Δτ*t′)
+        # check if sign of hopping flipped
+        if sign(t′) != sign(ssh.t[bond])
+            flipped_sign = true
+        end
+    end
+
+    # report message of sign of hopping flipped
+    if flipped_sign
+        @info("Sign of hopping energy flipped in SSH model.")
+        logger = global_logger()
+        flush(logger.stream)
     end
 
     # make sure equivalent fields are equal
