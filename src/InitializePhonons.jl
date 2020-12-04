@@ -91,7 +91,11 @@ Samples the position distribution of a QHO with frequency `ω` at inverse temper
 """
 function sample_qho(ω::T,β::T)::T where {T<:Number}
     
-    σ = sqrt( tanh(β*ω/2) / (2*ω) )
+    if ω>0
+        σ = 1/sqrt(2*ω*tanh(β*ω/2))
+    else
+        σ = 1.0
+    end
     return σ*randn()
 end
 
