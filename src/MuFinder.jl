@@ -119,7 +119,16 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
     
     if tuner.active
 
-        forgetful_idx = ceil(Int, tuner.forgetful_c * length(tuner.μ_traj))
+        # forgetfulnes parameter
+        forgetful_c = tuner.forgetful_c
+
+        # if entire history is used in mu-tuning, then only use
+        # half the history to estimate μ
+        if forgetful_c == 1.0
+            forgetful_c = 0.5
+        end
+
+        forgetful_idx = ceil(Int, forgetful_c * length(tuner.μ_traj))
         μ_traj        = @view tuner.μ_traj[forgetful_idx:length(tuner.μ_traj)]
         μ_err         = stdm( μ_traj , median(μ_traj) )
         tuner.μ_avg   = tuner.μ_bar
@@ -141,9 +150,9 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
             sizehint!(μ_bar_traj,  length(tuner.N_traj))
             sizehint!(κ_bar_traj,  length(tuner.N_traj))
             for i in 1:length(tuner.N_traj)
-                N_bar  = forgetful_mean( view(tuner.N_traj, 1:i), tuner.forgetful_c, N_bar)
-                N²_bar = forgetful_mean( view(tuner.N²_traj,1:i), tuner.forgetful_c, N²_bar)
-                μ_bar  = forgetful_mean( view(tuner.μ_traj, 1:i), tuner.forgetful_c, μ_bar)
+                N_bar  = forgetful_mean( view(tuner.N_traj, 1:i), forgetful_c, N_bar)
+                N²_bar = forgetful_mean( view(tuner.N²_traj,1:i), forgetful_c, N²_bar)
+                μ_bar  = forgetful_mean( view(tuner.μ_traj, 1:i), forgetful_c, μ_bar)
                 κ_bar  = max( tuner.β*(N²_bar - N_bar^2) , tuner.κ_min/sqrt(i) )
                 push!(N_bar_traj,  N_bar)
                 push!(N²_bar_traj, N²_bar)
