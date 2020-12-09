@@ -764,7 +764,8 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
     x = reshaped(ssh.x,(Lτ,ssh.Nph))
 
     # imaginary time step
-    Δτ = ssh.Δτ
+    Δτ  = ssh.Δτ
+    Δτ² = Δτ^2
 
     # normalization
     V = div(Nbonds,nbonds)*Lτ
@@ -794,6 +795,12 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
         end
         # iterate over time slices
         for τ in 1:Lτ
+            # get hopping amplitude h = ∑ₛ⟨c⁺ₛᵢcₛⱼ+h.c.⟩
+            G1 = estimate(Gr,s₁,s₂,τ,τ,1)
+            G2 = estimate(Gr,s₂,s₁,τ,τ,1)
+            G3 = estimate(Gr,s₁,s₂,τ,τ,2)
+            G4 = estimate(Gr,s₂,s₁,τ,τ,2)
+            h   = -G1-G2-G3-G4
             # get phonon field info
             if phonon!=0
                 # get xᵢ[τ] phonon field
@@ -802,31 +809,33 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
                 xτp1 = x[mod1(τ+1,Lτ),phonon]
                 # Δx = xᵢ[τ+1]-xᵢ[τ]
                 Δx   = xτp1-xτ
+                # phonon potential energy
+                intersite_meas.phonon_pe[bond_def]   += (ω^2*xτ^2/2)/V
+                # phonon kinetic energy
+                intersite_meas.phonon_ke[bond_def]   += (0.5/Δτ-(Δx^2)/Δτ²/2)/V
+                # electron-phonon energy
+                intersite_meas.elph_energy[bond_def] += (α*h*xτ)/V
+                # ⟨x⟩
+                intersite_meas.x[bond_def]           += xτ/V
+                # ⟨x²⟩
+                intersite_meas.x2[bond_def]          += (xτ^2)/V
+                # ⟨x⁴⟩
+                intersite_meas.x4[bond_def]          += (xτ^4)/V
             else
-                xτ   = 0.0
-                xτp1 = 0.0
-                Δx   = 0.0
+                intersite_meas.phonon_pe[bond_def]   += 0.0
+                # phonon kinetic energy
+                intersite_meas.phonon_ke[bond_def]   += 0.0
+                # electron-phonon energy
+                intersite_meas.elph_energy[bond_def] += 0.0
+                # ⟨x⟩
+                intersite_meas.x[bond_def]           += 0.0
+                # ⟨x²⟩
+                intersite_meas.x2[bond_def]          += 0.0
+                # ⟨x⁴⟩
+                intersite_meas.x4[bond_def]          += 0.0
             end
-            # get hopping amplitude h = ∑ₛ⟨c⁺ₛᵢcₛⱼ+h.c.⟩
-            G1 = estimate(Gr,s₁,s₂,τ,τ,1)
-            G2 = estimate(Gr,s₂,s₁,τ,τ,1)
-            G3 = estimate(Gr,s₁,s₂,τ,τ,2)
-            G4 = estimate(Gr,s₂,s₁,τ,τ,2)
-            h   = -G1-G2-G3-G4
             # calculate modulated hopping amplitude
             t′ = ssh.t′[τ,bond]
-            # phonon potential energy
-            intersite_meas.phonon_pe[bond_def]   += (ω^2*xτ^2/2)/V
-            # phonon kinetic energy
-            intersite_meas.phonon_ke[bond_def]   += (0.5/Δτ-(Δx/Δτ)^2/2.0)/V
-            # electron-phonon energy
-            intersite_meas.elph_energy[bond_def] += (α*h*xτ)/V
-            # ⟨x⟩
-            intersite_meas.x[bond_def]           += xτ/V
-            # ⟨x²⟩
-            intersite_meas.x2[bond_def]          += (xτ^2)/V
-            # ⟨x⁴⟩
-            intersite_meas.x4[bond_def]          += (xτ^4)/V
             # calculate electron kinetic energy
             intersite_meas.el_ke[bond_def]       += -t′*h/V
         end

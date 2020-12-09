@@ -527,7 +527,7 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         # check if sign of hopping flipped
         if sign(t′) != sign(ssh.t[bond])
             flipped_sign = true
-            println("$(t′) $(ssh.t[bond]) $(ssh.α[phonon]) $(ssh.x[field])")
+            # println("$(t′) $(ssh.t[bond]) $(ssh.α[phonon]) $(ssh.x[field])")
         end
     end
 
