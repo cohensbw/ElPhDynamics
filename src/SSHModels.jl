@@ -420,10 +420,10 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     groups = checkerboard_groups(ssh.neighbor_table)
 
     # get checkerboard permutation and apply to neighbor table
-    new_perm = checkerboard_order(groups)
-    ssh.checkerboard_perm     = perm[new_perm]
-    ssh.inv_checkerboard_perm = sortperm(ssh.checkerboard_perm)
+    new_perm                  = checkerboard_order(groups)
     ssh.neighbor_table       .= ssh.neighbor_table[:,new_perm]
+    ssh.inv_checkerboard_perm = perm[new_perm]
+    ssh.checkerboard_perm     = sortperm(ssh.inv_checkerboard_perm)
 
     # number of bonds in lattice
     ssh.Nbonds = size(ssh.neighbor_table,2)
@@ -506,8 +506,8 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # account of updated chemical potential
     @. ssh.expΔτμ = exp( ssh.Δτ * ssh.μ )
 
-    # if the sign of any hopping energy flipped
-    flipped_sign = false
+    # # if the sign of any hopping energy flipped
+    # flipped_sign = false
 
     # iterate of phonon fields
     for field in 1:ssh.Ndof
@@ -524,11 +524,11 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
         ssh.sinht[τ,index] = sinh(ssh.Δτ*t′)
-        # check if sign of hopping flipped
-        if sign(t′) != sign(ssh.t[bond])
-            flipped_sign = true
-            # println("$(t′) $(ssh.t[bond]) $(ssh.α[phonon]) $(ssh.x[field])")
-        end
+        # # check if sign of hopping flipped
+        # if sign(t′) != sign(ssh.t[bond])
+        #     flipped_sign = true
+        #     println("$(t′) $(ssh.t[bond]) $(ssh.α[phonon]) $(ssh.x[field])")
+        # end
     end
 
     # # report message of sign of hopping flipped

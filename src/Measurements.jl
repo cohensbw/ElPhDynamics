@@ -725,8 +725,8 @@ function make_intersite_measurements!(container::NamedTuple,model::HolsteinModel
             bond = (bond_def-1)*ncells + cell
             # get pair of neighboring sites assoicated with bond
             index = model.checkerboard_perm[bond]
-            s₁    = model.neighbor_table[1,bond]
-            s₂    = model.neighbor_table[2,bond]
+            s₁    = model.neighbor_table[1,index]
+            s₂    = model.neighbor_table[2,index]
             # get hopping amplitude
             t = model.t[bond]
             # iterate over imaginary time slices

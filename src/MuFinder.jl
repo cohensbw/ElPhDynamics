@@ -29,6 +29,10 @@ mutable struct MuTuner{T<:AbstractFloat}
     κ_bar       :: T
     N_bar       :: T
     N²_bar      :: T
+    μ_bar_traj  :: Vector{T}
+    κ_bar_traj  :: Vector{T}
+    N_bar_traj  :: Vector{T}
+    N²_bar_traj :: Vector{T}
     κ_min       :: T
     μ_avg       :: T
     μ_err       :: T
@@ -41,6 +45,10 @@ mutable struct MuTuner{T<:AbstractFloat}
         μ_traj  = [init_μ]
         N_traj  = Vector{T}()
         N²_traj = Vector{T}()
+        μ_bar_traj  = Vector{T}()
+        κ_bar_traj  = Vector{T}()
+        N_bar_traj  = Vector{T}()
+        N²_bar_traj = Vector{T}()
 
         logfile = open(logfilename,"w")
         if active
@@ -49,7 +57,8 @@ mutable struct MuTuner{T<:AbstractFloat}
             close(logfile)
         end
 
-        return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, κ_min, -1.0, -1.0, κ_min, init_μ, 0.0, log, logfile)
+        return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, κ_min, -1.0, -1.0,
+                      μ_bar_traj, κ_bar_traj, N_bar_traj, N²_bar_traj, κ_min, init_μ, 0.0, log, logfile)
     end
 end
 
@@ -90,21 +99,49 @@ Given new measurements for N and N², updates the MuTuner and returns the new va
 """
 function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
-    @unpack μ_traj, N_traj, N²_traj, forgetful_c, β, target_N, κ_min = tuner
+    @unpack μ_traj, N_traj, N²_traj, μ_bar_traj, N_bar_traj, N²_bar_traj, κ_bar_traj, forgetful_c, β, target_N, κ_min = tuner
 
+    # record new ⟨N⟩ and ⟨N²⟩ values
     push!(N_traj,  N)
     push!(N²_traj, N²)
+
+    # calculate new averages
     tuner.μ_bar  = forgetful_mean(μ_traj,  forgetful_c, tuner.μ_bar)
     tuner.N_bar  = forgetful_mean(N_traj,  forgetful_c, tuner.N_bar)
     tuner.N²_bar = forgetful_mean(N²_traj, forgetful_c, tuner.N²_bar)
-    tuner.κ_bar  = max( β*(tuner.N²_bar - tuner.N_bar^2) , κ_min/sqrt(length(N_traj)) )
+    push!(μ_bar_traj,tuner.μ_bar)
+    push!(N_bar_traj,tuner.N_bar)
+    push!(N²_bar_traj,tuner.N²_bar)
 
+    # calculate upper bound for κ
+    if length(μ_traj)>1
+        n    = div(length(μ_bar_traj),2)
+        κ_hi = abs((tuner.N_bar-N_bar_traj[n])/(tuner.μ_bar-μ_bar_traj[n]))
+        # κ_hi = abs(var(N_traj)/(std(μ_traj)*(target_N - tuner.N_bar)))
+    else
+        κ_hi = κ_min
+    end
+
+    # calculate lower bound for κ
+    κ_lo = κ_min/sqrt(length(N_traj))
+
+    # calculate κ
+    tuner.κ_bar  = β*(tuner.N²_bar - tuner.N_bar^2)
+
+    # apply bounds to κ value
+    # println("$(κ_lo/tuner.N) $(tuner.κ_bar/tuner.N) $(κ_hi/tuner.N)")
+    tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
+    tuner.κ_bar  = max( tuner.κ_bar , κ_lo )
+    push!(κ_bar_traj,tuner.κ_bar)
+
+    # write to log file
     if tuner.active && tuner.log
         line = @sprintf("%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n", tuner.μ_bar, tuner.κ_bar/tuner.N, tuner.N_bar/tuner.N, tuner.N²_bar, tuner.μ, N/tuner.N, N²)
         write(tuner.logfile, line)
         flush(tuner.logfile)
     end
 
+    # calculate new μ value
     tuner.μ = tuner.μ_bar + (target_N - tuner.N_bar) / tuner.κ_bar 
     push!(μ_traj, tuner.μ)
 
@@ -128,6 +165,7 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
             forgetful_c = 0.5
         end
 
+        # calculate best estimate for true μ value
         forgetful_idx = ceil(Int, forgetful_c * length(tuner.μ_traj))
         μ_traj        = @view tuner.μ_traj[forgetful_idx:length(tuner.μ_traj)]
         μ_err         = stdm( μ_traj , median(μ_traj) )
@@ -137,40 +175,19 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
         # write trajectories to logfile if not already written
         if !tuner.log
 
-            # Run through and reconstruct the N_bar, N²_bar, μ_bar, and κ_bar trajectories
-            N_bar       = tuner.N_traj[1]
-            N²_bar      = tuner.N²_traj[1]
-            μ_bar       = tuner.μ_traj[1]
-            N_bar_traj  = Vector{T}()
-            N²_bar_traj = Vector{T}()
-            μ_bar_traj  = Vector{T}()
-            κ_bar_traj  = Vector{T}()
-            sizehint!(N_bar_traj,  length(tuner.N_traj))
-            sizehint!(N²_bar_traj, length(tuner.N_traj))
-            sizehint!(μ_bar_traj,  length(tuner.N_traj))
-            sizehint!(κ_bar_traj,  length(tuner.N_traj))
-            for i in 1:length(tuner.N_traj)
-                N_bar  = forgetful_mean( view(tuner.N_traj, 1:i), forgetful_c, N_bar)
-                N²_bar = forgetful_mean( view(tuner.N²_traj,1:i), forgetful_c, N²_bar)
-                μ_bar  = forgetful_mean( view(tuner.μ_traj, 1:i), forgetful_c, μ_bar)
-                κ_bar  = max( tuner.β*(N²_bar - N_bar^2) , tuner.κ_min/sqrt(i) )
-                push!(N_bar_traj,  N_bar)
-                push!(N²_bar_traj, N²_bar)
-                push!(μ_bar_traj,  μ_bar)
-                push!(κ_bar_traj,  κ_bar)
-            end
-
             # iterate over trajectory
             for i in 1:length(tuner.N_traj)
                 # size in lattice
                 N = tuner.N
                 # write data to log file
                 line = @sprintf("%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n",
-                                μ_bar_traj[i], κ_bar_traj[i]/N, N_bar_traj[i]/N, N²_bar_traj[i],
+                                tuner.μ_bar_traj[i], tuner.κ_bar_traj[i]/N, tuner.N_bar_traj[i]/N, tuner.N²_bar_traj[i],
                                 tuner.μ_traj[i], tuner.N_traj[i]/N, tuner.N²_traj[i])
                 write(tuner.logfile,line)
             end
         end
+
+        # close log file
         close(tuner.logfile)
 
         return nothing
@@ -178,6 +195,7 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
 
         tuner.μ_avg = tuner.μ
         tuner.μ_err = 0.0
+
         return nothing
     end
 end
@@ -190,6 +208,10 @@ function forgetful_mean(data::AbstractVector{T}, c::T, prev_mean::T)::T where {T
 
     if length(data) == 1
         return data[1]
+    elseif c==1.0
+        N = length(data)
+        new_mean = prev_mean*(N-1)/N + data[end]/N
+        return new_mean
     end
 
     cutoff = ceil(Int, (1.0 - c) * length(data))

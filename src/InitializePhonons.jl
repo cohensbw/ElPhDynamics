@@ -74,8 +74,8 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1,T2}
         path    = @view holstein.x[i_start:i_end]
 
         # shift levy path by ammount corresponding having either
-        # a density of 0 or 2 on the site
-        x0 = -2*λ/ω^2 * rand(0:1)
+        # a density of 0, 1 or 2 on the site
+        x0 = -λ/ω^2 * rand(0:2)
         xr = x0 + sample_qho(ω,β)
         @. path = xr
     end

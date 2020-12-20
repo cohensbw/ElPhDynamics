@@ -504,7 +504,7 @@ function initialize_model!(holstein::HolsteinModel)
         holstein.sinht          .= holstein.sinht[new_perm]
 
         # record checkerboard permutation
-        holstein.checkerboard_perm = perm[new_perm]
+        holstein.checkerboard_perm = sortperm(perm[new_perm])
     end
 
     return nothing
