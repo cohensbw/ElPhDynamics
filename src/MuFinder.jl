@@ -130,7 +130,7 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
     # apply bounds to κ value
     # println("$(κ_lo/tuner.N) $(tuner.κ_bar/tuner.N) $(κ_hi/tuner.N)")
-    tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
+    # tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
     tuner.κ_bar  = max( tuner.κ_bar , κ_lo )
     push!(κ_bar_traj,tuner.κ_bar)
 
