@@ -473,7 +473,7 @@ end
 Intialize multi-dimensional array to contain correlation measurement.
 """
 function init_corr_container!(container::Dict,measurement::String,info::Dict,model::AbstractModel{T1,T2,T3},
-                                        n::Int,L₃::Int,L₂::Int,L₁::Int,Lₜ::Int) where {T1,T2,T3}
+                              n::Int,L₃::Int,L₂::Int,L₁::Int,Lₜ::Int) where {T1,T2,T3}
     
     if haskey(info,measurement)
         if info[measurement]["measure"]==true
@@ -486,7 +486,7 @@ function init_corr_container!(container::Dict,measurement::String,info::Dict,mod
                 position = zeros(Complex{T1},1,L₁,L₂,L₃,n,n)
                 momentum = zeros(Complex{T1},1,L₁,L₂,L₃,n,n)
             end
-            container[measurement] = (position=position,momentum=momentum)
+            container[measurement] = (position=position, momentum=momentum)
         end
     end
     return nothing

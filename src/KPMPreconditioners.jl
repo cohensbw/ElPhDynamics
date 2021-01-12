@@ -4,6 +4,7 @@ using LinearAlgebra
 using Random
 using FFTW
 using UnsafeArrays
+using Logging
 
 import LinearAlgebra: ldiv!, mul!, transpose
 
@@ -18,6 +19,9 @@ export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner
 Object to represent Kenerl Polynomial Expansion.
 """
 mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
+
+    "If true apply preconditioner, else default to identity operator."
+    active::Bool
 
     "Current frequency."
     ω::Int
@@ -137,7 +141,7 @@ mutable struct KPMExpansion{T1<:AbstractFloat,T2<:Continuous,T3<:AbstractModel}
         # construct expansion of the function f(x)=1.0-exp{i⋅ϕ⋅x} for each ϕ value
         coeff = [zeros(Complex{T1},1) for ω in 1:Lo2]
 
-        return new{T1,T2,typeof(model)}(1,n,Q,h,buf,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
+        return new{T1,T2,typeof(model)}(true,1,n,Q,h,buf,λ_lo,λ_hi,λ_avg,λ_mag,c1,c2,model,timefreqfft,expnΔτV̄,cosht̄,sinht̄,ϕs,coeff,order,v1,v2,v3,v4,v5,0)
     end
 end
 
@@ -264,39 +268,53 @@ Update the preconditioner.
 """
 function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
-    # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
-    update_A!(op)
+    try
+        # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
+        update_A!(op)
 
-    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
+        # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+        e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
 
-    # compute λ_lo and λ_hi
-    λ_lo = max(0.0 , (1-2*op.buf)*e_min)
-    λ_hi = (1+2*op.buf)*e_max
+        # compute λ_lo and λ_hi
+        λ_lo = max(0.0 , (1-2*op.buf)*e_min)
+        λ_hi = (1+2*op.buf)*e_max
 
-    # if λ_lo or λ_hi has changed by a factor of more than op.buf,
-    # recompute expansion coefficients
-    if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
+        # if λ_lo or λ_hi has changed by a factor of more than op.buf,
+        # recompute expansion coefficients
+        if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
 
-        op.λ_lo  = λ_lo
-        op.λ_hi  = λ_hi
-        op.λ_avg = (op.λ_hi+op.λ_lo)/2
-        op.λ_mag = (op.λ_hi-op.λ_lo)/2
+            op.λ_lo  = λ_lo
+            op.λ_hi  = λ_hi
+            op.λ_avg = (op.λ_hi+op.λ_lo)/2
+            op.λ_mag = (op.λ_hi-op.λ_lo)/2
 
-        # update expansions
-        for ω in 1:length(op.ϕs)
-            # calculate order of expansion
-            coeff       = op.coeff[ω]
-            ϕ           = op.ϕs[ω]
-            # order       = round(Int, op.c1/ϕ + op.c2)
-            order       = round(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
-            order       = max(1,order)
-            op.order[ω] = order
-            # resize vector containing expansion coefficients
-            resize!(coeff,order)
-            # calculate expansion coefficients
-            kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
+            # update expansions
+            for ω in 1:length(op.ϕs)
+                # calculate order of expansion
+                coeff       = op.coeff[ω]
+                ϕ           = op.ϕs[ω]
+                # order       = round(Int, op.c1/ϕ + op.c2)
+                order       = round(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
+                order       = max(1,order)
+                op.order[ω] = order
+                # resize vector containing expansion coefficients
+                resize!(coeff,order)
+                # calculate expansion coefficients
+                kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
+            end
         end
+
+        # set preconditioner to being active
+        op.active = true
+        
+    catch
+        # disable preconditioner
+        op.active = false
+
+        # log a warning
+        @info("Preconditioner Disabled")
+        logger = global_logger()
+        flush(logger.stream)
     end
 
     return nothing
@@ -414,46 +432,53 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
     v2 = op.v2::Vector{Complex{T}}
     op.checkerboard_count = 0
 
-    # 1. apply phase factor to go from (anit-periodic)⟶(periodic) in τ
-    # 2. FFT from τ ⟶ ω
-    τ_to_ω!(v2,op.timefreqfft,vin)
+    if op.active # apply preconditioner if active
 
-    @uviews v1 v2 begin
+        # 1. apply phase factor to go from (anit-periodic)⟶(periodic) in τ
+        # 2. FFT from τ ⟶ ω
+        τ_to_ω!(v2,op.timefreqfft,vin)
 
-        a1  = reshape(v1,(L,N))
-        a1T = reshape(v1,(N,L))
-        a2  = reshape(v2,(L,N))
-        a2T = reshape(v2,(N,L))
+        @uviews v1 v2 begin
 
-        transpose!(a1T,a2)
+            a1  = reshape(v1,(L,N))
+            a1T = reshape(v1,(N,L))
+            a2  = reshape(v2,(L,N))
+            a2T = reshape(v2,(N,L))
 
-        # iterating over half the range of frequencies
-        @fastmath @inbounds for ω in 1:cld(L,2)
+            transpose!(a1T,a2)
 
-            # input vector
-            u1 = @view a1T[:,ω]
+            # iterating over half the range of frequencies
+            @fastmath @inbounds for ω in 1:cld(L,2)
 
-            # output vector
-            u2 = @view a2T[:,ω]
+                # input vector
+                u1 = @view a1T[:,ω]
 
-            # set frequency
-            op.ω = ω
+                # output vector
+                u2 = @view a2T[:,ω]
 
-            # multiply by KPM approximation to M⁻¹[ω,ω]
-            mul!(u2,P,u1)
+                # set frequency
+                op.ω = ω
 
-            # accounting for symmetry
-            for i in 1:N
-                a2T[i,L-ω+1] = conj(a2T[i,ω])
+                # multiply by KPM approximation to M⁻¹[ω,ω]
+                mul!(u2,P,u1)
+
+                # accounting for symmetry
+                for i in 1:N
+                    a2T[i,L-ω+1] = conj(a2T[i,ω])
+                end
             end
+
+            transpose!(a1,a2T)
         end
 
-        transpose!(a1,a2T)
-    end
+        # 1. iFFT from ω ⟶ τ
+        # 2. apply inverse phase factor to go from (periodic)⟶(anti-periodic) in τ
+        ω_to_τ!(vout,op.timefreqfft,v1)
 
-    # 1. iFFT from ω ⟶ τ
-    # 2. apply inverse phase factor to go from (periodic)⟶(anti-periodic) in τ
-    ω_to_τ!(vout,op.timefreqfft,v1)
+    else # if preconditioner inactive then behave like identity matrix
+
+        copyto!(vout,vin)
+    end
 
     return nothing
 end

@@ -26,8 +26,10 @@ mutable struct MuTuner{T<:AbstractFloat}
     L           :: Int
     target_N    :: T
     μ_bar       :: T
+    μ_std       :: T
     κ_bar       :: T
     N_bar       :: T
+    N_std       :: T
     N²_bar      :: T
     μ_bar_traj  :: Vector{T}
     κ_bar_traj  :: Vector{T}
@@ -57,7 +59,7 @@ mutable struct MuTuner{T<:AbstractFloat}
             close(logfile)
         end
 
-        return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, κ_min, -1.0, -1.0,
+        return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, 0.0, κ_min, -1.0, 0.0, -1.0,
                       μ_bar_traj, κ_bar_traj, N_bar_traj, N²_bar_traj, κ_min, init_μ, 0.0, log, logfile)
     end
 end
@@ -106,31 +108,31 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     push!(N²_traj, N²)
 
     # calculate new averages
-    tuner.μ_bar  = forgetful_mean(μ_traj,  forgetful_c, tuner.μ_bar)
-    tuner.N_bar  = forgetful_mean(N_traj,  forgetful_c, tuner.N_bar)
-    tuner.N²_bar = forgetful_mean(N²_traj, forgetful_c, tuner.N²_bar)
+    tuner.μ_bar, tuner.μ_std  = forgetful_welfords(μ_traj, tuner.μ_bar, tuner.μ_std, forgetful_c)
+    tuner.N_bar, tuner.N_std  = forgetful_welfords(N_traj, tuner.N_bar, tuner.N_std, forgetful_c)
+    tuner.N²_bar = forgetful_mean(N²_traj, tuner.N²_bar, forgetful_c)
     push!(μ_bar_traj,tuner.μ_bar)
     push!(N_bar_traj,tuner.N_bar)
     push!(N²_bar_traj,tuner.N²_bar)
 
-    # calculate upper bound for κ
-    if length(μ_traj)>1
-        n    = div(length(μ_bar_traj),2)
-        κ_hi = abs((tuner.N_bar-N_bar_traj[n])/(tuner.μ_bar-μ_bar_traj[n]))
-        # κ_hi = abs(var(N_traj)/(std(μ_traj)*(target_N - tuner.N_bar)))
-    else
-        κ_hi = κ_min
-    end
+    # length of trajectory
+    n = length(N_traj)
 
     # calculate lower bound for κ
-    κ_lo = κ_min/sqrt(length(N_traj))
+    κ_lo = κ_min/sqrt(n)
+
+    # calculate upper bound for κ
+    if n==1 || tuner.N_std <= 0.0 || tuner.μ_std <= 0.0
+        κ_hi = κ_lo
+    else
+        κ_hi = tuner.N_std/tuner.μ_std
+    end
 
     # calculate κ
     tuner.κ_bar  = β*(tuner.N²_bar - tuner.N_bar^2)
 
     # apply bounds to κ value
-    # println("$(κ_lo/tuner.N) $(tuner.κ_bar/tuner.N) $(κ_hi/tuner.N)")
-    # tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
+    tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
     tuner.κ_bar  = max( tuner.κ_bar , κ_lo )
     push!(κ_bar_traj,tuner.κ_bar)
 
@@ -204,26 +206,59 @@ end
 ## PRIVATE MODULE METHODS ##
 ############################
 
-function forgetful_mean(data::AbstractVector{T}, c::T, prev_mean::T)::T where {T<:AbstractFloat}
+"""
+Update the mean of the vector `x` using only the most recent `c` fraction of the history.
+"""
+function forgetful_mean(x::AbstractVector{T}, x̄ₙ₋₁::T, c::T)::T where {T<:AbstractFloat}
 
-    if length(data) == 1
-        return data[1]
-    elseif c==1.0
-        N = length(data)
-        new_mean = prev_mean*(N-1)/N + data[end]/N
-        return new_mean
+    N = length(x)
+    if N  == 1
+        return x[1]
+    end
+    i′   = 1 + floor(Int, (1.0 - c) * (N - 1))
+    n    = N - i′ + 1
+    xₙ   = x[N]
+    x̄ₙ   = x̄ₙ₋₁ + (xₙ-x̄ₙ₋₁)/n
+    i    = 1 + floor(Int, (1.0 - c) * N)
+    if i != i′
+        n  = N - i + 1
+        x₀ = x[i′]
+        x̄ₙ = x̄ₙ - (x₀-x̄ₙ)/n
+    end
+    return x̄ₙ
+end
+
+"""
+Update the mean and standard deviation of the vector `x` using only the most recent `c` fraction of the history.
+Uses the numerically stable Welford's algorithm to update the standard deviation.
+"""
+function forgetful_welfords(x::AbstractVector{T},x̄ₙ₋₁::T,sₙ₋₁::T,c::T)::Tuple{T,T} where {T<:AbstractFloat}
+
+    N = length(x)
+    if N == 1
+        return (x[1], 0.0)
+    end
+    i′   = 1 + floor(Int, (1.0 - c) * (N - 1))
+    n    = N - i′ + 1
+    xₙ   = x[N]
+    Mₙ₋₁ = (n-2)*sₙ₋₁^2
+    x̄ₙ   = x̄ₙ₋₁ + (xₙ-x̄ₙ₋₁)/n
+    Mₙ   = Mₙ₋₁ + (xₙ-x̄ₙ)*(xₙ-x̄ₙ₋₁)
+    i    = 1 + floor(Int, (1.0 - c) * N)
+    if i != i′
+        n  = N - i + 1
+        x₀ = x[i′]
+        x̄′ = x̄ₙ
+        x̄ₙ = x̄′ - (x₀-x̄′)/n
+        Mₙ = Mₙ - (x₀-x̄ₙ)*(x₀-x̄′)
+    end
+    if n>1
+        sₙ = sqrt(Mₙ/(n-1))
+    else
+        sₙ = 0.0
     end
 
-    cutoff = ceil(Int, (1.0 - c) * length(data))
-    prev_cutoff = ceil(Int, (1.0 - c) * (length(data) - 1))
-
-    new_mean = (length(data) - prev_cutoff) * prev_mean
-    if prev_cutoff != cutoff
-        new_mean -= data[prev_cutoff]
-    end
-    new_mean += data[end]
-
-    return new_mean / (length(data) - cutoff + 1)
+    return (x̄ₙ, sₙ)
 end
 
 end

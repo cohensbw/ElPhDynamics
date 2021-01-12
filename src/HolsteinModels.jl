@@ -767,7 +767,7 @@ function write_phonons!(holstein::HolsteinModel,filename::String)
     open(filename,"w") do file
 
         # write header to file
-        write(file, "tau orbit L1 L2 L3 x\n")
+        write(file, "L3 L2 L1 orbit tau x\n")
 
         # iterate over unit cells
         for l3 in 0:lattice.L3-1
