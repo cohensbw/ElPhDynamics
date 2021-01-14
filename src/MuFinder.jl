@@ -108,8 +108,8 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     push!(N²_traj, N²)
 
     # calculate new averages
-    tuner.μ_bar, tuner.μ_std  = forgetful_welfords(μ_traj, tuner.μ_bar, tuner.μ_std, forgetful_c)
-    tuner.N_bar, tuner.N_std  = forgetful_welfords(N_traj, tuner.N_bar, tuner.N_std, forgetful_c)
+    tuner.μ_bar, tuner.μ_std = forgetful_welfords(μ_traj, tuner.μ_bar, tuner.μ_std, forgetful_c)
+    tuner.N_bar  = forgetful_mean(N_traj, tuner.N_bar, forgetful_c)
     tuner.N²_bar = forgetful_mean(N²_traj, tuner.N²_bar, forgetful_c)
     push!(μ_bar_traj,tuner.μ_bar)
     push!(N_bar_traj,tuner.N_bar)
@@ -118,18 +118,21 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     # length of trajectory
     n = length(N_traj)
 
+    # variance of N
+    varN = tuner.N²_bar - tuner.N_bar^2
+
     # calculate lower bound for κ
     κ_lo = κ_min/sqrt(n)
 
     # calculate upper bound for κ
-    if n==1 || tuner.N_std <= 0.0 || tuner.μ_std <= 0.0
+    if n==1 || varN < 0.0 || tuner.μ_std <= 0.0
         κ_hi = κ_lo
     else
-        κ_hi = tuner.N_std/tuner.μ_std
+        κ_hi = sqrt(varN)/tuner.μ_std
     end
 
     # calculate κ
-    tuner.κ_bar  = β*(tuner.N²_bar - tuner.N_bar^2)
+    tuner.κ_bar  = β * varN
 
     # apply bounds to κ value
     tuner.κ_bar  = min( tuner.κ_bar , κ_hi )
