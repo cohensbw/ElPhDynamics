@@ -43,9 +43,10 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container = Dict()
     container["global_meas"]    = Dict()
     container["onsite_meas"]    = Dict()
-    container["onsite_corr"]    = Dict()
     container["intersite_meas"] = Dict()
+    container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
+    container["susceptibility"] = Dict()
     container["n_rand_vecs"]    = num_random_vectors
     
     #########################
@@ -111,6 +112,16 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     # Current-Current correlation function
     init_corr_container!(container["intersite_corr"],"CurrentCurrent",info,holstein,holstein.nbonds,L₃,L₂,L₁,Lₜ)
 
+    ####################
+    ## SUSCEPTIBILITY ##
+    ####################
+
+    # pair susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"PairSusc","PairGreens",holstein)
+
+    # charge susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",holstein)
+
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
     ##########################################
@@ -119,6 +130,7 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
+    container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
@@ -142,12 +154,12 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container = Dict()
     container["global_meas"]    = Dict()
     container["onsite_meas"]    = Dict()
-    container["onsite_corr"]    = Dict()
     container["intersite_meas"] = Dict()
+    container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
+    container["susceptibility"] = Dict()
     container["n_rand_vecs"]    = num_random_vectors
 
-    
     #########################
     ## GLOBAL MEASUREMENTS ##
     #########################
@@ -217,7 +229,17 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
 
     # current-current correlation function
     init_corr_container!(container["intersite_corr"],"CurrentCurrent",info,ssh,ssh.nbonds,L₃,L₂,L₁,Lₜ)
-    
+
+    ####################
+    ## SUSCEPTIBILITY ##
+    ####################
+
+    # pair susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"PairSusc","PairGreens",ssh)
+
+    # charge susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",ssh)
+
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
     ##########################################
@@ -226,6 +248,7 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
+    container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
@@ -314,6 +337,26 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         end
     end
 
+    ###########################################
+    ## Initialize Files For Susceptibilities ##
+    ###########################################
+
+    # iterate over on-site correlation functions
+    for k in keys(container.susceptibility)
+        # measurement name
+        measurement = string(k)
+        # initialize file for position-space data
+        open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
+            # writing file header
+            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
+        end
+        # initialize file for position-space data
+        open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
+            # writing file header
+            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
+        end
+    end
+
     return nothing
 end
 
@@ -337,7 +380,7 @@ end
 Process Measurments. This includes:
 1. fourier transforming measurements from position to momentum space.
 2. normalizing measurements by bin size.
-3. calcating integrated quantitites like the pair-susceptibility.
+3. measure various susceptibilities.
 """
 function process_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel)
 
@@ -396,11 +439,32 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
         intersite_corr[key].momentum ./= V
     end
 
-    ###################################
-    ## MEASURE INTEGRATED QUANTITIES ##
-    ###################################
+    ##############################
+    ## MEASURE SUSCEPTIBILITIES ##
+    ##############################
 
+    # measure local S-wave Pair Susceptibility
     measure_swave!(container,model)
+
+    # measure pair susceptibility
+    if haskey(container.susceptibility,:PairSusc)
+        measure_susceptibility!(container.susceptibility.PairSusc.position,
+                                container.onsite_corr.PairGreens.position,
+                                model)
+        measure_susceptibility!(container.susceptibility.PairSusc.momentum,
+                                container.onsite_corr.PairGreens.momentum,
+                                model)
+    end
+
+    # measure charge susceptibility
+    if haskey(container.susceptibility,:ChargeSusc)
+        measure_susceptibility!(container.susceptibility.ChargeSusc.position,
+                                container.onsite_corr.DenDen.position,
+                                model)
+        measure_susceptibility!(container.susceptibility.ChargeSusc.momentum,
+                                container.onsite_corr.DenDen.momentum,
+                                model)
+    end
 
     return nothing
 end
@@ -415,6 +479,7 @@ function write_measurements!(container::NamedTuple,sim_params::SimulationParamet
     write_intersite_measurements!( container.intersite_meas, sim_params, model, bin)
     write_correlations!(           container.onsite_corr,    sim_params, model, bin)
     write_correlations!(           container.intersite_corr, sim_params, model, bin)
+    write_susceptibilities!(       container.susceptibility, sim_params, model, bin)
 
     return nothing
 end
@@ -462,6 +527,15 @@ function reset_measurements!(container::NamedTuple,model::AbstractModel{T1,T2}) 
         fill!(momentum,0.0)
     end
 
+    # reset susceptibilities
+    susceptibility = container.susceptibility
+    for key in keys(susceptibility)
+        position = susceptibility[key].position::Array{Complex{T1},5}
+        momentum = susceptibility[key].momentum::Array{Complex{T1},5}
+        fill!(position,0.0)
+        fill!(momentum,0.0)
+    end
+
     return nothing
 end
 
@@ -489,6 +563,27 @@ function init_corr_container!(container::Dict,measurement::String,info::Dict,mod
             container[measurement] = (position=position, momentum=momentum)
         end
     end
+    return nothing
+end
+
+"""
+Initialize susceptibility container
+"""
+function init_susc_container!(susc_container::Dict,corr_container::Dict,susc::String,corr::String,
+                              model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+
+    # if correlation function is being measured
+    if haskey(corr_container,corr)
+        # size of container for correlation measurements
+        Lₜ, L₁, L₂, L₃, n, extra = size(corr_container[corr].position)
+        # if time-dependent correlation function is being measured
+        if Lₜ > 1
+            position = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
+            momentum = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
+            susc_container[susc] = (position=position,momentum=momentum)
+        end
+    end
+
     return nothing
 end
 
@@ -965,6 +1060,52 @@ function write_correlation!(filename::String,correlations::Array{Complex{T},6},b
                                 line = @sprintf("%d,%d,%d,%d,%d,%d,%d,%.6f\n",bin,n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,real(correlations[τ,l₁,l₂,l₃,n₂,n₁]))
                                 write(file,line)
                             end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nothing
+end
+
+"""
+Write all different susceptibilities to file.
+"""
+function write_susceptibilities!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+
+    # iterate over on-site correlation functions
+    for key in keys(container)
+
+        # write position space susceptibility to file
+        filename = joinpath(sim_params.datafolder,string(key)*"_position.out")
+        write_susceptibility!(filename,container[key].position,bin)
+
+        # write momemtum space susceptibility to file
+        filename = joinpath(sim_params.datafolder,string(key)*"_momentum.out")
+        write_susceptibility!(filename,container[key].momentum,bin)
+    end
+
+    return nothing
+end
+
+"""
+Write a susceptibility to file.
+"""
+function write_susceptibility!(filename::String,susceptibility::Array{Complex{T},5},bin::Int) where {T<:AbstractFloat}
+
+    open(filename,"a") do file
+        L₁ = size(susceptibility,1)
+        L₂ = size(susceptibility,2)
+        L₃ = size(susceptibility,3)
+        n  = size(susceptibility,4)
+        for n₁ in 1:n
+            for n₂ in 1:n
+                for l₃ in 1:L₃
+                    for l₂ in 1:L₂
+                        for l₁ in 1:L₁
+                            line = @sprintf("%d,%d,%d,%d,%d,%d,%.6f\n",bin,n₁,n₂,l₃-1,l₂-1,l₁-1,real(susceptibility[l₁,l₂,l₃,n₂,n₁]))
+                            write(file,line)
                         end
                     end
                 end
@@ -1998,6 +2139,37 @@ end
 ##################################################
 ## ADDITIONAL FUNCTIONS FOR MAKING MEASUREMENTS ##
 ##################################################
+
+"""
+Measure generic susceptibility.
+"""
+function measure_susceptibility!(susc::AbstractArray{Complex{T1},5},corr::AbstractArray{Complex{T1},6},model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+
+    Δτ = model.Δτ
+    L₁ = size(susc,1)
+    L₂ = size(susc,2)
+    L₃ = size(susc,3)
+    n  = size(susc,4)
+
+    # iterate over all possible (displacement vectors/k-points)
+    @uviews corr begin
+        for n₂ in 1:n
+            for n₁ in 1:n
+                for l₃ in 1:L₃
+                    for l₂ in 1:L₂
+                        for l₁ in 1:L₁
+                            # numerically integrate from 0 to β
+                            vals = @view corr[:,l₁,l₂,l₃,n₁,n₂]
+                            susc[l₁,l₂,l₃,n₁,n₂] = simpson(vals,Δτ)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nothing
+end
 
 """
 Measure S-Wave Susceptibility.

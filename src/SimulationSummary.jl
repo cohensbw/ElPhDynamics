@@ -130,6 +130,14 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
 
         write_correlations!(fout,model,container.intersite_corr,sim_params,Nbins)
 
+        # write susceptibilities
+        write(fout,"\n")
+        write(fout, "######################","\n")
+        write(fout, "## SUSCEPTIBILITIES ##","\n")
+        write(fout, "######################","\n","\n")
+
+        write_susceptibilities!(fout,model,container.susceptibility,sim_params,Nbins)
+
     end
 
     return nothing
@@ -788,6 +796,143 @@ function read_correlation!(binned_data::AbstractArray{T,7}, datafn::String, N::I
 
             # record measurement
             binned_data[bin,τ,l₁,l₂,l₃,n₂,n₁] += v/N
+        end
+    end
+
+    return nothing
+end
+
+"""
+Write susceptibilities to file.
+"""
+function write_susceptibilities!(fout,model::AbstractModel{T1,T2,T3},container::NamedTuple,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+
+    # iterate over correlation functions
+    for key in keys(container)
+        measurement = string(key)
+        position    = container[key].position
+        momentum    = container[key].momentum
+        write_susceptibility!(fout,measurement,model,position,sim_params,Nbins,true)
+        write_susceptibility!(fout,measurement,model,momentum,sim_params,Nbins,false)
+    end
+
+    return nothing
+end
+
+"""
+Write a susceptibility to file.
+"""
+function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},5},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
+    
+    # get size of conatiner
+    L₁, L₂, L₃, n, extra = size(container)
+
+    # declare array to contained binned data
+    binned_data = zeros(T1,Nbins,L₁,L₂,L₃,n,n)
+
+    # number of measurements in data file
+    Nmeas = sim_params.num_bins
+
+    # calculate number of measurements per bin
+    Nbins = min(Nmeas,Nbins)
+    N     = div(Nmeas,Nbins)
+    @assert Nmeas%Nbins==0
+
+    # if position space data
+    if is_position
+
+        # filename containing global measurements
+        datafn = joinpath(sim_params.datafolder, "$(measurement)_position.out")
+
+        # file statistics will be written to
+        statsfn = joinpath(sim_params.datafolder, "$(measurement)_position_stats.out")
+
+        # header line
+        header = "n1 n2 r3 r2 r1 $(measurement) error\n"
+    
+    # if momentum space data
+    else
+
+        # filename containing global measurements
+        datafn = joinpath(sim_params.datafolder, "$(measurement)_momentum.out")
+
+        # file statistics will be written to
+        statsfn = joinpath(sim_params.datafolder, "$(measurement)_momentum_stats.out")
+
+        # header line
+        header = "n1 n2 k3 k2 k1 $(measurement) error\n"
+    end
+
+    # read in susceptibility data
+    read_susceptibility!(binned_data, datafn, N)
+
+    # open stats file
+    open(statsfn,"w") do statsout
+
+        # write header to file
+        write(fout,header)
+        write(statsout,header)
+
+        # iterate over all measurements
+        @uviews binned_data begin
+            for n₁ in 1:n
+                for n₂ in 1:n
+                    for l₃ in 1:L₃
+                        for l₂ in 1:L₂
+                            for l₁ in 1:L₁
+                                data = @view binned_data[:,l₁,l₂,l₃,n₂,n₁]
+                                # calculate average and error of measurement
+                                avg, err = mean_and_error(data)
+                                # write to file
+                                line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
+                                write(fout,line)
+                                write(statsout,line)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    write(fout,"\n")
+
+    return nothing
+end
+
+"""
+Read susceptibility data.
+"""
+function read_susceptibility!(binned_data::AbstractArray{T,6}, datafn::String, N::Int) where {T}
+
+    # open data file
+    open(datafn,"r") do fin
+
+        # read in header
+        datafile_header = readline(fin)
+
+        # iterate over lines in data file
+        for line in eachline(fin)
+
+            # split line apart
+            atoms = split(line,",")
+
+            # get the measurement number
+            nmeas = parse(Int,atoms[1])
+
+            # get bin
+            bin = div(nmeas-1,N) + 1
+            
+            # parse the data
+            n₁ = parse(Int, atoms[2])
+            n₂ = parse(Int, atoms[3])
+            l₃ = parse(Int, atoms[4]) + 1
+            l₂ = parse(Int, atoms[5]) + 1
+            l₁ = parse(Int, atoms[6]) + 1
+            v  = parse(T,   atoms[7])
+
+            # record measurement
+            binned_data[bin,l₁,l₂,l₃,n₂,n₁] += v/N
         end
     end
 
