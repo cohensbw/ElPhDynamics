@@ -409,7 +409,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             if iszero(α₂)
                 phase = 1.0
             else
-                phase = α₂/abs(α)
+                phase = α₂/abs(α₂)
             end
             α₂_new = @. phase * ( fill(α₂,Nnewbonds) + σα₂*randn(Nnewbonds) )
             append!(ssh.α₂, α₂_new)
