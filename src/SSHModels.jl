@@ -402,7 +402,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             else
                 phase = α/abs(α)
             end
-            α_new = @. phase * ( fill(α,Nnewbonds) + σα*randn(Nnewbonds) )
+            α_new = @. phase * ( fill(abs(α),Nnewbonds) + σα*randn(Nnewbonds) )
             append!(ssh.α, α_new)
 
             # adding new non-linear electron-phonon coupling
@@ -411,7 +411,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             else
                 phase = α₂/abs(α₂)
             end
-            α₂_new = @. phase * ( fill(α₂,Nnewbonds) + σα₂*randn(Nnewbonds) )
+            α₂_new = @. phase * ( fill(abs(α₂),Nnewbonds) + σα₂*randn(Nnewbonds) )
             append!(ssh.α₂, α₂_new)
 
             # adding phonon to bond mapping
