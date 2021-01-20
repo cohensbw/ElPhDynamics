@@ -26,9 +26,15 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     for phonon in 1:Nph
 
         # calculate average phonon position
-        α  = ssh.α[phonon]
-        ω  = ssh.ω[phonon]
-        x0 = sample_qho(ω,β)
+        bond = ssh.phonon_to_bond[phonon]
+        t    = ssh.t[bond]
+        α    = ssh.α[phonon]
+        ω    = ssh.ω[phonon]
+        if iszero(α) || iszero(t)
+            x0 = sample_qho(ω,β)
+        else
+            x0 = (2.0*rand()-1.0)/5.0 * (t/α)
+        end
 
         # iterate over imaginary time slices
         for τ in 1:Lτ

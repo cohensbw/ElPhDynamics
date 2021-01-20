@@ -366,7 +366,11 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         ssh.neighbor_table = hcat(ssh.neighbor_table, new_neighbors)
 
         # phase of hopping
-        phase = t/abs(t)
+        if iszero(t)
+            phase = 1.0
+        else
+            phase = t/abs(t)
+        end
 
         # adding new hopppings for current bond
         t_new = @. phase * ( fill(abs(t),Nnewbonds) + σt*randn(Nnewbonds) )
@@ -393,10 +397,20 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             append!(ssh.ω₄, ω₄_new)
 
             # adding new linear electron-phonon coupling
+            if iszero(α)
+                phase = 1.0
+            else
+                phase = α/abs(α)
+            end
             α_new = @. phase * ( fill(α,Nnewbonds) + σα*randn(Nnewbonds) )
             append!(ssh.α, α_new)
 
             # adding new non-linear electron-phonon coupling
+            if iszero(α₂)
+                phase = 1.0
+            else
+                phase = α₂/abs(α)
+            end
             α₂_new = @. phase * ( fill(α₂,Nnewbonds) + σα₂*randn(Nnewbonds) )
             append!(ssh.α₂, α₂_new)
 
