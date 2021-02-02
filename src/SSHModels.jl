@@ -12,6 +12,8 @@ using ..Checkerboard: checkerboard_order, checkerboard_groups, checkerboard_mul!
 using ..IterativeSolvers: GMRES, ConjugateGradient, BiCGStab
 using ..Utilities: get_index, get_τ, δ, reshaped
 
+export write_K_matrix!
+
 struct SSHBond{T1<:AbstractFloat,T2<:Continuous} <: AbstractBond
 
     "Average hopping energy."
@@ -919,6 +921,37 @@ function read_phonons!(ssh::SSHModel{T1,T2,T3},filename::String) where {T1,T2,T3
 
     # construct exponentiated interaction matrix
     update_model!(ssh)
+
+    return nothing
+end
+
+"Write Hamiltonian K[τ] matrix for given time slice τ to file. Includes on-site energies."
+function write_K_matrix!(filename::String, model::SSHModel{T1,T2,T3}, τ::Int=1) where {T1,T2,T3}
+
+    open(filename,"w") do file
+
+        # write header
+        write(file,"col row val\n")
+
+        # iterate over on-site energies
+        for i in 1:model.Nsites
+            ϵ = -model.μ[i]
+            write(file,"$i $i $ϵ\n")
+        end
+
+        # iterate over bonds
+        for bond in 1:model.Nbonds
+            # matrix element based on hopping amplitude
+            val = -model.t′[τ,bond]
+            # neighboring sites associated with bond
+            indx = model.checkerboard_perm[bond]
+            i = model.neighbor_table[1,indx]
+            j = model.neighbor_table[2,indx]
+            # write to file
+            write(file,"$i $j $val\n")
+            write(file,"$j $i $(conj(val))\n")
+        end
+    end
 
     return nothing
 end
