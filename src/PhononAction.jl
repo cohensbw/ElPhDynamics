@@ -96,7 +96,7 @@ function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
             sb  += (xᵢτ-xᵢτm1)^2/Δτ/2
         end
         # add to Sb total, normalizing by the number of equivalent fields there are
-        Sb += sb / neq
+        Sb += sb
     end
     
     return Sb
@@ -221,7 +221,7 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
             # get number of equivalent phonon fields
             neq = ssh.num_equivalent_fields[field_τ]
             # increment total derivative value
-            dSbdx[field_τ] += dsbdx / neq
+            dSbdx[field_τ] += dsbdx
         end
     end
 
