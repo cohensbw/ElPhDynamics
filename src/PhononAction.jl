@@ -74,8 +74,12 @@ function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
     ω₄ = ssh.ω₄::Vector{T1}
     Sb = 0.0
 
-    # iterate over sites in lattice
+    # iterate over phonons in lattice
     for i in 1:N
+        # action associated with current phonon
+        sb = 0.0
+        # number of equivalent phonons
+        neq = ssh.num_equivalent_fields[get_index(1,i,Lτ)]
         # iterate over time slice in lattice
         for τ in 1:Lτ
             # get τ-1 accounting for periodic boundary conditions
@@ -87,12 +91,12 @@ function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
             # xᵢ(τ-1)
             xᵢτm1 = x[get_index(τm1,i,Lτ)]
             # calculate potential energy
-            val   = Δτ*ω[i]^2*xᵢτ^2/2 + Δτ*ω₄[i]*xᵢτ^4
+            sb   += Δτ*ω[i]^2*xᵢτ^2/2 + Δτ*ω₄[i]*xᵢτ^4
             # calculate kintetic energy
-            val  += (xᵢτ-xᵢτm1)^2/Δτ/2
-            # add to Sb total, normalizing by the number of equivalent fields there are
-            Sb   += val
+            sb  += (xᵢτ-xᵢτm1)^2/Δτ/2
         end
+        # add to Sb total, normalizing by the number of equivalent fields there are
+        Sb += sb / neq
     end
     
     return Sb
@@ -211,11 +215,13 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
             # phonon field at current time slice
             xτ        = x[field_τ]
             # updating partial derivative
-            val  = Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
-            val += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
-            val -= ( x[field_τp1] + x[field_τm1] - 2.0*xτ )/Δτ # kinetic energy term
+            dsbdx  = Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
+            dsbdx += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
+            dsbdx -= ( x[field_τp1] + x[field_τm1] - 2.0*xτ )/Δτ # kinetic energy term
+            # get number of equivalent phonon fields
+            neq = ssh.num_equivalent_fields[field_τ]
             # increment total derivative value
-            dSbdx[field_τ] += val
+            dSbdx[field_τ] += dsbdx / neq
         end
     end
 
