@@ -76,27 +76,28 @@ function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
     # iterate over phonons in lattice
     for i in 1:N
-        # action associated with current phonon
-        sb = 0.0
-        # number of equivalent phonons
-        neq = ssh.num_equivalent_fields[get_index(1,i,Lτ)]
-        # iterate over time slice in lattice
-        for τ in 1:Lτ
-            # get τ-1 accounting for periodic boundary conditions
-            τm1   = mod1(τ-1,Lτ)
-            # get field
-            field = get_index(τ,i,Lτ)
-            # xᵢ(τ)
-            xᵢτ   = x[field]
-            # xᵢ(τ-1)
-            xᵢτm1 = x[get_index(τm1,i,Lτ)]
-            # calculate potential energy
-            sb   += Δτ*ω[i]^2*xᵢτ^2/2 + Δτ*ω₄[i]*xᵢτ^4
-            # calculate kintetic energy
-            sb  += (xᵢτ-xᵢτm1)^2/Δτ/2
+        # if primary phonon
+        if ssh.primary_field[get_index(1,i,Lτ)]
+            # action associated with current phonon
+            sb = 0.0
+            # iterate over time slice in lattice
+            for τ in 1:Lτ
+                # get τ-1 accounting for periodic boundary conditions
+                τm1   = mod1(τ-1,Lτ)
+                # get field
+                field = get_index(τ,i,Lτ)
+                # xᵢ(τ)
+                xᵢτ   = x[field]
+                # xᵢ(τ-1)
+                xᵢτm1 = x[get_index(τm1,i,Lτ)]
+                # calculate potential energy
+                sb   += Δτ*ω[i]^2*xᵢτ^2/2 + Δτ*ω₄[i]*xᵢτ^4
+                # calculate kintetic energy
+                sb   += (xᵢτ-xᵢτm1)^2/Δτ/2
+            end
+            # add to Sb total, normalizing by the number of equivalent fields there are
+            Sb += sb
         end
-        # add to Sb total, normalizing by the number of equivalent fields there are
-        Sb += sb
     end
     
     return Sb

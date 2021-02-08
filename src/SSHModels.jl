@@ -156,6 +156,9 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     "Number of equivalent fields associated with each field."
     num_equivalent_fields::Vector{Int}
 
+    "Whether a field contributes to the total action, when accounting for field equivalencies."
+    primary_field::Vector{Bool}
+
     "Map phonon to bond"
     phonon_to_bond::Vector{Int}
 
@@ -274,6 +277,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         field_to_τ            = Vector{Int}(undef,0)
         equivalent_fields     = Matrix{Int}(undef,0,0)
         num_equivalent_fields = Vector{Int}(undef,0)
+        primary_field         = Vector{Bool}(undef,0)
         phonon_to_bond        = Vector{Int}(undef,0)
         bond_to_phonon        = Vector{Int}(undef,0)
         bond_to_definition    = Vector{Int}(undef,0)
@@ -302,7 +306,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, bond_definitions,
                              x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
-                             field_to_phonon,field_to_τ,equivalent_fields,num_equivalent_fields,
+                             field_to_phonon,field_to_τ,equivalent_fields,num_equivalent_fields,primary_field,
                              phonon_to_bond, bond_to_phonon,bond_to_definition,
                              checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
                              mul_by_M, transposed, v′, v″, v‴, solver,"")
@@ -484,6 +488,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     num_equivalent_fields′ = reshape(num_equivalent_fields,(div(ssh.Ndof,ssh.nph),ssh.nph))
     equivalent_fields      = zeros(Int,max_equivalences,ssh.Ndof)
     equivalent_fields′     = reshape(equivalent_fields,(max_equivalences,div(ssh.Ndof,ssh.nph),ssh.nph))
+    primary_field          = ones(Bool,ssh.Ndof)
 
     # construct a tabluation of all the fields
     fields = reshape(collect(1:ssh.Ndof),(div(ssh.Ndof,ssh.nph),ssh.nph))
@@ -507,9 +512,23 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         end
     end
 
+    # identify primary fields
+    max_equivalences = maximum(num_equivalent_fields)
+    if max_equivalences > 0
+        for field in 1:ssh.Ndof
+            for l in 1:num_equivalent_fields[field]
+                field′ = equivalent_fields[l,field]
+                if field′ < field
+                    primary_field[field] = false
+                end
+            end
+        end
+    end
+
     # record all equivalences
     ssh.equivalent_fields     = equivalent_fields
     ssh.num_equivalent_fields = num_equivalent_fields
+    ssh.primary_field         = primary_field
     
     return nothing
 end
@@ -817,14 +836,11 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
                     val = -val
                 end
 
-                # number of equivalent fields
-                nef = num_equivalent_fields[field]
-
-                # normalize by number of equivalent fields
-                val /= (nef+1)
-
                 # record result
                 dMdx[field] += val
+
+                # number of equivalent fields
+                nef = num_equivalent_fields[field]
 
                 # if number of equivalent fields greater zero
                 if nef > 0

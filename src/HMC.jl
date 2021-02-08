@@ -617,12 +617,27 @@ end
 
 
 """
-The kinetics energy in our dyanics is given by `K=v⋅Q⁻¹⋅v/2`, so therefore it is possible to
+The kinetics energy in our dyanics is given by `K=v⋅Q⁻¹⋅v/2=v⋅M⋅v/2`, so therefore it is possible to
 refresh the velocity `v` according `v=√(Q)⋅R` where `R` is a vector of normal random numbers
-and `Q` is the fourier acceleration matrix. More specifically, this function supports partial
-momentum refreshes of the form `v = α⋅v + √(1-α²)⋅v′` where `v′=√(Q)⋅R`⋅
+and `Q` is the fourier acceleration matrix and `M` is the dynamical mass matrix.
+More specifically, this function supports partial momentum refreshes of the
+form `v = α⋅v + √(1-α²)⋅v′` where `v′=√(Q)⋅R=√(M⁻¹)⋅R`⋅
 """
-function refresh_v!(hmc::HybridMonteCarlo{T},model::AbstractModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
+function refresh_v!(hmc::HybridMonteCarlo{T},model::HolsteinModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
+
+    R       = hmc.y
+    sqrtQR  = hmc.y
+    v       = hmc.v
+    α       = hmc.α
+
+    randn!(R,model)
+    fourier_accelerate!(sqrtQR,fa,R,-0.5,use_mass=true)
+    @. v = α*v + sqrt(1.0-α^2)*sqrtQR
+
+    return nothing
+end
+
+function refresh_v!(hmc::HybridMonteCarlo{T},model::SSHModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
     R       = hmc.y
     sqrtQR  = hmc.y
@@ -692,7 +707,7 @@ Calculate the total energy `H = K + S`.
 function calc_H(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, fa::FourierAccelerator{T1}) where {T1,T2}
     
     S = calc_S(hmc, model)
-    K = calc_K(hmc,fa)
+    K = calc_K(hmc, model, fa)
     hmc.H = S + K
 
     return hmc.H, S, K
@@ -702,12 +717,33 @@ end
 """
 Calculate the kintetic energy `K = v⋅Q⁻¹⋅v/2` where `Q` is the acceleration matrix.
 """
-function calc_K(hmc::HybridMonteCarlo{T}, fa::FourierAccelerator{T})::T where {T<:AbstractFloat}
+function calc_K(hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2,T3}, fa::FourierAccelerator{T1})::T1 where {T1,T2,T3}
 
     v    = hmc.v
     Q⁻¹v = hmc.y
     fourier_accelerate!(Q⁻¹v,fa,v,1.0,use_mass=true)
     hmc.K = dot(v,Q⁻¹v)/2
+
+    return hmc.K
+end
+
+function calc_K(hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2,T3}, fa::FourierAccelerator{T1})::T1 where {T1,T2,T3}
+
+    v    = hmc.v
+    Q⁻¹v = hmc.y
+    fourier_accelerate!(Q⁻¹v,fa,v,1.0,use_mass=true)
+    
+    hmc.K = 0.0
+    # iterate over fields
+    for field in 1:hmc.Ndof
+        # if a primary field
+        if model.primary_field[field]
+            # number of equivalent fields/degrees of freedom
+            neq = model.num_equivalent_fields[field]
+            # increment total kinetic energy accordingly
+            hmc.K += v[field]*Q⁻¹v[field]/2
+        end
+    end
 
     return hmc.K
 end
