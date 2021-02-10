@@ -44,14 +44,11 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
             # set phonon value
             x[field] = x0
-
-            # iterate over eqivalent fields
-            for i in 1:ssh.num_equivalent_fields[field]
-                field′    = ssh.equivalent_fields[i,field]
-                x[field′] = x0
-            end
         end
     end
+
+    # account for equivalent fields
+    @views @. x = x[ssh.primary_field]
 
     # udpate exponentiated interaction matrix
     update_model!(ssh)

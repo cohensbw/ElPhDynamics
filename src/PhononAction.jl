@@ -76,8 +76,10 @@ function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
     # iterate over phonons in lattice
     for i in 1:N
+        # τ=0 field associated with phonon
+        field_τ0 = get_index(1,i,Lτ)
         # if primary phonon
-        if ssh.primary_field[get_index(1,i,Lτ)]
+        if ssh.primary_field[field_τ0] == field_τ0
             # action associated with current phonon
             sb = 0.0
             # iterate over time slice in lattice
@@ -216,11 +218,9 @@ function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T
             # phonon field at current time slice
             xτ        = x[field_τ]
             # updating partial derivative
-            dsbdx  = Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
-            dsbdx += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
-            dsbdx -= ( x[field_τp1] + x[field_τm1] - 2.0*xτ )/Δτ # kinetic energy term
-            # get number of equivalent phonon fields
-            neq = ssh.num_equivalent_fields[field_τ]
+            dsbdx     = Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
+            dsbdx    += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
+            dsbdx    -= ( x[field_τp1] + x[field_τm1] - 2.0*xτ )/Δτ # kinetic energy term
             # increment total derivative value
             dSbdx[field_τ] += dsbdx
         end

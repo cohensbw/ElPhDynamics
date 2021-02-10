@@ -150,14 +150,9 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     "Map Ndof phonon fields onto a time slice τ"
     field_to_τ::Vector{Int}
 
-    "Maps field onto an equivalent field."
-    equivalent_fields::Matrix{Int}
-
-    "Number of equivalent fields associated with each field."
-    num_equivalent_fields::Vector{Int}
-
-    "Whether a field contributes to the total action, when accounting for field equivalencies."
-    primary_field::Vector{Bool}
+    "Maps every field to its equivalent primary field.
+    If a field maps onto itself then it is primary."
+    primary_field::Vector{Int}
 
     "Map phonon to bond"
     phonon_to_bond::Vector{Int}
@@ -275,9 +270,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         sinht                 = Matrix{T2}(undef,Lτ,0)
         field_to_phonon       = Vector{Int}(undef,0)
         field_to_τ            = Vector{Int}(undef,0)
-        equivalent_fields     = Matrix{Int}(undef,0,0)
-        num_equivalent_fields = Vector{Int}(undef,0)
-        primary_field         = Vector{Bool}(undef,0)
+        primary_field         = Vector{Int}(undef,0)
         phonon_to_bond        = Vector{Int}(undef,0)
         bond_to_phonon        = Vector{Int}(undef,0)
         bond_to_definition    = Vector{Int}(undef,0)
@@ -306,7 +299,7 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
                              lattice, bond_definitions,
                              x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
-                             field_to_phonon,field_to_τ,equivalent_fields,num_equivalent_fields,primary_field,
+                             field_to_phonon,field_to_τ,primary_field,
                              phonon_to_bond, bond_to_phonon,bond_to_definition,
                              checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
                              mul_by_M, transposed, v′, v″, v‴, solver,"")
@@ -477,58 +470,29 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         end
     end
 
-    # calculate how many times each phonon name is repeated
-    occurrences = map(j->count(i->i==j,names),names)
-
-    # get the maximum times a given phonon name occurs
-    max_equivalences = maximum(occurrences) - 1
-
-    # construct the equivalent_fields table
-    num_equivalent_fields  = zeros(Int,ssh.Ndof)
-    num_equivalent_fields′ = reshape(num_equivalent_fields,(div(ssh.Ndof,ssh.nph),ssh.nph))
-    equivalent_fields      = zeros(Int,max_equivalences,ssh.Ndof)
-    equivalent_fields′     = reshape(equivalent_fields,(max_equivalences,div(ssh.Ndof,ssh.nph),ssh.nph))
-    primary_field          = ones(Bool,ssh.Ndof)
+    # initiailize primary fields mapping
+    primary_field  = collect(1:ssh.Ndof)
+    primary_field′ = reshape(primary_field,(div(ssh.Ndof,ssh.nph),ssh.nph))
 
     # construct a tabluation of all the fields
     fields = reshape(collect(1:ssh.Ndof),(div(ssh.Ndof,ssh.nph),ssh.nph))
 
     # iterate over types of phonons
     for ph_type in 1:ssh.nph
-        # if there is duplicate type of phonon
-        if occurrences[ph_type]>1
-            # number of matches
-            equivalences = 0
-            # iterate over types of phonons
-            for ph_type′ in 1:ssh.nph
-                # if the two types of phonons share a name
-                if (names[ph_type]==names[ph_type′]) && (ph_type!=ph_type′)
-                    # record equivalent fields
-                    equivalences += 1
-                    @views @. equivalent_fields′[equivalences,:,ph_type] = fields[:,ph_type′]
-                    @views @. num_equivalent_fields′[:,ph_type] += 1
+        # iterate over remaining types of phonons
+        for ph_type′ in (ph_type+1):ssh.nph
+            # if phonons share the same name
+            if names[ph_type]==names[ph_type′]
+                # record primary field
+                if primary_field′[1,ph_type′] > fields[1,ph_type]
+                    @views @. primary_field′[:,ph_type′] = fields[:,ph_type]
                 end
             end
         end
     end
 
-    # identify primary fields
-    max_equivalences = maximum(num_equivalent_fields)
-    if max_equivalences > 0
-        for field in 1:ssh.Ndof
-            for l in 1:num_equivalent_fields[field]
-                field′ = equivalent_fields[l,field]
-                if field′ < field
-                    primary_field[field] = false
-                end
-            end
-        end
-    end
-
-    # record all equivalences
-    ssh.equivalent_fields     = equivalent_fields
-    ssh.num_equivalent_fields = num_equivalent_fields
-    ssh.primary_field         = primary_field
+    # record primary fields
+    ssh.primary_field = primary_field
     
     return nothing
 end
@@ -559,13 +523,13 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     end
 
     # make sure equivalent fields are equal
-    if maximum(ssh.num_equivalent_fields) > 0
-        for field in 1:ssh.Ndof
-            for l in 1:ssh.num_equivalent_fields[field]
-                field′ = ssh.equivalent_fields[l,field]
-                if !(ssh.x[field]≈ssh.x[field′])
-                    error(@sprintf("x[%d]=%.10f uneqaul to x[%d]=%.10f\n",field,ssh.x[field],field′,ssh.x[field′]))
-                end
+    for field in 1:ssh.Ndof
+        # get primary field
+        field′ = ssh.primary_field[field]
+        # if current field is not primary
+        if field != field′
+            if !(ssh.x[field]≈ssh.x[field′])
+                error("(x[$field]=$(ssh.x[field])) != (x[$field′]=$(ssh.x[field′]))\n")
             end
         end
     end
@@ -582,15 +546,7 @@ function randn!(v::AbstractVector{T},ssh::SSHModel{T}) where {T}
     randn!(v)
 
     # account for some fields being equivalent
-    max_equivalences = maximum(ssh.num_equivalent_fields)
-    if max_equivalences > 0
-        for field in 1:ssh.Ndof
-            for l in 1:ssh.num_equivalent_fields[field]
-                field′ = ssh.equivalent_fields[l,field]
-                v[field′] = v[field]
-            end
-        end
-    end
+    @. v = v[ssh.primary_field]
 
     return nothing
 end
@@ -757,7 +713,7 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
     @unpack cosht, sinht, neighbor_table, checkerboard_perm, inv_checkerboard_perm = ssh
     @unpack Nbonds, Nph, Ndof, Nsites, Lτ, Δτ, expΔτμ, α, α₂, x = ssh
     @unpack field_to_phonon, field_to_τ, phonon_to_bond, bond_to_phonon = ssh
-    @unpack equivalent_fields, num_equivalent_fields = ssh
+    @unpack primary_field = ssh
 
     b = ssh.v′
     c = ssh.v″
@@ -829,30 +785,21 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},ssh::SSHModel{T
                 dKdx = α[phonon] + 2*α₂[phonon]*xₙ
 
                 # ⟨∂M/∂xᵢⱼ(τ)⟩ = ⟨cₙ(τ)|Δτ⋅∂Kₙ(τ)/∂xₙ(τ)|bₙ(τ)⟩
-                val = conj(c[jτ])*Δτ*dKdx*b[iτ] + conj(c[iτ]*Δτ*dKdx)*b[jτ]
+                dmdx = conj(c[jτ])*Δτ*dKdx*b[iτ] + conj(c[iτ]*Δτ*dKdx)*b[jτ]
 
                 # flip sign if τ=1
                 if τ==1
-                    val = -val
+                    dmdx = -dmdx
                 end
 
                 # record result
-                dMdx[field] += val
-
-                # number of equivalent fields
-                nef = num_equivalent_fields[field]
-
-                # if number of equivalent fields greater zero
-                if nef > 0
-                    # iterate over equivalent fields
-                    for ef in 1:nef
-                        field′        = equivalent_fields[ef,field]
-                        dMdx[field′] += val
-                    end
-                end
+                dMdx[primary_field[field]] += dmdx
             end
         end
     end
+
+    # account for equivalent fields
+    @views @. dMdx = dMdx[primary_field]
 
     return nothing
 end

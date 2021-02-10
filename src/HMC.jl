@@ -729,19 +729,18 @@ end
 
 function calc_K(hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2,T3}, fa::FourierAccelerator{T1})::T1 where {T1,T2,T3}
 
-    v    = hmc.v
-    Q⁻¹v = hmc.y
-    fourier_accelerate!(Q⁻¹v,fa,v,1.0,use_mass=true)
+    v  = hmc.v
+    mv = hmc.y
+    fourier_accelerate!(mv,fa,v,1.0,use_mass=true)
     
     hmc.K = 0.0
+
     # iterate over fields
     for field in 1:hmc.Ndof
         # if a primary field
-        if model.primary_field[field]
-            # number of equivalent fields/degrees of freedom
-            neq = model.num_equivalent_fields[field]
+        if model.primary_field[field]==field
             # increment total kinetic energy accordingly
-            hmc.K += v[field]*Q⁻¹v[field]/2
+            hmc.K += v[field]*mv[field]/2
         end
     end
 
