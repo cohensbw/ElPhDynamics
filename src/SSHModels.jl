@@ -518,8 +518,10 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         bond = ssh.phonon_to_bond[phonon]
         # getting indexing for checkerboard order
         index = ssh.checkerboard_perm[bond]
+        # get phonon field value
+        xτ = ssh.x[field]
         # update matrix elements of exp{-Δτ⋅K} = exp{Δτ⋅(t-α⋅x)}
-        v                  = ssh.α[phonon]*ssh.x[field] + ssh.α₂[phonon]*ssh.x[field]^2
+        v                  = ssh.α[phonon]*xτ + sign(xτ)*ssh.α₂[phonon]*xτ^2
         t′                 = ssh.t[bond] - v
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
