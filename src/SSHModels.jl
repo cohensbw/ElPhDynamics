@@ -546,7 +546,7 @@ function randn!(v::AbstractVector{T},ssh::SSHModel{T}) where {T}
     randn!(v)
 
     # account for some fields being equivalent
-    @. v = v[ssh.primary_field]
+    @views @. v = v[ssh.primary_field]
 
     return nothing
 end
