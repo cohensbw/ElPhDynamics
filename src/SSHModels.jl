@@ -505,6 +505,9 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # account of updated chemical potential
     @. ssh.expΔτμ = exp( ssh.Δτ * ssh.μ )
 
+    # warning flag for unphysically large phonon displacement
+    flag_large_displacement = false
+
     # iterate of phonon fields
     for field in 1:ssh.Ndof
         # get phonon
@@ -516,10 +519,22 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         # getting indexing for checkerboard order
         index = ssh.checkerboard_perm[bond]
         # update matrix elements of exp{-Δτ⋅K} = exp{Δτ⋅(t-α⋅x)}
-        t′                 = ssh.t[bond] - ssh.α[phonon] * ssh.x[field] - ssh.α₂[phonon] * ssh.x[field]^2
+        v                  = ssh.α[phonon]*ssh.x[field] + ssh.α₂[phonon]*ssh.x[field]^2
+        t′                 = ssh.t[bond] - v
         ssh.t′[τ,bond]     = t′
         ssh.cosht[τ,index] = cosh(ssh.Δτ*t′)
         ssh.sinht[τ,index] = sinh(ssh.Δτ*t′)
+        # detect unphysically large phonon displacement
+        if abs(ssh.t[bond]) < abs(v)
+            flag_large_displacement = true
+        end
+    end
+
+    # report unphysically large phonon displacement
+    if flag_large_displacement
+        @info("Unphysically Large Phonon Displacement\n")
+        logger = global_logger()
+        flush(logger.stream)
     end
 
     # make sure equivalent fields are equal
