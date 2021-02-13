@@ -8,6 +8,9 @@ import LinearAlgebra: ldiv!
 
 export Continuous, IterativeSolver, ConjugateGradient, BiCGStab, GMRES, solve!
 
+# set number of threads to be used by BLAS to 1
+BLAS.set_num_threads(1)
+
 """
 Allows the identity operator `I` to be used as a preconditioner.
 """
