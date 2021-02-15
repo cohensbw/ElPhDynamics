@@ -1,6 +1,7 @@
 module Checkerboard
 
 using LinearAlgebra
+using SparseArrays
 
 export checkerboard_groups!, checkerboard_groups, checkerboard_order!, checkerboard_order
 export checkerboard_mul!, checkerboard_transpose_mul!, checkerboard_inverse_mul!, checkerboard_inverse_transpose_mul!
@@ -44,7 +45,7 @@ function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2
             end
         end
     end
-    return (rows, cols, elements, N, N)
+    return sparse(rows, cols, elements, N, N)
 end
 
 
