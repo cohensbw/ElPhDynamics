@@ -1,6 +1,7 @@
 module Models
 
 using LinearAlgebra
+
 using Logging
 using Printf
 

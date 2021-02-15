@@ -19,8 +19,6 @@ import Base: eltype, size, length, *
 import LinearAlgebra: mul!, ldiv!, transpose!
 import Random: randn!
 
-using LinearAlgebra
-
 mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
 
     ################################

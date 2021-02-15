@@ -1,12 +1,7 @@
 module Langevin
 
-# set number of threads to be used by BLAS to 1
 using LinearAlgebra
-BLAS.set_num_threads(1)
-
-# setting number of threads used by FFTW to 1
 using FFTW
-FFTW.set_num_threads(1)
 
 #######################
 ## INCLUDING MODULES ##
@@ -71,6 +66,9 @@ To run a simulation execute the following command:
 `julia -O3 -e "using Langevin; simulate(ARGS)" -- input.toml`
 """
 function simulate(args)
+
+    BLAS.set_num_threads(1)
+    FFTW.set_num_threads(1)
 
     ########################
     ## READING INPUT FILE ##
