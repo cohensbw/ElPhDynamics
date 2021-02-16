@@ -189,7 +189,12 @@ time_dependent = true
 # Density-Desnity Correlation Function Measurement
 [measurements.DenDen]
 measure        = true
-time_dependent = false
+time_dependent = true
+
+# Spin-Spin Correlation Function Measurement
+[measurements.SpinSpin]
+measure        = true
+time_dependent = true
 
 # Pair Green's Function Measurement
 # Note 1: If the time depedent pair green's function is being
