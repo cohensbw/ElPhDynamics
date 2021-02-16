@@ -96,6 +96,9 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     # density-density correlation
     init_corr_container!(container["onsite_corr"],"DenDen",info,holstein,nₒ,L₃,L₂,L₁,Lₜ)
 
+    # spin-spin correlation
+    init_corr_container!(container["onsite_corr"],"SpinSpin",info,holstein,nₒ,L₃,L₂,L₁,Lₜ)
+
     # pair green function
     init_corr_container!(container["onsite_corr"],"PairGreens",info,holstein,nₒ,L₃,L₂,L₁,Lₜ)
 
@@ -121,6 +124,9 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
 
     # charge susceptibility
     init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",holstein)
+
+    # spin susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",holstein)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -212,6 +218,9 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     # density-density correlation
     init_corr_container!(container["onsite_corr"],"DenDen",info,ssh,nₒ,L₃,L₂,L₁,Lₜ)
 
+    # spin-spin correlation
+    init_corr_container!(container["onsite_corr"],"SpinSpin",info,ssh,nₒ,L₃,L₂,L₁,Lₜ)
+
     # pair green function
     init_corr_container!(container["onsite_corr"],"PairGreens",info,ssh,nₒ,L₃,L₂,L₁,Lₜ)
 
@@ -239,6 +248,9 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
 
     # charge susceptibility
     init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",ssh)
+
+    # spin susceptibility
+    init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",ssh)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -466,6 +478,16 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
                                 model)
     end
 
+    # measure spin susceptibility
+    if haskey(container.susceptibility,:SpinSusc)
+        measure_susceptibility!(container.susceptibility.SpinSusc.position,
+                                container.onsite_corr.SpinSpin.position,
+                                model)
+        measure_susceptibility!(container.susceptibility.SpinSusc.momentum,
+                                container.onsite_corr.SpinSpin.momentum,
+                                model)
+    end
+
     return nothing
 end
 
@@ -620,6 +642,8 @@ function measure_onsite_correlations!(container::NamedTuple,model::HolsteinModel
             measure_Greens!(onsite_corr.Greens.position,model,Gr)
         elseif measurement == :DenDen
             measure_DenDen!(onsite_corr.DenDen.position,model,Gr)
+        elseif measurement == :SpinSpin
+            measure_SpinSpin!(onsite_corr.SpinSpin.position,model,Gr)
         elseif measurement == :PairGreens
             measure_PairGreens!(onsite_corr.PairGreens.position,model,Gr)
         elseif measurement == :PhononGreens
@@ -1227,6 +1251,36 @@ function measure_DenDen(model::AbstractModel,estimator::EstimateGreensFunction,
 end
 
 """
+Measure spin-spin correlation function ⟨sₓ(i+r,τ)⋅sₓ(i,0)⟩ for 0≤τ<β
+"""
+function measure_SpinSpin(model::AbstractModel,estimator::EstimateGreensFunction,
+                          l₁::Int,l₂::Int,l₃::Int,o₁::Int,o₂::Int,τ::Int)
+
+    L  = model.Lτ::Int
+    L₁ = model.lattice.L1::Int
+    L₂ = model.lattice.L2::Int
+    L₃ = model.lattice.L3::Int
+
+    # account for fact that ⟨sₓ(i+r,β)⋅sₓ(i,0)⟩ = ⟨sₓ(i-r,0)⋅sₓ(i,0)⟩
+    if τ==L
+        τ   = 0
+        tmp = o₁
+        o₁  = o₂
+        o₂  = tmp
+        l₁  = mod(-l₁,L₁)
+        l₂  = mod(-l₂,L₂)
+        l₃  = mod(-l₃,L₃)
+    end
+
+    Gᵣ₀τ0_G₀ᵣ0τ = measure_GΔ0_G0Δ(estimator,l₁,l₂,l₃,o₁,o₂,τ)
+    Gᵣ₀τ0       = measure_GΔ0(estimator,l₁,l₂,l₃,o₁,o₂,τ)
+    δᵣ          = δ(l₁)*δ(l₂)*δ(l₃)*δ(o₁,o₂)
+    sₓsₓ        = -2*Gᵣ₀τ0_G₀ᵣ0τ + 2*δᵣ*δ(τ)*Gᵣ₀τ0
+
+    return sₓsₓ
+end
+
+"""
 Measure pair Green's function ⟨Δᵢ₊ᵣ(τ)⋅Δ⁺ᵢ(0)⟩ where Δᵢ(τ) = cᵢ₊(τ)cᵢ₋(τ) for 0≤τ<β
 """
 function measure_PairGreens(model::AbstractModel,estimator::EstimateGreensFunction,
@@ -1249,8 +1303,8 @@ function measure_PairGreens(model::AbstractModel,estimator::EstimateGreensFuncti
     return Pᵣτ
 end
 
-# defining functions measure_Greens!, measure_DenDen!, measure_PairGreens!
-for measurement in [ :Greens , :DenDen , :PairGreens ]
+# defining functions measure_Greens!, measure_DenDen!, measure_DenDen!, wmeasure_PairGreens!
+for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
 
     # constructing symbol for function name
     op = Symbol(:measure_,measurement,:!)
