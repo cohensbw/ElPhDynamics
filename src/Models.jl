@@ -291,7 +291,7 @@ function write_M_matrix!(model::AbstractModel{T1,T2}, filename::String, threshol
         for i in 1:length(rows)
 
             # write matrix element to file
-            write( file , @sprintf( "%d %d %.10f %.10f\n", cols[i], rows[i], real(vals[i]), imag(vals[i]) ) )
+            @printf file "%d %d %.10f %.10f\n" cols[i] rows[i] real(vals[i]) imag(vals[i])
         end
     end
 

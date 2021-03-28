@@ -13,7 +13,7 @@ using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!, checkerboa
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
 using ..Utilities: get_index
 
-export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner, setup!
+export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner, setup!, construct_Bbar
 
 """
 Object to represent Kenerl Polynomial Expansion.
@@ -950,6 +950,46 @@ the expresion M⁻¹[ω,ω] = (I - exp{-i⋅ϕ(ω)}⋅A)⁻¹
 function scalar_invM(x,ϕ)
 
     return inv(1.0 - exp(-im * ϕ) * x)
+end
+
+"""
+Function to construct Bbar (also called A) matrix.
+"""
+function construct_Bbar(op::KPMPreconditioner{T1,T2,T3};threshold::T1=1e-10) where {T1,T2,T3}
+
+    expansion = op.expansion
+    N         = expansion.model.Nsites
+
+    # store matrix elements
+    rows     = Int[]
+    cols     = Int[]
+    elements = T1[]
+
+    # stores columns vector
+    v  = zeros(T1,N)
+    Av = zeros(T1,N)
+
+    # iterating over rows
+    for col in 1:N
+        # initialize column vector as unit vector
+        v      .= 0.0
+        v[col]  = 1.0
+        # doing matrix vector multiply
+        mul!(Av,expansion,v)
+        # iterate of column vecto
+        for row in 1:N
+            # if nonzero
+            if abs(Av[row])>threshold
+                # save matrix element
+                append!(rows,row)
+                append!(cols,col)
+                append!(elements,Av[row])
+            end
+        end
+    end
+    return rows, cols, elements
+
+    return nothing
 end
 
 end

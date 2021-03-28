@@ -1012,7 +1012,7 @@ function write_onsite_measurements!(container::NamedTuple,sim_params::Simulation
             write(file,string(bin),",")
             write(file, string(o))
             for measurement in keys(container)
-                write( file , @sprintf(",%.6f",real(container[measurement][o])) )
+                @printf file ",%.6f" real(container[measurement][o])
             end
             write(file, "\n")
         end
@@ -1035,7 +1035,7 @@ function write_intersite_measurements!(container::NamedTuple,sim_params::Simulat
             write(file,string(bin),",")
             write(file, string(bond))
             for measurement in keys(container)
-                write( file , @sprintf(",%.6f",real(container[measurement][bond])) )
+                @printf file ",%.6f" real(container[measurement][bond])
             end
             write(file, "\n")
         end
@@ -1081,8 +1081,7 @@ function write_correlation!(filename::String,correlations::Array{Complex{T},6},b
                     for l₂ in 1:L₂
                         for l₁ in 1:L₁
                             for τ in 1:Lₜ
-                                line = @sprintf("%d,%d,%d,%d,%d,%d,%d,%.6f\n",bin,n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,real(correlations[τ,l₁,l₂,l₃,n₂,n₁]))
-                                write(file,line)
+                                @printf file "%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin n₁ n₂ l₃-1 l₂-1 l₁-1 τ-1 real(correlations[τ,l₁,l₂,l₃,n₂,n₁])
                             end
                         end
                     end
@@ -1128,8 +1127,7 @@ function write_susceptibility!(filename::String,susceptibility::Array{Complex{T}
                 for l₃ in 1:L₃
                     for l₂ in 1:L₂
                         for l₁ in 1:L₁
-                            line = @sprintf("%d,%d,%d,%d,%d,%d,%.6f\n",bin,n₁,n₂,l₃-1,l₂-1,l₁-1,real(susceptibility[l₁,l₂,l₃,n₂,n₁]))
-                            write(file,line)
+                            @printf file "%d,%d,%d,%d,%d,%d,%.6f\n" bin n₁ n₂ l₃-1 l₂-1 l₁-1 real(susceptibility[l₁,l₂,l₃,n₂,n₁])
                         end
                     end
                 end

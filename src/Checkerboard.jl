@@ -11,16 +11,16 @@ export checkerboard_matrix
 Construct full checkerboard matrix. For code 
 testing rather than use in the final Langevin simulation.
 """
-function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2},Δτ::T1;transposed::Bool=false,threshold::T1=0.0) where {T1<:AbstractFloat,T2<:Number}
+function checkerboard_matrix(neighbor_table::Matrix{Int},coshtij::Vector{T1}, sinhtij::Vector{T1};transposed::Bool=false,threshold::T2=1e-12) where {T1<:Number,T2<:AbstractFloat}
     
     # to contain M[row,col]=val info for constructing sparse matrix
     rows = Int[]
     cols = Int[]
-    elements = T2[]
+    elements = T1[]
     # size of matrix
     N = maximum(neighbor_table)
     # stores columns vector
-    colvector = zeros(T2,N)
+    colvector = zeros(T1,N)
     # iterating over rows
     for col in 1:N
         # initialize column vector as unit vector
@@ -29,10 +29,10 @@ function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2
         # doing matrix vector multiply
         if transposed==true
             # multiply unit vector by Mᵀ matrix
-            checkerboard_transpose_mul!(colvector,neighbor_table,vals,Δτ,1)
+            checkerboard_transpose_mul!(colvector,neighbor_table,coshtij,sinhtij)
         else
             # multiply unit vector by M matrix
-            checkerboard_mul!(colvector,neighbor_table,vals,Δτ,1)
+            checkerboard_mul!(colvector,neighbor_table,coshtij,sinhtij)
         end
         # iterate of column vecto
         for row in 1:N
@@ -45,7 +45,7 @@ function checkerboard_matrix(neighbor_table::Matrix{Int},vals::AbstractVector{T2
             end
         end
     end
-    return sparse(rows, cols, elements, N, N)
+    return rows, cols, elements
 end
 
 

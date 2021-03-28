@@ -171,6 +171,9 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         end
     end
 
+    # close log file
+    close(burnin_hmc.logfile)
+
     ###########################################
     ## RUNNING SIMULATION: MEASUREMENT STEPS ##
     ###########################################
@@ -221,7 +224,6 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     write_time       /= 60.0
 
     # close log files
-    close(burnin_hmc.logfile)
     close(simulation_hmc.logfile)
 
     return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
