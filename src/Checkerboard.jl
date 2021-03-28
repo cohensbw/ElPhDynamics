@@ -9,7 +9,7 @@ export checkerboard_matrix
 
 """
 Construct full checkerboard matrix. For code 
-testing rather than use in the final Langevin simulation.
+testing rather than use in the final full simulation.
 """
 function checkerboard_matrix(neighbor_table::Matrix{Int},coshtij::Vector{T1}, sinhtij::Vector{T1};transposed::Bool=false,threshold::T2=1e-12) where {T1<:Number,T2<:AbstractFloat}
     

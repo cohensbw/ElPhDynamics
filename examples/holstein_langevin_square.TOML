@@ -1,5 +1,5 @@
 # NOTE: COMMAND TO RUN SIMULATION
-# julia -O3 -e "using Langevin; simulate(ARGS)" -- langevin_input.TOML
+# julia -O3 -e "using ElPhDynamics; simulate(ARGS)" -- langevin_input.TOML
 
 ######################
 ## DEFINING LATTICE ##

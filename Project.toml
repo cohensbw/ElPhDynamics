@@ -1,4 +1,4 @@
-name = "Langevin"
+name = "ElPhDynamics"
 uuid = "d56e79bc-9d16-11e9-1337-85b17f59915c"
 authors = ["benwcs <benwcs@gmail.com>"]
 version = "0.1.0"

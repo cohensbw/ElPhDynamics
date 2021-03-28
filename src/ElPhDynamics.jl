@@ -1,4 +1,4 @@
-module Langevin
+module ElPhDynamics
 
 using LinearAlgebra
 using FFTW
@@ -61,9 +61,9 @@ using ..SimulationSummary: write_simulation_summary!
 export simulate, load_model
 
 """
-Highest level function used to run a langevin simulation.
+Highest level function used to run a QMC simulation.
 To run a simulation execute the following command:
-`julia -O3 -e "using Langevin; simulate(ARGS)" -- input.toml`
+`julia -O3 -e "using ElPhDynamics; simulate(ARGS)" -- input.toml`
 """
 function simulate(args)
 
