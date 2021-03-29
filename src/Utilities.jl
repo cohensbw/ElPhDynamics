@@ -54,10 +54,11 @@ function translational_average!(fg::AbstractArray{T},f::AbstractArray{T},g::Abst
     
     fft!(f)
     fft!(g)
-    N = length(f)
-    circshift!(fg, f, size(fg,d)-1 for d in 1:ndims(fg))
-    reverse!(fg)
-    @. fg = fg * g / N
+    N  = length(f)
+    f′ = fg
+    circshift!(f′, f, size(fg,d)-1 for d in 1:ndims(fg))
+    reverse!(f′)
+    @. fg = f′ * g / N
     ifft!(fg)
     return nothing
 end
