@@ -1,7 +1,6 @@
 module LocalMeasurements
 
 using Printf
-using UnsafeArrays
 
 using ..Utilities: get_index, get_site, get_τ, δ
 using ..Models: HolsteinModel
@@ -201,31 +200,29 @@ function calc_swave_susc(Pᵣ::Array{Complex{T},6},Gᵣ::Array{Complex{T},6},Δ�
     L₂ = size(Pᵣ,5)
     L₃ = size(Pᵣ,6)
     Pₛ = 0.0im
-    @uviews Pᵣ begin
-        # iterate over unit cell displacements
-        for l₃ in 0:L₃-1
-            for l₂ in 0:L₂-1
-                for l₁ in 0:L₁-1
-                    # calculate Pair Green's Function Pᵣ(β)
-                    pᵣ  = @view Pᵣ[:,orbit,orbit,l₁+1,l₂+1,l₃+1]
-                    Gᵣ0 = Gᵣ[1,orbit,orbit,l₁+1,l₂+1,l₃+1]
-                    pᵣβ = δ(l₁)*δ(l₂)*δ(l₃)*(1.0-2*Gᵣ0) + pᵣ[1]
-                    # iterate over τ to do Simpson integration
-                    for τ in 2:2:L
-                        Pₛ +=     pᵣ[τ-1] * 1.0/3.0 * Δτ
-                        Pₛ +=     pᵣ[τ]   * 4.0/3.0 * Δτ
-                        if τ==L
-                            Pₛ += pᵣβ     * 1.0/3.0 * Δτ
-                        else
-                            Pₛ += pᵣ[τ+1] * 1.0/3.0 * Δτ
-                        end
+    # iterate over unit cell displacements
+    for l₃ in 0:L₃-1
+        for l₂ in 0:L₂-1
+            for l₁ in 0:L₁-1
+                # calculate Pair Green's Function Pᵣ(β)
+                pᵣ  = @view Pᵣ[:,orbit,orbit,l₁+1,l₂+1,l₃+1]
+                Gᵣ0 = Gᵣ[1,orbit,orbit,l₁+1,l₂+1,l₃+1]
+                pᵣβ = δ(l₁)*δ(l₂)*δ(l₃)*(1.0-2*Gᵣ0) + pᵣ[1]
+                # iterate over τ to do Simpson integration
+                for τ in 2:2:L
+                    Pₛ +=     pᵣ[τ-1] * 1.0/3.0 * Δτ
+                    Pₛ +=     pᵣ[τ]   * 4.0/3.0 * Δτ
+                    if τ==L
+                        Pₛ += pᵣβ     * 1.0/3.0 * Δτ
+                    else
+                        Pₛ += pᵣ[τ+1] * 1.0/3.0 * Δτ
                     end
-                    # deal with boundary condition for Simpson integration
-                    if isodd(L)
-                        Pₛ -= pᵣ[L-1] * 1.0/12.0 * Δτ
-                        Pₛ += pᵣ[L]   * 2.0/3.0  * Δτ
-                        Pₛ += pᵣβ     * 5.0/12.0 * Δτ
-                    end
+                end
+                # deal with boundary condition for Simpson integration
+                if isodd(L)
+                    Pₛ -= pᵣ[L-1] * 1.0/12.0 * Δτ
+                    Pₛ += pᵣ[L]   * 2.0/3.0  * Δτ
+                    Pₛ += pᵣβ     * 5.0/12.0 * Δτ
                 end
             end
         end

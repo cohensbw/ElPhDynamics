@@ -2,8 +2,7 @@ module SimulationSummary
 
 using Statistics
 using Printf
-using UnsafeArrays
-using Pkg.TOML
+using TOML
 
 using ..SimulationParams: SimulationParameters
 using ..Models: AbstractBond, SSHBond, Bond
@@ -734,21 +733,19 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
         write(statsout,header)
 
         # iterate over all measurements
-        @uviews binned_data begin
-            for n₁ in 1:n
-                for n₂ in 1:n
-                    for l₃ in 1:L₃
-                        for l₂ in 1:L₂
-                            for l₁ in 1:L₁
-                                for τ in 1:Lₜ
-                                    data = @view binned_data[:,τ,l₁,l₂,l₃,n₂,n₁]
-                                    # calculate average and error of measurement
-                                    avg, err = mean_and_error(data)
-                                    # write to file
-                                    line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
-                                    write(fout,line)
-                                    write(statsout,line)
-                                end
+        for n₁ in 1:n
+            for n₂ in 1:n
+                for l₃ in 1:L₃
+                    for l₂ in 1:L₂
+                        for l₁ in 1:L₁
+                            for τ in 1:Lₜ
+                                data = @view binned_data[:,τ,l₁,l₂,l₃,n₂,n₁]
+                                # calculate average and error of measurement
+                                avg, err = mean_and_error(data)
+                                # write to file
+                                line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
+                                write(fout,line)
+                                write(statsout,line)
                             end
                         end
                     end
@@ -874,20 +871,18 @@ function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,
         write(statsout,header)
 
         # iterate over all measurements
-        @uviews binned_data begin
-            for n₁ in 1:n
-                for n₂ in 1:n
-                    for l₃ in 1:L₃
-                        for l₂ in 1:L₂
-                            for l₁ in 1:L₁
-                                data = @view binned_data[:,l₁,l₂,l₃,n₂,n₁]
-                                # calculate average and error of measurement
-                                avg, err = mean_and_error(data)
-                                # write to file
-                                line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
-                                write(fout,line)
-                                write(statsout,line)
-                            end
+        for n₁ in 1:n
+            for n₂ in 1:n
+                for l₃ in 1:L₃
+                    for l₂ in 1:L₂
+                        for l₁ in 1:L₁
+                            data = @view binned_data[:,l₁,l₂,l₃,n₂,n₁]
+                            # calculate average and error of measurement
+                            avg, err = mean_and_error(data)
+                            # write to file
+                            line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
+                            write(fout,line)
+                            write(statsout,line)
                         end
                     end
                 end

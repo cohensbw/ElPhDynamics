@@ -1,7 +1,6 @@
 module LangevinDynamics
 
 using Random
-using UnsafeArrays
 using LinearAlgebra
 
 using ..Utilities: get_index

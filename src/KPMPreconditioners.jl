@@ -3,7 +3,6 @@ module KPMPreconditioners
 using LinearAlgebra
 using Random
 using FFTW
-using UnsafeArrays
 using Logging
 
 import LinearAlgebra: ldiv!, mul!, transpose
@@ -438,38 +437,35 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
         # 2. FFT from τ ⟶ ω
         τ_to_ω!(v2,op.timefreqfft,vin)
 
-        @uviews v1 v2 begin
+        a1  = reshape(v1,(L,N))
+        a1T = reshape(v1,(N,L))
+        a2  = reshape(v2,(L,N))
+        a2T = reshape(v2,(N,L))
 
-            a1  = reshape(v1,(L,N))
-            a1T = reshape(v1,(N,L))
-            a2  = reshape(v2,(L,N))
-            a2T = reshape(v2,(N,L))
+        transpose!(a1T,a2)
 
-            transpose!(a1T,a2)
+        # iterating over half the range of frequencies
+        @fastmath @inbounds for ω in 1:cld(L,2)
 
-            # iterating over half the range of frequencies
-            @fastmath @inbounds for ω in 1:cld(L,2)
+            # input vector
+            u1 = @view a1T[:,ω]
 
-                # input vector
-                u1 = @view a1T[:,ω]
+            # output vector
+            u2 = @view a2T[:,ω]
 
-                # output vector
-                u2 = @view a2T[:,ω]
+            # set frequency
+            op.ω = ω
 
-                # set frequency
-                op.ω = ω
+            # multiply by KPM approximation to M⁻¹[ω,ω]
+            mul!(u2,P,u1)
 
-                # multiply by KPM approximation to M⁻¹[ω,ω]
-                mul!(u2,P,u1)
-
-                # accounting for symmetry
-                for i in 1:N
-                    a2T[i,L-ω+1] = conj(a2T[i,ω])
-                end
+            # accounting for symmetry
+            for i in 1:N
+                a2T[i,L-ω+1] = conj(a2T[i,ω])
             end
-
-            transpose!(a1,a2T)
         end
+
+        transpose!(a1,a2T)
 
         # 1. iFFT from ω ⟶ τ
         # 2. apply inverse phase factor to go from (periodic)⟶(anti-periodic) in τ
@@ -847,100 +843,97 @@ Then use this to approximate the min and max eigenvalues of A.
 """
 function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}) where {T1<:Continuous,T2<:Continuous}
 
-    @uviews Q h begin
+    # dimension of Krylov subspace, must be >= 1
+    n = size(h,2)
 
-        # dimension of Krylov subspace, must be >= 1
-        n = size(h,2)
+    # dimension of A matrix
+    m = size(Q,1)
 
-        # dimension of A matrix
-        m = size(Q,1)
+    ################################
+    ## Arnoldi for Max Eigenvalue ##
+    ################################
 
-        ################################
-        ## Arnoldi for Max Eigenvalue ##
-        ################################
-
-        # randomize input vector
-        for i in 1:m
-            b[i] = randn(T1)
-        end
-
-        # normalize input vector
-        @. b /= norm(b)
-
-        # Use it as the first Krylov vector
-        Q1 = @view Q[:,1]
-        @. Q1 = real(b)
-
-        l = n
-        for k in 1:n
-            mul!(v,A,b) # Generate a new candidate vector
-            for j in 1:k # Subtract the projections on previous vectors
-                Qj      = @view Q[:, j]
-                h[j, k] = real(dot(Qj, v))
-                @. v   -= h[j, k] * Qj
-            end
-            h[k+1, k] = norm(v)
-            # Add the produced vector to the list, unless the zero vector is produced
-            if h[k+1, k] > 1e-12
-                @. b    = v / h[k + 1, k]
-                Qkp1    = @view Q[:, k+1]
-                @. Qkp1 = real(b)
-            else  # If that happens, stop iterating.
-               l = k
-               break
-            end
-        end
-
-        # calulcate min and max eigenvalues
-        h′       = @view h[1:l,1:l]
-        eigvs    = eigvals!(h′)
-        e_max    = maximum(real, eigvs)
-
-        ################################
-        ## Arnoldi for Min Eigenvalue ##
-        ################################
-
-        # randomize input vector
-        for i in 1:m
-            b[i] = randn(T1)
-        end
-
-        # normalize input vector
-        @. b /= norm(b)
-
-        # Use it as the first Krylov vector
-        Q1 = @view Q[:,1]
-        @. Q1 = real(b)
-
-        l = n
-        for k in 1:n
-            ldiv!(v,A,b) # Generate a new candidate vector
-            for j in 1:k # Subtract the projections on previous vectors
-                Qj      = @view Q[:, j]
-                h[j, k] = real(dot(Qj, v))
-                @. v   -= h[j, k] * Qj
-            end
-            h[k+1, k] = norm(v)
-            # Add the produced vector to the list, unless the zero vector is produced
-            if h[k+1, k] > 1e-12
-                @. b    = v / h[k + 1, k]
-                Qkp1    = @view Q[:, k+1]
-                @. Qkp1 = real(b)
-            else  # If that happens, stop iterating.
-               l = k
-               break
-            end
-        end
-
-        # calulcate min and max eigenvalues
-        h′       = @view h[1:l,1:l]
-        eigvs    = eigvals!(h′)
-        e_min    = 1/maximum(real, eigvs)
-
-        # println("$e_min $e_max")
-
-        return e_min, e_max
+    # randomize input vector
+    for i in 1:m
+        b[i] = randn(T1)
     end
+
+    # normalize input vector
+    @. b /= norm(b)
+
+    # Use it as the first Krylov vector
+    Q1 = @view Q[:,1]
+    @. Q1 = real(b)
+
+    l = n
+    for k in 1:n
+        mul!(v,A,b) # Generate a new candidate vector
+        for j in 1:k # Subtract the projections on previous vectors
+            Qj      = @view Q[:, j]
+            h[j, k] = real(dot(Qj, v))
+            @. v   -= h[j, k] * Qj
+        end
+        h[k+1, k] = norm(v)
+        # Add the produced vector to the list, unless the zero vector is produced
+        if h[k+1, k] > 1e-12
+            @. b    = v / h[k + 1, k]
+            Qkp1    = @view Q[:, k+1]
+            @. Qkp1 = real(b)
+        else  # If that happens, stop iterating.
+            l = k
+            break
+        end
+    end
+
+    # calulcate min and max eigenvalues
+    h′       = @view h[1:l,1:l]
+    eigvs    = eigvals!(h′)
+    e_max    = maximum(real, eigvs)
+
+    ################################
+    ## Arnoldi for Min Eigenvalue ##
+    ################################
+
+    # randomize input vector
+    for i in 1:m
+        b[i] = randn(T1)
+    end
+
+    # normalize input vector
+    @. b /= norm(b)
+
+    # Use it as the first Krylov vector
+    Q1 = @view Q[:,1]
+    @. Q1 = real(b)
+
+    l = n
+    for k in 1:n
+        ldiv!(v,A,b) # Generate a new candidate vector
+        for j in 1:k # Subtract the projections on previous vectors
+            Qj      = @view Q[:, j]
+            h[j, k] = real(dot(Qj, v))
+            @. v   -= h[j, k] * Qj
+        end
+        h[k+1, k] = norm(v)
+        # Add the produced vector to the list, unless the zero vector is produced
+        if h[k+1, k] > 1e-12
+            @. b    = v / h[k + 1, k]
+            Qkp1    = @view Q[:, k+1]
+            @. Qkp1 = real(b)
+        else  # If that happens, stop iterating.
+            l = k
+            break
+        end
+    end
+
+    # calulcate min and max eigenvalues
+    h′       = @view h[1:l,1:l]
+    eigvs    = eigvals!(h′)
+    e_min    = 1/maximum(real, eigvs)
+
+    # println("$e_min $e_max")
+
+    return e_min, e_max
 end
 
 """

@@ -1,7 +1,6 @@
 module IterativeSolvers
 
 using LinearAlgebra
-using UnsafeArrays
 using Parameters
 
 import LinearAlgebra: ldiv!
@@ -407,47 +406,45 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
         return iter
     end
     
-    @uviews V begin
-        @fastmath @inbounds while iter < gmres.maxiter        
-            @. V[:,1] = r/β
-            fill!(s,0.0)
-            s[1]  = β
-            for i in 1:gmres.restart
-                iter += 1
-                vi    = @view V[:,i]
-                mul!(w,A,vi)
-                ldiv!(M,w)
-                for k in 1:i
-                    vk     = @view V[:,k]
-                    H[k,i] = dot(vk,w)
-                    @. w  -= H[k,i] * vk
-                end
-                H[i+1,i]    = norm(w)
-                @. V[:,i+1] = w / H[i+1,i]
-                for k in 1:i-1
-                    H[k,i], H[k+1,i] = apply_plane_rotation(H[k,i], H[k+1,i], cs[k], sn[k])
-                end
-                cs[i], sn[i]     = generate_plane_rotation(H[i,i], H[i+1,i])
-                H[i,i], H[i+1,i] = apply_plane_rotation(H[i,i], H[i+1,i], cs[i], sn[i])
-                s[i], s[i+1]     = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
-                Δ                = abs(s[i+1])/normb
-                if Δ < gmres.tol
-                    update!(x,i,H,s,y,V)
-                    return iter
-                end
-                if iter==gmres.maxiter
-                    break
-                end
+    @fastmath @inbounds while iter < gmres.maxiter        
+        @. V[:,1] = r/β
+        fill!(s,0.0)
+        s[1]  = β
+        for i in 1:gmres.restart
+            iter += 1
+            vi    = @view V[:,i]
+            mul!(w,A,vi)
+            ldiv!(M,w)
+            for k in 1:i
+                vk     = @view V[:,k]
+                H[k,i] = dot(vk,w)
+                @. w  -= H[k,i] * vk
             end
-            update!(x,gmres.restart,H,s,y,V)
-            mul!(r,A,x)  # r = A⋅x
-            @. r = b - r # r = b - A⋅x
-            ldiv!(M,r)   # r = M \ (b - A⋅x) = M⁻¹⋅(b - A⋅x)
-            β    = norm(r)
-            Δ    = β/normb
-            if Δ<gmres.tol
+            H[i+1,i]    = norm(w)
+            @. V[:,i+1] = w / H[i+1,i]
+            for k in 1:i-1
+                H[k,i], H[k+1,i] = apply_plane_rotation(H[k,i], H[k+1,i], cs[k], sn[k])
+            end
+            cs[i], sn[i]     = generate_plane_rotation(H[i,i], H[i+1,i])
+            H[i,i], H[i+1,i] = apply_plane_rotation(H[i,i], H[i+1,i], cs[i], sn[i])
+            s[i], s[i+1]     = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
+            Δ                = abs(s[i+1])/normb
+            if Δ < gmres.tol
+                update!(x,i,H,s,y,V)
                 return iter
             end
+            if iter==gmres.maxiter
+                break
+            end
+        end
+        update!(x,gmres.restart,H,s,y,V)
+        mul!(r,A,x)  # r = A⋅x
+        @. r = b - r # r = b - A⋅x
+        ldiv!(M,r)   # r = M \ (b - A⋅x) = M⁻¹⋅(b - A⋅x)
+        β    = norm(r)
+        Δ    = β/normb
+        if Δ<gmres.tol
+            return iter
         end
     end
 

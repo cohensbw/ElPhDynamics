@@ -2,7 +2,6 @@ module FourierAcceleration
 
 using FFTW
 using LinearAlgebra
-using UnsafeArrays
 
 using ..Models: AbstractModel
 using ..Utilities: get_index
@@ -94,26 +93,24 @@ function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccele
     N = fa.N # number of sites in lattice
     L = fa.L # length of imaginary time axis
     u = fa.u::Vector{Complex{T}}
-
-    @uviews u v v′ begin
         
-        a  = reshape(v,L,N)
-        a′ = reshape(v′,L,N)
-        u′ = reshape(u,L,N)
+    a  = reshape(v,L,N)
+    a′ = reshape(v′,L,N)
+    u′ = reshape(u,L,N)
 
-        # τ → ω
-        mul!(u′,fa.pfft,a)
+    # τ → ω
+    mul!(u′,fa.pfft,a)
 
-        # apply diagonal acceleration matrix Q^power
-        if use_mass
-            @. u *= fa.M^power
-        else
-            @. u *= fa.Q^power
-        end
-
-        # ω → τ
-        mul!(a′,fa.pifft,u′)
+    # apply diagonal acceleration matrix Q^power
+    if use_mass
+        @. u *= fa.M^power
+    else
+        @. u *= fa.Q^power
     end
+
+    # ω → τ
+    mul!(a′,fa.pifft,u′)
+
     return nothing
 end
 

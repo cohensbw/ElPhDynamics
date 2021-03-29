@@ -4,7 +4,6 @@ using Statistics
 using Random
 using LinearAlgebra
 using FFTW
-using UnsafeArrays
 
 using ..Models: AbstractModel, mulMᵀ!, mulM!, update_model!
 using ..Utilities: get_index, get_site, get_τ
@@ -365,15 +364,13 @@ y=[ x(1) , ... , x(τ) , ... , x(L) , -x(1) , ... , -x(τ) , ... , -x(L) ]
 """
 function antiperiodic_copy!(y::AbstractArray,x::AbstractArray,L::Int)
 
-    @uviews x y begin
-        N  = div(length(x),L)
-        x′ = reshape(x,L,N)
-        y′ = reshape(y,2L,N)
-        @fastmath @inbounds for i in 1:N
-            for τ in 1:L 
-                y′[τ,i]   =  x′[τ,i]
-                y′[τ+L,i] = -x′[τ,i]
-            end
+    N  = div(length(x),L)
+    x′ = reshape(x,L,N)
+    y′ = reshape(y,2L,N)
+    @fastmath @inbounds for i in 1:N
+        for τ in 1:L 
+            y′[τ,i]   =  x′[τ,i]
+            y′[τ+L,i] = -x′[τ,i]
         end
     end
     return nothing
@@ -385,19 +382,18 @@ z=[ x(1)⋅y(1) , x(2)⋅y(2) , ... , x(L)⋅y(L) , x(1)⋅y(1) , ... , x(L)⋅y
 """
 function periodic_product!(z::AbstractArray,y::AbstractArray,x::AbstractArray,L::Int)
 
-    @uviews x y z begin
-        N  = div(length(x),L)
-        x′ = reshape(x,L,N)
-        y′ = reshape(y,L,N)
-        z′ = reshape(z,2L,N)
-        @fastmath @inbounds for i in 1:N
-            for τ in 1:L
-                val       = y′[τ,i] * x′[τ,i]
-                z′[τ,i]   = val
-                z′[τ+L,i] = val
-            end
+    N  = div(length(x),L)
+    x′ = reshape(x,L,N)
+    y′ = reshape(y,L,N)
+    z′ = reshape(z,2L,N)
+    @fastmath @inbounds for i in 1:N
+        for τ in 1:L
+            val       = y′[τ,i] * x′[τ,i]
+            z′[τ,i]   = val
+            z′[τ+L,i] = val
         end
     end
+
     return nothing
 end
 

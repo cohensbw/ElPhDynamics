@@ -1,7 +1,6 @@
 module HMC
 
 using Random
-using UnsafeArrays
 using LinearAlgebra
 using Printf
 using Parameters

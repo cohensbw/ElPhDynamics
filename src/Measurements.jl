@@ -5,7 +5,6 @@ using FFTW
 using LinearAlgebra
 using Parameters
 using Statistics
-using UnsafeArrays
 using Parameters
 
 using ..Utilities: get_index, get_site, get_τ, θ, δ, reshaped, translational_average!, simpson
@@ -1163,16 +1162,14 @@ function measure_N²(model::AbstractModel,estimator::EstimateGreensFunction)
     @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, GΔ0, GΔ0_G0Δ, L, N, NL, nₛ = estimator
     @unpack β = model
 
-    N² = 0.0
-    @uviews GΔ0_G0Δ begin
-        TrG̃₁    = dot(M⁻¹r₁,r₁)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
-        TrG̃₂    = dot(M⁻¹r₂,r₂)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
-        N₁      = 2*(N - TrG̃₁)    # ⟨N̂⟩
-        N₂      = 2*(N - TrG̃₂)    # ⟨N̂⟩
-        N̄²      = N₁ * N₂         # ⟨N̂⟩² = ⟨N̂⟩⋅⟨N̂⟩
-        Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
-        N²     += N̄² + TrG̃₁ + TrG̃₂ - 2*(N/nₛ)*sum(Gr0_G0r)
-    end
+    N²      = 0.0
+    TrG̃₁    = dot(M⁻¹r₁,r₁)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
+    TrG̃₂    = dot(M⁻¹r₂,r₂)/L # ∑ᵢ⟨cᵢc⁺ᵢ⟩
+    N₁      = 2*(N - TrG̃₁)    # ⟨N̂⟩
+    N₂      = 2*(N - TrG̃₂)    # ⟨N̂⟩
+    N̄²      = N₁ * N₂         # ⟨N̂⟩² = ⟨N̂⟩⋅⟨N̂⟩
+    Gr0_G0r = @view GΔ0_G0Δ[1,:,:,:,:,:]
+    N²     += N̄² + TrG̃₁ + TrG̃₂ - 2*(N/nₛ)*sum(Gr0_G0r)
 
     return N²
 end
@@ -1362,32 +1359,29 @@ function measure_PhononGreens!(container::Array{Complex{T1},6}, model::HolsteinM
     # get phonon fields
     x₀ = model.x
 
-    @uviews a b ab′ x₀ container begin
+    # phonon fields
+    x = reshaped(x₀,(Lₜ,nₒ,L₁,L₂,L₃))
 
-        # phonon fields
-        x = reshaped(x₀,(Lₜ,nₒ,L₁,L₂,L₃))
+    # containers for performing calculation
+    x₁x₂ = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    x₁   = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    x₂   = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
 
-        # containers for performing calculation
-        x₁x₂ = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        x₁   = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        x₂   = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-
-        for o₂ in 1:nₒ
-            # phonon fields for orbital o₂
-            @views @. x₂ = x[:,o₂,:,:,:]
-            for o₁ in 1:nₒ
-                # phonon fields for orbital o₁
-                @views @. x₁ = x[:,o₁,:,:,:]
-                # translationally average
-                translational_average!(x₁x₂,x₁,x₂)
-                # save the results
-                if L₀==1 # equal time measurment
-                    @views @. container[1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
-                else # unequal time measurement
-                    @views @. container[1:Lₜ,:,:,:,o₁,o₂] += x₁x₂
-                    # dealing with τ=β time slice
-                    @views @. container[Lₜ+1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
-                end
+    for o₂ in 1:nₒ
+        # phonon fields for orbital o₂
+        @views @. x₂ = x[:,o₂,:,:,:]
+        for o₁ in 1:nₒ
+            # phonon fields for orbital o₁
+            @views @. x₁ = x[:,o₁,:,:,:]
+            # translationally average
+            translational_average!(x₁x₂,x₁,x₂)
+            # save the results
+            if L₀==1 # equal time measurment
+                @views @. container[1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
+            else # unequal time measurement
+                @views @. container[1:Lₜ,:,:,:,o₁,o₂] += x₁x₂
+                # dealing with τ=β time slice
+                @views @. container[Lₜ+1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
             end
         end
     end
@@ -1418,109 +1412,106 @@ function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{
 
     @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, ab″, ab′, a, b, = estimator
 
-    @uviews container r₁ M⁻¹r₁ r₂ M⁻¹r₂ ab″ ab′ a b begin
+    r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
 
-        r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
-        r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
+    # containers for performing calculation
+    bondbond = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    R₁′      = G₁
+    R₁″      = G₁
+    R₂′      = G₂
+    R₂″      = G₂
 
-        # containers for performing calculation
-        bondbond = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        R₁′      = G₁
-        R₁″      = G₁
-        R₂′      = G₂
-        R₂″      = G₂
+    # displacement vectors describing each type of bond
+    bonds = model.bond_definitions
 
-        # displacement vectors describing each type of bond
-        bonds = model.bond_definitions
+    # length of axis corresponding to imaginary time axis
+    L₀ = size(container,1)
 
-        # length of axis corresponding to imaginary time axis
-        L₀ = size(container,1)
+    # number of vectors
+    nᵥ = length(bonds)
 
-        # number of vectors
-        nᵥ = length(bonds)
+    # iterate over first bond
+    for n″ in 1:nᵥ
 
-        # iterate over first bond
-        for n″ in 1:nᵥ
+        # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
+        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
+        d  = bonds[n″].o₁::Int # starting orbital
+        c  = bonds[n″].o₂::Int # ending   orbital
 
-            # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
-            r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
-            d  = bonds[n″].o₁::Int # starting orbital
-            c  = bonds[n″].o₂::Int # ending   orbital
+        # iterate over second bond
+        for n′ in 1:nᵥ
 
-            # iterate over second bond
-            for n′ in 1:nᵥ
+            # initialize bond-bond correlation to zero
+            fill!(bondbond,0.0)
 
-                # initialize bond-bond correlation to zero
-                fill!(bondbond,0.0)
+            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+            b  = bonds[n′].o₁::Int # starting orbital
+            a  = bonds[n′].o₂::Int # ending   orbital
 
-                # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-                r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-                b  = bonds[n′].o₁::Int # starting orbital
-                a  = bonds[n′].o₂::Int # ending   orbital
+            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,a,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,c,:,:,:]
+            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[2])) # R₁′   = shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[2])) # R₂″   = shift(R₂,r″)
+            @. G₁ = M⁻¹R₁ * R₁′                      # G₁    = [M⁻¹R₁⋅R₁′]
+            @. G₂ = M⁻¹R₂ * R₂″                      # G₂    = [M⁻¹R₂⋅R₂″]
+            translational_average!(G₁G₂,G₁,G₂)       # G₁⋅G₂ = [M⁻¹R₁⋅R₁′]⋆[M⁻¹R₂⋅R₂″]
 
-                # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,a,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,c,:,:,:]
-                circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[2])) # R₁′   = shift(R₁,r′)
-                circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[2])) # R₂″   = shift(R₂,r″)
-                @. G₁ = M⁻¹R₁ * R₁′                      # G₁    = [M⁻¹R₁⋅R₁′]
-                @. G₂ = M⁻¹R₂ * R₂″                      # G₂    = [M⁻¹R₂⋅R₂″]
-                translational_average!(G₁G₂,G₁,G₂)       # G₁⋅G₂ = [M⁻¹R₁⋅R₁′]⋆[M⁻¹R₂⋅R₂″]
+            # B = B + 4*⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
+            @. bondbond += 4*G₁G₂
 
-                # B = B + 4*⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
-                @. bondbond += 4*G₁G₂
+            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,a,:,:,:]
+            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[2])) # R₂′   = shift(R₂,r′)
+            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[2])) # R₁″   = shift(R₁,r″)
+            @. G₂ = M⁻¹R₁ * R₂′                      # G₂    = [M⁻¹R₁⋅R₂′]
+            @. G₁ = M⁻¹R₂ * R₁″                      # G₁    = [M⁻¹R₂⋅R₁″]
+            translational_average!(G₁G₂,G₁,G₂)       # G₂⋅G₁ = [M⁻¹R₁⋅R₂′]⋆[M⁻¹R₂⋅R₁″]
 
-                # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,c,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,a,:,:,:]
-                circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[2])) # R₂′   = shift(R₂,r′)
-                circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[2])) # R₁″   = shift(R₁,r″)
-                @. G₂ = M⁻¹R₁ * R₂′                      # G₂    = [M⁻¹R₁⋅R₂′]
-                @. G₁ = M⁻¹R₂ * R₁″                      # G₁    = [M⁻¹R₂⋅R₁″]
-                translational_average!(G₁G₂,G₁,G₂)       # G₂⋅G₁ = [M⁻¹R₁⋅R₂′]⋆[M⁻¹R₂⋅R₁″]
+            # B = B - 2*⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
+            @. bondbond -= 2*G₁G₂
 
-                # B = B - 2*⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
-                @. bondbond -= 2*G₁G₂
+            # CALCULATE G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
+            #           G₁ = δ(τ)⋅δ(r+r′)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
+            if a==d
+                # δ(r+r′)               ⟶ r = -r′
+                # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r = r - r″
+                # therefore             ⟶ r = -r′-r″
+                l₁ = mod(-r′[1]-r″[1],L₁)
+                l₂ = mod(-r′[2]-r″[2],L₂)
+                l₃ = mod(-r′[3]-r″[3],L₃)
+                G  = measure_GΔ0(estimator,l₁,l₂,l₃,c,b,0)
 
-                # CALCULATE G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
-                #           G₁ = δ(τ)⋅δ(r+r′)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
-                if a==d
-                    # δ(r+r′)               ⟶ r = -r′
-                    # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r = r - r″
-                    # therefore             ⟶ r = -r′-r″
-                    l₁ = mod(-r′[1]-r″[1],L₁)
-                    l₂ = mod(-r′[2]-r″[2],L₂)
-                    l₃ = mod(-r′[3]-r″[3],L₃)
-                    G  = measure_GΔ0(estimator,l₁,l₂,l₃,c,b,0)
+                # B = B + 2⋅δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
+                bondbond[1,l₁+1,l₂+1,l₃+1] += 2*G
+            end
 
-                    # B = B + 2⋅δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
-                    bondbond[1,l₁+1,l₂+1,l₃+1] += 2*G
-                end
-
-                # record measurements
-                if L₀==1 # if time independent measurement
-                    @views @. container[1,:,:,:,n′,n″]    += bondbond[1,:,:,:]
-                else # if time dependent measurement
-                    @views @. container[1:Lₜ,:,:,:,n′,n″] += bondbond
-                    # deal with τ=β time slice
-                    for l₃ in 0:L₃-1
-                        for l₂ in 0:L₂-1
-                            for l₁ in 0:L₁-1
-                                nl₁ = mod(-l₁,L₁)
-                                nl₂ = mod(-l₂,L₂)
-                                nl₃ = mod(-l₃,L₃)
-                                # B[a,b,r′;c,d,r″](β,r) = B[c,d,r″;a,b,r′](0,-r)
-                                container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += bondbond[1,nl₁+1,nl₂+1,nl₃+1]
-                            end
+            # record measurements
+            if L₀==1 # if time independent measurement
+                @views @. container[1,:,:,:,n′,n″]    += bondbond[1,:,:,:]
+            else # if time dependent measurement
+                @views @. container[1:Lₜ,:,:,:,n′,n″] += bondbond
+                # deal with τ=β time slice
+                for l₃ in 0:L₃-1
+                    for l₂ in 0:L₂-1
+                        for l₁ in 0:L₁-1
+                            nl₁ = mod(-l₁,L₁)
+                            nl₂ = mod(-l₂,L₂)
+                            nl₃ = mod(-l₃,L₃)
+                            # B[a,b,r′;c,d,r″](β,r) = B[c,d,r″;a,b,r′](0,-r)
+                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += bondbond[1,nl₁+1,nl₂+1,nl₃+1]
                         end
                     end
                 end
@@ -1547,293 +1538,290 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
     @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, ab″, ab′, a, b, = estimator
     t₀ = model.t
 
-    @uviews container r₁ M⁻¹r₁ r₂ M⁻¹r₂ ab″ ab′ a b t₀ begin
+    r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
 
-        r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
-        r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
+    # containers for performing calculation
+    crntcrnt = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    R₁′      = G₁
+    R₁″      = G₁
+    M⁻¹R₁′   = G₁
+    M⁻¹R₁″   = G₁
+    R₂′      = G₂
+    R₂″      = G₂
+    M⁻¹R₂′   = G₂
+    M⁻¹R₂″   = G₂
 
-        # containers for performing calculation
-        crntcrnt = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        R₁′      = G₁
-        R₁″      = G₁
-        M⁻¹R₁′   = G₁
-        M⁻¹R₁″   = G₁
-        R₂′      = G₂
-        R₂″      = G₂
-        M⁻¹R₂′   = G₂
-        M⁻¹R₂″   = G₂
+    # displacement vectors describing each type of bond
+    bonds = model.bond_definitions
 
-        # displacement vectors describing each type of bond
-        bonds = model.bond_definitions
+    # length of axis corresponding to imaginary time axis
+    L₀ = size(container,1)
 
-        # length of axis corresponding to imaginary time axis
-        L₀ = size(container,1)
+    # number of vectors
+    nᵥ = length(bonds)
 
-        # number of vectors
-        nᵥ = length(bonds)
+    # hopping ampltidues
+    t = reshaped(t₀,(L₁,L₂,L₃,nᵥ))
 
-        # hopping ampltidues
-        t = reshaped(t₀,(L₁,L₂,L₃,nᵥ))
+    # iterate over first bond
+    for n″ in 1:nᵥ
 
-        # iterate over first bond
-        for n″ in 1:nᵥ
+        # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
+        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
+        d  = bonds[n″].o₁::Int # starting orbital
+        c  = bonds[n″].o₂::Int # ending   orbital
+        t″ = @view t[:,:,:,n″] # hopping amplitudes associated with bond
 
-            # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
-            r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
-            d  = bonds[n″].o₁::Int # starting orbital
-            c  = bonds[n″].o₂::Int # ending   orbital
-            t″ = @view t[:,:,:,n″] # hopping amplitudes associated with bond
+        # iterate over second bond
+        for n′ in 1:nᵥ
 
-            # iterate over second bond
-            for n′ in 1:nᵥ
+            # initialize bond-bond correlation to zero
+            fill!(crntcrnt,0.0)
 
-                # initialize bond-bond correlation to zero
-                fill!(crntcrnt,0.0)
+            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+            b  = bonds[n′].o₁::Int # starting orbital
+            a  = bonds[n′].o₂::Int # ending   orbital
+            t′ = @view t[:,:,:,n′] # hopping amplitudes associated with bond
 
-                # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-                r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-                b  = bonds[n′].o₁::Int # starting orbital
-                a  = bonds[n′].o₂::Int # ending   orbital
-                t′ = @view t[:,:,:,n′] # hopping amplitudes associated with bond
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,a,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,d,:,:,:]
+            circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
+            @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
+                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
+            end
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,a,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,d,:,:,:]
-                circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
-                @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
-                @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
-                    @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
-                end
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
+            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            @. crntcrnt += 4*G₁G₂
 
-                # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                @. crntcrnt += 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,a,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,c,:,:,:]
+            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
+            @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
+            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
+                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+            end
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,a,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,c,:,:,:]
-                circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-                circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
-                @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
-                @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
-                    @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-                end
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
+            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,b,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,d,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
+            @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
+            end
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,b,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,d,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
-                @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
-                @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                    @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
-                end
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
+            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,b,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,c,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
+            @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
+            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+            end
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,b,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,c,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-                circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
-                @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
-                @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                    @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-                end
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
+            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,a,:,:,:]
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
+            @. G₁ = M⁻¹R₁  * R₁′
+            @. G₂ = M⁻¹R₂″ * R₁
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′
+                @. G₂[τ,:,:,:] *= t″
+            end
+            translational_average!(G₁G₂,G₁,G₂)
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            @. crntcrnt -= 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,a,:,:,:]
+            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
+            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
+            @. G₁ = R₁″   * M⁻¹R₂
+            @. G₂ = M⁻¹R₁ * R₂′
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t″
+                @. G₂[τ,:,:,:] *= t′
+            end
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            @. crntcrnt += 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,b,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            @. G₁ = M⁻¹R₁′ * R₂
+            @. G₂ = R₁     * M⁻¹R₂″
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′
+                @. G₂[τ,:,:,:] *= t″
+            end
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+            @. crntcrnt += 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,b,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+            circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
+            @. G₁ = M⁻¹R₁′ * R₂
+            @. G₂ = R₂″    * M⁻¹R₂
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′
+                @. G₂[τ,:,:,:] *= t″
+            end
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            @. crntcrnt -= 2*G₁G₂
+
+            # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
+            if a==c
+                # r = r″-r′
+                l₁ = mod(r″[1]-r′[1],L₁)
+                l₂ = mod(r″[2]-r′[2],L₂)
+                l₃ = mod(r″[3]-r′[3],L₃)
+                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,d,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,a,:,:,:]
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-                circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
-                @. G₁ = M⁻¹R₁  * R₁′
-                @. G₂ = M⁻¹R₂″ * R₁
+                copyto!(G₁,M⁻¹R₁)
+                copyto!(G₂,R₁)
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
                     @. G₂[τ,:,:,:] *= t″
                 end
-                translational_average!(G₁G₂,G₁,G₂)
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
-                @. crntcrnt -= 2*G₁G₂
-
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
+            if a==d
+                # r = -r′
+                l₁ = mod(-r′[1],L₁)
+                l₂ = mod(-r′[2],L₂)
+                l₃ = mod(-r′[3],L₃)
+                # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,a,:,:,:]
-                circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
-                circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
-                @. G₁ = R₁″   * M⁻¹R₂
-                @. G₂ = M⁻¹R₁ * R₂′
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t″
-                    @. G₂[τ,:,:,:] *= t′
-                end
-                translational_average!(G₁G₂,G₁,G₂)
-
-                # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
-                @. crntcrnt += 2*G₁G₂
-
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,b,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-                @. G₁ = M⁻¹R₁′ * R₂
-                @. G₂ = R₁     * M⁻¹R₂″
+                copyto!(G₁,M⁻¹R₁)
+                circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
                     @. G₂[τ,:,:,:] *= t″
                 end
-                translational_average!(G₁G₂,G₁,G₂)
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-                @. crntcrnt += 2*G₁G₂
+            # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+            if b==c
+                # r = r″
+                l₁ = r″[1]
+                l₂ = r″[2]
+                l₃ = r″[3]
+                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+                R₁    = @view    r₁[:,d,:,:,:]
+                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                copyto!(G₂,R₁)
+                @views for τ in Lₜ
+                    @. G₁[τ,:,:,:] *= t′
+                    @. G₂[τ,:,:,:] *= t″
+                end
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
+            if b==d
                 M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,b,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
-                @. G₁ = M⁻¹R₁′ * R₂
-                @. G₂ = R₂″    * M⁻¹R₂
+                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
                     @. G₂[τ,:,:,:] *= t″
                 end
-                translational_average!(G₁G₂,G₁,G₂)
+                @. G₁G₂ = G₁ * G₂
+                crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
-                @. crntcrnt -= 2*G₁G₂
-
-                # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                if a==c
-                    # r = r″-r′
-                    l₁ = mod(r″[1]-r′[1],L₁)
-                    l₂ = mod(r″[2]-r′[2],L₂)
-                    l₃ = mod(r″[3]-r′[3],L₃)
-                    # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,d,:,:,:]
-                    copyto!(G₁,M⁻¹R₁)
-                    copyto!(G₂,R₁)
-                    @views for τ in Lₜ
-                        @. G₁[τ,:,:,:] *= t′
-                        @. G₂[τ,:,:,:] *= t″
-                    end
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                if a==d
-                    # r = -r′
-                    l₁ = mod(-r′[1],L₁)
-                    l₂ = mod(-r′[2],L₂)
-                    l₃ = mod(-r′[3],L₃)
-                    # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,c,:,:,:]
-                    copyto!(G₁,M⁻¹R₁)
-                    circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
-                    @views for τ in Lₜ
-                        @. G₁[τ,:,:,:] *= t′
-                        @. G₂[τ,:,:,:] *= t″
-                    end
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                if b==c
-                    # r = r″
-                    l₁ = r″[1]
-                    l₂ = r″[2]
-                    l₃ = r″[3]
-                    # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,d,:,:,:]
-                    circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                    copyto!(G₂,R₁)
-                    @views for τ in Lₜ
-                        @. G₁[τ,:,:,:] *= t′
-                        @. G₂[τ,:,:,:] *= t″
-                    end
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
-                if b==d
-                    M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                    R₁    = @view    r₁[:,c,:,:,:]
-                    circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                    circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
-                    @views for τ in Lₜ
-                        @. G₁[τ,:,:,:] *= t′
-                        @. G₂[τ,:,:,:] *= t″
-                    end
-                    @. G₁G₂ = G₁ * G₂
-                    crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # record measurements
-                if L₀==1 # if time independent measurement
-                    @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
-                else # if time dependent measurement
-                    @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
-                    # deal with τ=β time slice
-                    for l₃ in 0:L₃-1
-                        for l₂ in 0:L₂-1
-                            for l₁ in 0:L₁-1
-                                nl₁ = mod(-l₁,L₁)
-                                nl₂ = mod(-l₂,L₂)
-                                nl₃ = mod(-l₃,L₃)
-                                # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
-                                container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
-                            end
+            # record measurements
+            if L₀==1 # if time independent measurement
+                @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
+            else # if time dependent measurement
+                @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
+                # deal with τ=β time slice
+                for l₃ in 0:L₃-1
+                    for l₂ in 0:L₂-1
+                        for l₁ in 0:L₁-1
+                            nl₁ = mod(-l₁,L₁)
+                            nl₂ = mod(-l₂,L₂)
+                            nl₃ = mod(-l₃,L₃)
+                            # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
+                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
                         end
                     end
                 end
@@ -1857,269 +1845,266 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
     @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, ab″, ab′, a, b = estimator
     t₀ = model.t′
 
-    @uviews container r₁ M⁻¹r₁ r₂ M⁻¹r₂ ab″ ab′ a b t₀ begin
+    r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
 
-        r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
-        r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
-        M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
+    # containers for performing calculation
+    crntcrnt = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    R₁′      = G₁
+    R₁″      = G₁
+    M⁻¹R₁′   = G₁
+    M⁻¹R₁″   = G₁
+    R₂′      = G₂
+    R₂″      = G₂
+    M⁻¹R₂′   = G₂
+    M⁻¹R₂″   = G₂
 
-        # containers for performing calculation
-        crntcrnt = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-        R₁′      = G₁
-        R₁″      = G₁
-        M⁻¹R₁′   = G₁
-        M⁻¹R₁″   = G₁
-        R₂′      = G₂
-        R₂″      = G₂
-        M⁻¹R₂′   = G₂
-        M⁻¹R₂″   = G₂
+    # displacement vectors describing each type of bond
+    bonds = model.bond_definitions
 
-        # displacement vectors describing each type of bond
-        bonds = model.bond_definitions
+    # length of axis corresponding to imaginary time axis
+    L₀ = size(container,1)
 
-        # length of axis corresponding to imaginary time axis
-        L₀ = size(container,1)
+    # number of vectors
+    nᵥ = length(bonds)
 
-        # number of vectors
-        nᵥ = length(bonds)
+    # hopping ampltidues
+    t = reshaped(t₀,(Lₜ,L₁,L₂,L₃,nᵥ))
 
-        # hopping ampltidues
-        t = reshaped(t₀,(Lₜ,L₁,L₂,L₃,nᵥ))
+    # iterate over first bond
+    for n″ in 1:nᵥ
 
-        # iterate over first bond
-        for n″ in 1:nᵥ
+        # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
+        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
+        d  = bonds[n″].o₁::Int # starting orbital
+        c  = bonds[n″].o₂::Int # ending   orbital
+        t″ = @view t[:,:,:,:,n″] # hopping amplitudes associated with bond
 
-            # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
-            r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
-            d  = bonds[n″].o₁::Int # starting orbital
-            c  = bonds[n″].o₂::Int # ending   orbital
-            t″ = @view t[:,:,:,:,n″] # hopping amplitudes associated with bond
+        # iterate over second bond
+        for n′ in 1:nᵥ
 
-            # iterate over second bond
-            for n′ in 1:nᵥ
+            # initialize bond-bond correlation to zero
+            fill!(crntcrnt,0.0)
 
-                # initialize bond-bond correlation to zero
-                fill!(crntcrnt,0.0)
+            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+            b  = bonds[n′].o₁::Int # starting orbital
+            a  = bonds[n′].o₂::Int # ending   orbital
+            t′ = @view t[:,:,:,:,n′] # hopping amplitudes associated with bond
 
-                # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-                r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-                b  = bonds[n′].o₁::Int # starting orbital
-                a  = bonds[n′].o₂::Int # ending   orbital
-                t′ = @view t[:,:,:,:,n′] # hopping amplitudes associated with bond
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,a,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,d,:,:,:]
+            circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
+            @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
+            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
+            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,a,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,d,:,:,:]
-                circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
-                @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
-                @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
-                @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
-                @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
+            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            @. crntcrnt += 4*G₁G₂
 
-                # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                @. crntcrnt += 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,a,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,c,:,:,:]
+            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
+            @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
+            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
+            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,a,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,c,:,:,:]
-                circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-                circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
-                @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
-                @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-                @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
-                @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
+            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,b,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,d,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
+            @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
+            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,b,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,d,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
-                @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
-                @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
-                @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
+            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,b,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,c,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
+            @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
+            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,b,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,c,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-                circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
-                @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
-                @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-                @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-                translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
+            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+            @. crntcrnt -= 4*G₁G₂
 
-                # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-                @. crntcrnt -= 4*G₁G₂
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,a,:,:,:]
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
+            @. G₁ = M⁻¹R₁  * R₁′
+            @. G₂ = M⁻¹R₂″ * R₁
+            @. G₁ *= t′
+            @. G₂ *= t″
+            translational_average!(G₁G₂,G₁,G₂)
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+            @. crntcrnt -= 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,a,:,:,:]
+            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
+            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
+            @. G₁ = R₁″   * M⁻¹R₂
+            @. G₂ = M⁻¹R₁ * R₂′
+            @. G₁ *= t″
+            @. G₂ *= t′
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            @. crntcrnt += 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+            R₂    = @view    r₂[:,b,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            @. G₁ = M⁻¹R₁′ * R₂
+            @. G₂ = R₁     * M⁻¹R₂″
+            @. G₁ *= t′
+            @. G₂ *= t″
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+            @. crntcrnt += 2*G₁G₂
+
+            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+            R₁    = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+            R₂    = @view    r₂[:,b,:,:,:]
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+            circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
+            @. G₁ = M⁻¹R₁′ * R₂
+            @. G₂ = R₂″    * M⁻¹R₂
+            @. G₁ *= t′
+            @. G₂ *= t″
+            translational_average!(G₁G₂,G₁,G₂)
+
+            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            @. crntcrnt -= 2*G₁G₂
+
+            # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
+            if a==c
+                # r = r″-r′
+                l₁ = mod(r″[1]-r′[1],L₁)
+                l₂ = mod(r″[2]-r′[2],L₂)
+                l₃ = mod(r″[3]-r′[3],L₃)
+                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,d,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,a,:,:,:]
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-                circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
-                @. G₁ = M⁻¹R₁  * R₁′
-                @. G₂ = M⁻¹R₂″ * R₁
+                copyto!(G₁,M⁻¹R₁)
+                copyto!(G₂,R₁)
                 @. G₁ *= t′
                 @. G₂ *= t″
-                translational_average!(G₁G₂,G₁,G₂)
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
-                @. crntcrnt -= 2*G₁G₂
-
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+            # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
+            if a==d
+                # r = -r′
+                l₁ = mod(-r′[1],L₁)
+                l₂ = mod(-r′[2],L₂)
+                l₃ = mod(-r′[3],L₃)
+                # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,a,:,:,:]
-                circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
-                circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
-                @. G₁ = R₁″   * M⁻¹R₂
-                @. G₂ = M⁻¹R₁ * R₂′
-                @. G₁ *= t″
-                @. G₂ *= t′
-                translational_average!(G₁G₂,G₁,G₂)
-
-                # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
-                @. crntcrnt += 2*G₁G₂
-
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-                R₂    = @view    r₂[:,b,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-                @. G₁ = M⁻¹R₁′ * R₂
-                @. G₂ = R₁     * M⁻¹R₂″
+                copyto!(G₁,M⁻¹R₁)
+                circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
                 @. G₁ *= t′
                 @. G₂ *= t″
-                translational_average!(G₁G₂,G₁,G₂)
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-                @. crntcrnt += 2*G₁G₂
+            # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+            if b==c
+                # r = r″
+                l₁ = r″[1]
+                l₂ = r″[2]
+                l₃ = r″[3]
+                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+                R₁    = @view    r₁[:,d,:,:,:]
+                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                copyto!(G₂,R₁)
+                @. G₁ *= t′
+                @. G₂ *= t″
+                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+                @. G₁G₂ *= G₂
+                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+            # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
+            if b==d
                 M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-                R₂    = @view    r₂[:,b,:,:,:]
-                circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
-                @. G₁ = M⁻¹R₁′ * R₂
-                @. G₂ = R₂″    * M⁻¹R₂
+                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
                 @. G₁ *= t′
                 @. G₂ *= t″
-                translational_average!(G₁G₂,G₁,G₂)
+                @. G₁G₂ = G₁ * G₂
+                crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
+            end
 
-                # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
-                @. crntcrnt -= 2*G₁G₂
-
-                # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                if a==c
-                    # r = r″-r′
-                    l₁ = mod(r″[1]-r′[1],L₁)
-                    l₂ = mod(r″[2]-r′[2],L₂)
-                    l₃ = mod(r″[3]-r′[3],L₃)
-                    # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,d,:,:,:]
-                    copyto!(G₁,M⁻¹R₁)
-                    copyto!(G₂,R₁)
-                    @. G₁ *= t′
-                    @. G₂ *= t″
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                if a==d
-                    # r = -r′
-                    l₁ = mod(-r′[1],L₁)
-                    l₂ = mod(-r′[2],L₂)
-                    l₃ = mod(-r′[3],L₃)
-                    # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,c,:,:,:]
-                    copyto!(G₁,M⁻¹R₁)
-                    circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
-                    @. G₁ *= t′
-                    @. G₂ *= t″
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                if b==c
-                    # r = r″
-                    l₁ = r″[1]
-                    l₂ = r″[2]
-                    l₃ = r″[3]
-                    # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                    M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                    R₁    = @view    r₁[:,d,:,:,:]
-                    circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                    copyto!(G₂,R₁)
-                    @. G₁ *= t′
-                    @. G₂ *= t″
-                    circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                    @. G₁G₂ *= G₂
-                    crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
-                if b==d
-                    M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                    R₁    = @view    r₁[:,c,:,:,:]
-                    circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                    circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
-                    @. G₁ *= t′
-                    @. G₂ *= t″
-                    @. G₁G₂ = G₁ * G₂
-                    crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
-                end
-
-                # record measurements
-                if L₀==1 # if time independent measurement
-                    @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
-                else # if time dependent measurement
-                    @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
-                    # deal with τ=β time slice
-                    for l₃ in 0:L₃-1
-                        for l₂ in 0:L₂-1
-                            for l₁ in 0:L₁-1
-                                nl₁ = mod(-l₁,L₁)
-                                nl₂ = mod(-l₂,L₂)
-                                nl₃ = mod(-l₃,L₃)
-                                # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
-                                container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
-                            end
+            # record measurements
+            if L₀==1 # if time independent measurement
+                @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
+            else # if time dependent measurement
+                @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
+                # deal with τ=β time slice
+                for l₃ in 0:L₃-1
+                    for l₂ in 0:L₂-1
+                        for l₁ in 0:L₁-1
+                            nl₁ = mod(-l₁,L₁)
+                            nl₂ = mod(-l₂,L₂)
+                            nl₃ = mod(-l₃,L₃)
+                            # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
+                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
                         end
                     end
                 end
@@ -2151,36 +2136,33 @@ function measure_PhononGreens!(container::Array{Complex{T1},6},model::SSHModel{T
 
     x₀ = model.x
     @unpack a, b, ab′ = Gr
-
-    @uviews a b ab′ x₀ container begin
     
-        # phonon fields
-        x = reshaped(x₀,(Lₜ,L₁,L₂,L₃,nᵥ))
+    # phonon fields
+    x = reshaped(x₀,(Lₜ,L₁,L₂,L₃,nᵥ))
 
-        # containers
-        NL   = Lₜ*L₁*L₂*L₃
-        x₁   = reshaped(view(a,  1:NL),(Lₜ,L₁,L₂,L₃))
-        x₂   = reshaped(view(b,  1:NL),(Lₜ,L₁,L₂,L₃))
-        x₁x₂ = reshaped(view(ab′,1:NL),(Lₜ,L₁,L₂,L₃))
+    # containers
+    NL   = Lₜ*L₁*L₂*L₃
+    x₁   = reshaped(view(a,  1:NL),(Lₜ,L₁,L₂,L₃))
+    x₂   = reshaped(view(b,  1:NL),(Lₜ,L₁,L₂,L₃))
+    x₁x₂ = reshaped(view(ab′,1:NL),(Lₜ,L₁,L₂,L₃))
 
+    # iterate over bonds
+    for b₂ in 1:nᵥ
+        # associated phonon fields
+        @views @. x₂ = x[:,:,:,:,b₂]
         # iterate over bonds
-        for b₂ in 1:nᵥ
+        for b₁ in 1:nᵥ
             # associated phonon fields
-            @views @. x₂ = x[:,:,:,:,b₂]
-            # iterate over bonds
-            for b₁ in 1:nᵥ
-                # associated phonon fields
-                @views @. x₁ = x[:,:,:,:,b₁]
-                # calculate translation average
-                translational_average!(x₁x₂,x₁,x₂)
-                # save the results
-                if L₀==1 # equal time measurment
-                    @views @. container[1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
-                else # unequal time measurement
-                    @views @. container[1:Lₜ,:,:,:,b₁,b₂] += x₁x₂
-                    # dealing with τ=β time slice
-                    @views @. container[Lₜ+1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
-                end
+            @views @. x₁ = x[:,:,:,:,b₁]
+            # calculate translation average
+            translational_average!(x₁x₂,x₁,x₂)
+            # save the results
+            if L₀==1 # equal time measurment
+                @views @. container[1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
+            else # unequal time measurement
+                @views @. container[1:Lₜ,:,:,:,b₁,b₂] += x₁x₂
+                # dealing with τ=β time slice
+                @views @. container[Lₜ+1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
             end
         end
     end
@@ -2204,16 +2186,14 @@ function measure_susceptibility!(susc::AbstractArray{Complex{T1},5},corr::Abstra
     n  = size(susc,4)
 
     # iterate over all possible (displacement vectors/k-points)
-    @uviews corr begin
-        for n₂ in 1:n
-            for n₁ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            # numerically integrate from 0 to β
-                            vals = @view corr[:,l₁,l₂,l₃,n₁,n₂]
-                            susc[l₁,l₂,l₃,n₁,n₂] = simpson(vals,Δτ)
-                        end
+    for n₂ in 1:n
+        for n₁ in 1:n
+            for l₃ in 1:L₃
+                for l₂ in 1:L₂
+                    for l₁ in 1:L₁
+                        # numerically integrate from 0 to β
+                        vals = @view corr[:,l₁,l₂,l₃,n₁,n₂]
+                        susc[l₁,l₂,l₃,n₁,n₂] = simpson(vals,Δτ)
                     end
                 end
             end
@@ -2243,11 +2223,9 @@ function measure_swave!(container::NamedTuple,model::AbstractModel{T1,T2,T3}) wh
         # array contain momentum space pair green's function
         pairs = container.onsite_corr.PairGreens.momentum::Array{Complex{T1},6}
 
-        @uviews pairs begin
-            for o in 1:nₒ
-                p        = @view pairs[:,1,1,1,o,o]
-                swave[o] = simpson(p,model.Δτ)
-            end
+        for o in 1:nₒ
+            p        = @view pairs[:,1,1,1,o,o]
+            swave[o] = simpson(p,model.Δτ)
         end
     end
 

@@ -1,6 +1,6 @@
 module ProcessInputFile
 
-using Pkg.TOML
+using TOML
 using Random
 using Statistics
 using LinearAlgebra
