@@ -35,11 +35,11 @@ Reshapes with zero allocations, returns an instance of Base.ReshapedArray.
 Discussion found at: https://github.com/JuliaLang/julia/issues/24237
 """
 function reshaped(a::Array{T,M}, dims::NTuple{N,Int}) where {T,N,M}
-    return reshape(view(a, :), dims)
+    return reshaped(view(a, :), dims)
 end
 
 function reshaped(a::AbstractArray{T,M}, dims::NTuple{N,Int}) where {T,N,M}
-    return reshape(a, dims)
+    return reshaped(a, dims)
 end
 
 function reshaped(a::AbstractArray{T,M}, dims...) where {T,M}

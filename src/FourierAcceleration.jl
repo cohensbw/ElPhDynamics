@@ -4,7 +4,7 @@ using FFTW
 using LinearAlgebra
 
 using ..Models: AbstractModel
-using ..Utilities: get_index
+using ..Utilities: get_index, reshaped
 
 export FourierAccelerator, update_Q!, update_M!, fourier_accelerate!
 
@@ -94,9 +94,9 @@ function fourier_accelerate!(v′::AbstractVector{Complex{T}}, fa::FourierAccele
     L = fa.L # length of imaginary time axis
     u = fa.u::Vector{Complex{T}}
         
-    a  = reshape(v,L,N)
-    a′ = reshape(v′,L,N)
-    u′ = reshape(u,L,N)
+    a  = reshaped(v,L,N)
+    a′ = reshaped(v′,L,N)
+    u′ = reshaped(u,L,N)
 
     # τ → ω
     mul!(u′,fa.pfft,a)

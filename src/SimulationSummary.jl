@@ -241,10 +241,10 @@ function write_phonon_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T
     L₃ = model.lattice.L3
     n  = model.lattice.unit_cell.norbits
 
-    ω  = reshape(model.ω,(n,L₁,L₂,L₃))
-    ω₄ = reshape(model.ω₄,(n,L₁,L₂,L₃))
-    λ  = reshape(model.λ,(n,L₁,L₂,L₃))
-    λ₂ = reshape(model.λ₂,(n,L₁,L₂,L₃))
+    ω  = reshaped(model.ω,(n,L₁,L₂,L₃))
+    ω₄ = reshaped(model.ω₄,(n,L₁,L₂,L₃))
+    λ  = reshaped(model.λ,(n,L₁,L₂,L₃))
+    λ₂ = reshaped(model.λ₂,(n,L₁,L₂,L₃))
 
     for o in 1:n
 
@@ -310,7 +310,7 @@ function write_chemical_potential_definitions!(fout,model::AbstractModel{T1,T2,T
     L₃ = model.lattice.L3
     n  = model.lattice.unit_cell.norbits
 
-    μ  = reshape(model.μ,(n,L₁,L₂,L₃))
+    μ  = reshaped(model.μ,(n,L₁,L₂,L₃))
 
     for o in 1:n
 

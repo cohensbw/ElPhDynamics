@@ -54,14 +54,14 @@ function τ_to_ω!(vout::AbstractVector{Complex{T1}},op::TimeFreqFFT{T1},vin::Ab
     vtemp = op.vtemp::Array{Complex{T1},2}
     # apply unitary transformation to restore translation invariance in the
     # imaginary time direciton.
-    uin  = reshape(vin,L,N)
+    uin  = reshaped(vin,L,N)
     @fastmath @inbounds for i in 1:N
         for τ in 1:L
             vtemp[τ,i] = Θ[τ] * uin[τ,i]
         end
     end
     # apply (τ ⟶ ω) FFT
-    uout = reshape(vout,L,N)
+    uout = reshaped(vout,L,N)
     mul!(uout,op.fftplan,vtemp)
     return nothing
 end
@@ -110,11 +110,11 @@ function ω_to_τ!(vout::AbstractVector{T},op::TimeFreqFFT{T},vin::AbstractVecto
     Θ     = op.Θ::Vector{Complex{T}}
     vtemp = op.vtemp::Array{Complex{T},2}
     # apply (ω ⟶ τ) FFT
-    uin  = reshape(vin, L,N)
+    uin  = reshaped(vin, L,N)
     mul!(vtemp,op.ifftplan,uin)
     # apply unitary transformation to restore anitperiodic boundary conditions
     # imaginary time direciton.
-    uout = reshape(vout,L,N)
+    uout = reshaped(vout,L,N)
     @fastmath @inbounds for i in 1:N
         for τ in 1:L
             uout[τ,i] = real( conj(Θ[τ]) * vtemp[τ,i] )

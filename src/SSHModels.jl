@@ -471,10 +471,10 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
     # initiailize primary fields mapping
     primary_field  = collect(1:ssh.Ndof)
-    primary_field′ = reshape(primary_field,(div(ssh.Ndof,ssh.nph),ssh.nph))
+    primary_field′ = reshaped(primary_field,(div(ssh.Ndof,ssh.nph),ssh.nph))
 
     # construct a tabluation of all the fields
-    fields = reshape(collect(1:ssh.Ndof),(div(ssh.Ndof,ssh.nph),ssh.nph))
+    fields = reshaped(collect(1:ssh.Ndof),(div(ssh.Ndof,ssh.nph),ssh.nph))
 
     # iterate over types of phonons
     for ph_type in 1:ssh.nph

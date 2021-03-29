@@ -10,7 +10,7 @@ import LinearAlgebra: ldiv!, mul!, transpose
 using ..Models: HolsteinModel, SSHModel, AbstractModel, Continuous, update_model!
 using ..Checkerboard: checkerboard_mul!, checkerboard_transpose_mul!, checkerboard_inverse_mul!
 using ..TimeFreqFFTs: TimeFreqFFT, τ_to_ω!, ω_to_τ!
-using ..Utilities: get_index
+using ..Utilities: get_index, reshaped
 
 export LeftRightKPMPreconditioner, LeftKPMPreconditioner, RightKPMPreconditioner, SymmetricKPMPreconditioner, setup!, construct_Bbar
 
@@ -437,10 +437,10 @@ function ldiv!(vout::AbstractVector{T},P::KPMPreconditioner,vin::AbstractVector{
         # 2. FFT from τ ⟶ ω
         τ_to_ω!(v2,op.timefreqfft,vin)
 
-        a1  = reshape(v1,(L,N))
-        a1T = reshape(v1,(N,L))
-        a2  = reshape(v2,(L,N))
-        a2T = reshape(v2,(N,L))
+        a1  = reshaped(v1,(L,N))
+        a1T = reshaped(v1,(N,L))
+        a2  = reshaped(v2,(L,N))
+        a2T = reshaped(v2,(N,L))
 
         transpose!(a1T,a2)
 
