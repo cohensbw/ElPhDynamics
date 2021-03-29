@@ -81,7 +81,7 @@ function process_input_file(filename::String)
     global_logger(logger)
     
     # write current git commit tag of code to log file
-    @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("Langevin")), ".."))) )
+    @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("ElPhDynamics")), ".."))) )
     flush(logger.stream)
 
     ######################
