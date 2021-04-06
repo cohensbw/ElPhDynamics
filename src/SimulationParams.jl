@@ -25,6 +25,9 @@ struct SimulationParameters
     "Number of langevin steps per bin."
     bin_steps::Int
 
+    "checkpointing frequency in seconds"
+    chckpnt_freq::Int
+
     "path to where the data should be written"
     filepath::String
 
@@ -34,7 +37,8 @@ struct SimulationParameters
     "filepath + foldername"
     datafolder::String
 
-    function SimulationParameters(burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, filepath::String, foldername::String)
+    function SimulationParameters(burnin::Int, nsteps::Int, meas_freq::Int, num_bins::Int, chckpnt_freq::Real,
+                                  filepath::String, foldername::String, datafolder::String)
 
         # sanity check
         @assert nsteps >= meas_freq * num_bins
@@ -51,23 +55,10 @@ struct SimulationParameters
         # calculating the number of langevin time steps per bin
         bin_steps = meas_freq*bin_size
 
-        # data folder, including complete path to folder
-        datafolder = joinpath(filepath,foldername)
+        # convert checkpointing frequency in minutes to seconds
+        chckpnt_freq = round(Int,60*chckpnt_freq)
 
-        # add ID number of foldername
-        ID = 0
-        while true
-            ID += 1
-            datafolderID = datafolder * "-" * string(ID)
-            foldernameID = foldername * "-" * string(ID)
-            if !isdir(datafolderID)
-                datafolder = datafolderID
-                foldername = foldernameID
-                break
-            end
-        end
-
-        new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,filepath,foldername,datafolder)
+        new(burnin,nsteps,meas_freq,num_meas,bin_size,num_bins,bin_steps,chckpnt_freq,filepath,foldername,datafolder)
     end
 end
 

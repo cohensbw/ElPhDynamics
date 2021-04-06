@@ -2,6 +2,8 @@ module RunSimulation
 
 using FFTW
 using Random
+using Serialization
+using Parameters
 
 using ..Models: AbstractModel
 using ..SimulationParams: SimulationParameters
@@ -22,29 +24,19 @@ Run Langevin simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_dynamics::Dynamics, burnin_dynamics::Dynamics, fa::FourierAccelerator,
-                         measurement_info::Dict, preconditioner)
+                         container::NamedTuple, preconditioner, burnin_start::Int=1, sim_start::Int=1,
+                         simulation_time::AbstractFloat=0.0, measurement_time::AbstractFloat=0.0, write_time::AbstractFloat=0.0,
+                         iters::AbstractFloat=0.0, accepted_updates::Int=0)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    # initialize measurements container
-    container = initialize_measurements_container(model,measurement_info)
+    # previous epoch time
+    t_prev = 0.0
 
-    # initialize measurement files
-    initialize_measurement_files!(container,sim_params)
-
-    # keeps track of number of iterations needed to solve linear system
-    iters = 0.0
-
-    # time taken on langevin dynamics
-    simulation_time = 0.0
-
-    # time take on making measurements and write them to file
-    measurement_time = 0.0
-
-    # time taken writing data to file
-    write_time = 0.0
+    # current epoch time
+    t_new = time() 
 
     ##############################################
     ## RUNNING SIMULATION: THERMALIZATION STEPS ##
@@ -53,16 +45,24 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     # frequency with which to update μ if tuning the denisty
     μ_update_freq = max(sim_params.meas_freq,1)
 
-    # thermalizing system
-    for interval in 1:div(sim_params.burnin,μ_update_freq)
+    # iterate over thermalization timesteps
+    for t in burnin_start:sim.burnin
 
-        # evolve phonon fields according to dynamics
-        for t in 1:μ_update_freq
-            simulation_time += @elapsed iters += evolve!(model, burnin_dynamics, fa, preconditioner)
+        # check if checkpoint need to be written
+        t_new = time()
+        if (t_new-t_prev) > sim_params.chckpnt_freq
+            t_prev = t_new
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=t, sim_start=1,
+                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                      iters=iters, accepted_updates=accepted_updates)
+            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
+        # update phonon fields
+        simulation_time += @elapsed iters += evolve!(model, burnin_dynamics, fa, preconditioner)
+
         # update chemical potential
-        if μ_tuner.active
+        if μ_tuner.active && t%μ_update_freq==0
             simulation_time += @elapsed update!(Gr,model,preconditioner)
             simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
         end
@@ -72,35 +72,52 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     ## RUNNING SIMULATION: MEASUREMENT STEPS ##
     ###########################################
 
-    # iterate over bins
-    for bin in 1:sim_params.num_bins
+    # iterate over simulation time steps
+    for t in sim_start:sim_params.nsteps
 
-        # iterating over the size of each bin i.e. the number of measurements made per bin
-        for n in 1:sim_params.bin_size
+        # check if checkpoint needs to be written
+        t_new = time()
+        if (t_new-t_prev) > sim_params.chckpnt_freq
+            t_prev = t_new
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=t,
+                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                      iters=iters, accepted_updates=accepted_updates)
+            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+        end
 
-            # iterate over number of langevin steps per measurement
-            for timestep in 1:sim_params.meas_freq
+        # udpate phonon fields
+        simulation_time += @elapsed iters += evolve!(model, simulation_dynamics, fa, preconditioner)
 
-                simulation_time += @elapsed iters += evolve!(model, simulation_dynamics, fa, preconditioner)
-            end
+        # if time to make measurements
+        if t%sim_params.meas_freq==0
 
-            # making measurements
+            # make measurements
             measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
                 simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
             end
+
+            # get measurement number
+            nmeas = div(t,sim_params.meas_freq)
+
+            # if bin of measurements full
+            if nmeas%sim_params.bin_size==0
+
+                # get bin number
+                bin = div(nmeas,sim_params.bin_size)
+
+                # process measurements
+                measurement_time += @elapsed process_measurements!(container,sim_params,model)
+
+                # write measurements to file
+                write_time += @elapsed write_measurements!(container,sim_params,model,bin)
+
+                # reset measurements container
+                measurement_time += @elapsed reset_measurements!(container,model)
+            end
         end
-
-        # process measurements
-        measurement_time += @elapsed process_measurements!(container,sim_params,model)
-
-        # write measurements to file
-        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
-
-        # reset measurements container
-        measurement_time += @elapsed reset_measurements!(container,model)
     end
 
     # calculating the average number of iterations needed to solve linear system
@@ -115,7 +132,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     # close log files
     close(μ_tuner.logfile)
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate
 end
 
 """
@@ -123,42 +140,36 @@ Run Hybrid Monte Carlo simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_hmc::HybridMonteCarlo, burnin_hmc::HybridMonteCarlo, fa::FourierAccelerator,
-                         measurement_info::Dict, preconditioner)
+                         container::NamedTuple, preconditioner, burnin_start::Int=1, sim_start::Int=1,
+                         simulation_time::AbstractFloat=0.0, measurement_time::AbstractFloat=0.0, write_time::AbstractFloat=0.0,
+                         iters::AbstractFloat=0.0, accepted_updates::Int=0)
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
     ###############################################################
 
-    # initialize measurements container
-    container = initialize_measurements_container(model,measurement_info)
+    # previous epoch time
+    t_prev = 0.0
 
-    # initialize measurement files
-    initialize_measurement_files!(container,sim_params)
-
-    # keeps track of number of iterations needed to solve linear system
-    iters = 0.0
-
-    # counts the number of accepted updates
-    accepted_updates = 0
-
-    # time taken on langevin dynamics
-    simulation_time = 0.0
-
-    # time take on making measurements and write them to file
-    measurement_time = 0.0
-
-    # time taken writing data to file
-    write_time = 0.0
+    # current epoch time
+    t_new = time() 
 
     ##############################################
     ## RUNNING SIMULATION: THERMALIZATION STEPS ##
     ##############################################
 
-    # frequency with which to update μ if tuning the denisty
-    μ_update_freq = max(sim_params.meas_freq,1)
-
     # thermalizing system
-    for t in 1:sim_params.burnin
+    for n in burnin_start:sim_params.burnin
+
+        # check if checkpoint needs to be written
+        t_new = time()
+        if (t_new-t_prev) > sim_params.chckpnt_freq
+            t_prev = t_new
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=n, sim_start=1,
+                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                      iters=iters, accepted_updates=accepted_updates)
+            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+        end
 
         simulation_time  += @elapsed accepted, niters = HMC.update!(model,burnin_hmc,fa,preconditioner)
         iters            += niters
@@ -178,38 +189,54 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     ## RUNNING SIMULATION: MEASUREMENT STEPS ##
     ###########################################
 
-    # iterate over bins
-    for bin in 1:sim_params.num_bins
+    # iterate over hmc updates
+    for n in sim_start:sim_params.nsteps
 
-        # iterating over the size of each bin i.e. the number of measurements made per bin
-        for n in 1:sim_params.bin_size
+        # check if checkpoint needs to be written
+        t_new = time()
+        if (t_new-t_prev) > sim_params.chckpnt_freq
+            t_prev = t_new
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=n,
+                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                      iters=iters, accepted_updates=accepted_updates)
+            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+        end
 
-            # iterating over number of HMC updates between measurements
-            for i in 1:sim_params.meas_freq
+        # do hybrid monte carlo update
+        simulation_time  += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
+        iters            += niters
+        accepted_updates += accepted
 
-                # do hybrid monte carlo update
-                simulation_time  += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
-                iters            += niters
-                accepted_updates += accepted
-            end
+        # if time to perform measurements (almost always yes)
+        if n%sim_params.meas_freq==0
 
-            # making measurements
+            # perform measurements
             measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
                 simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
             end
+
+            # get measurement number
+            nmeas = div(n,sim_params.meas_freq)
+
+            # if bin of measurements is full
+            if nmeas%sim_params.bin_size==0
+
+                # calculate bin number
+                bin = div(nmeas,sim_params.bin_size)
+
+                # process measurements
+                measurement_time += @elapsed process_measurements!(container,sim_params,model)
+
+                # write measurements to file
+                write_time += @elapsed write_measurements!(container,sim_params,model,bin)
+
+                # reset measurements container
+                measurement_time += @elapsed reset_measurements!(container,model)
+            end
         end
-
-        # process measurements
-        measurement_time += @elapsed process_measurements!(container,sim_params,model)
-
-        # write measurements to file
-        write_time += @elapsed write_measurements!(container,sim_params,model,bin)
-
-        # reset measurements container
-        measurement_time += @elapsed reset_measurements!(container,model)
     end
 
     # calculating the average number of iterations needed to solve linear system
@@ -226,7 +253,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     # close log files
     close(simulation_hmc.logfile)
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate, container
+    return simulation_time, measurement_time, write_time, iters, acceptance_rate
 end
 
 end

@@ -2,6 +2,7 @@ module ElPhDynamics
 
 using LinearAlgebra
 using FFTW
+using TOML
 
 #######################
 ## INCLUDING MODULES ##
@@ -53,7 +54,7 @@ include("ProcessInputFile.jl")
 ####################################
 
 using ..RunSimulation: run_simulation!
-using ..ProcessInputFile: process_input_file, initialize_model
+using ..ProcessInputFile: process_input_file, process_checkpoint, initialize_model
 using ..Models: read_phonons!
 using ..MuFinder: MuTuner, update_μ!
 using ..SimulationSummary: write_simulation_summary!
@@ -67,31 +68,66 @@ To run a simulation execute the following command:
 """
 function simulate(args)
 
+    # set the number of threads used by BLAS and FFTW libraries
     BLAS.set_num_threads(1)
     FFTW.set_num_threads(1)
 
-    ########################
-    ## READING INPUT FILE ##
-    ########################
+    ######################
+    ## READ CONFIG FILE ##
+    ######################
 
     # getting iput filename
-    input_file = args[1]
+    config_file = args[1]
 
-    # precoessing input file
-    model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, input = process_input_file(input_file)
+    # read input file
+    input = TOML.parsefile(config_file)
 
-    ########################
-    ## RUNNING SIMULATION ##
-    ########################
+    # construct data folder name
+    filepath   = input["simulation"]["filepath"]
+    foldername = input["simulation"]["foldername"]
+    if length(args)==1
+        datafolder = name_datafolder(filepath,foldername)
+    else
+        id = parse(Int,args[2])
+        datafolder = name_datafolder(filepath,foldername,id)
+    end
+    input["simulation"]["datafolder"] = datafolder
 
-    simulation_time, measurement_time, write_time, iters, acceptance_rate, container = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, input["measurements"], preconditioner)
+    ###########################
+    ## INITIALIZE SIMULATION ##
+    ###########################
 
-    ###################################
-    ## SUMARIZING SIMULATION RESULTS ##
-    ###################################
+    if isdir(datafolder) # resume previous simulation
 
-    write_simulation_summary!(model, sim_params, μ_tuner, container, input, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+        # extract state from checkpoint
+        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, container,
+        burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates) = process_checkpoint(input)
 
+    else # start new simulation
+
+        # initialize new simulation
+        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, container,
+        burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)  = process_input_file(config_file,input)
+    end
+
+    ####################
+    ## RUN SIMULATION ##
+    ####################
+
+    if sim_start < sim_params.nsteps
+        simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, container, preconditioner,
+                                                                                                burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)
+    end
+
+    #################################
+    ## SUMARIZE SIMULATION RESULTS ##
+    #################################
+
+    if sim_start < sim_params.nsteps
+        write_simulation_summary!(model, sim_params, μ_tuner, container, input, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+    end
+
+    return nothing
 end
 
 
@@ -112,6 +148,35 @@ function load_model(dir::String)
     read_phonons!(model, phonon_file)
     
     return model
+end
+
+###########################################
+## PRIVATE METHODS THAT ARE NOT EXPORTED ##
+###########################################
+
+"""
+Name the data folder.
+"""
+function name_datafolder(filepath::String,foldername::String,id::Int=0)
+
+    # data folder name without id at end
+    key = joinpath(filepath,foldername)
+
+    if id>0 # if ID given then attach to end of key
+        datafolder = "$key-$id"
+    else # determine the ID
+        id = 1
+        while true
+            datafolder = "$key-$id"
+            if !isdir(datafolder)
+                break
+            else
+                id += 1
+            end
+        end
+    end
+
+    return datafolder
 end
 
 end

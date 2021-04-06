@@ -39,9 +39,9 @@ mutable struct MuTuner{T<:AbstractFloat}
     μ_avg       :: T
     μ_err       :: T
     log         :: Bool
-    logfile     :: IOStream
+    logfile     :: String
 
-    function MuTuner(active::Bool, init_μ::T, target_N::T, N::Int, β::T, Δτ::T, forgetful_c::T, κ_min::T, log::Bool, logfilename::String) where{T<:AbstractFloat}
+    function MuTuner(active::Bool, init_μ::T, target_N::T, N::Int, β::T, Δτ::T, forgetful_c::T, κ_min::T, log::Bool, logfile::String) where{T<:AbstractFloat}
 
         L       = round(Int,β/Δτ)
         μ_traj  = [init_μ]
@@ -52,11 +52,10 @@ mutable struct MuTuner{T<:AbstractFloat}
         N_bar_traj  = Vector{T}()
         N²_bar_traj = Vector{T}()
 
-        logfile = open(logfilename,"w")
-        if active
-            write(logfile,"mu_bar kappa_bar n_bar Nsqr_bar mu n Nsqr\n")
-        else
-            close(logfile)
+        if !isfile(logfile)
+            open(logfile,"w") do file
+                write(file,"mu_bar kappa_bar n_bar Nsqr_bar mu n Nsqr\n")
+            end
         end
 
         return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, 0.0, κ_min, -1.0, 0.0, -1.0,
@@ -141,9 +140,9 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
 
     # write to log file
     if tuner.active && tuner.log
-        line = @sprintf("%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n", tuner.μ_bar, tuner.κ_bar/tuner.N, tuner.N_bar/tuner.N, tuner.N²_bar, tuner.μ, N/tuner.N, N²)
-        write(tuner.logfile, line)
-        flush(tuner.logfile)
+        open(tuner.logfile,"a") do file
+            @printf file "%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar (tuner.κ_bar/tuner.N) tuner.N_bar/tuner.N tuner.N²_bar tuner.μ (N/tuner.N) N²
+        end
     end
 
     # calculate new μ value
@@ -179,21 +178,16 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
 
         # write trajectories to logfile if not already written
         if !tuner.log
-
-            # iterate over trajectory
-            for i in 1:length(tuner.N_traj)
-                # size in lattice
-                N = tuner.N
-                # write data to log file
-                line = @sprintf("%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n",
-                                tuner.μ_bar_traj[i], tuner.κ_bar_traj[i]/N, tuner.N_bar_traj[i]/N, tuner.N²_bar_traj[i],
-                                tuner.μ_traj[i], tuner.N_traj[i]/N, tuner.N²_traj[i])
-                write(tuner.logfile,line)
+            # size in lattice
+            N = tuner.N
+            # open logfile
+            open(tuner.logfile,"w") do file
+                # iterate over trajectory
+                for i in 1:length(tuner.N_traj)
+                    @printf file "%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar_traj[i] (tuner.κ_bar_traj[i]/N) (tuner.N_bar_traj[i]/N) tuner.N²_bar_traj[i] tuner.μ_traj[i] (tuner.N_traj[i]/N) tuner.N²_traj[i]
+                end
             end
         end
-
-        # close log file
-        close(tuner.logfile)
 
         return nothing
     else

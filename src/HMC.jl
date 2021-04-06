@@ -203,7 +203,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     iters::Int
 
     function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
-                              log::Bool=false, verbose::Bool=false, logfilename::String="") where {T<:AbstractFloat}
+                              log::Bool=false, verbose::Bool=false, logfilename::String="",updates::Int=1) where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
         @assert 0.0 <= α < 1.0
@@ -243,7 +243,6 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         # checking conditions on parameters
         @assert 0.0 <= α < 1.0
 
-        updates  = 0
         t        = 0
         accepted = false
         H        = 0.0
@@ -263,13 +262,12 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     end
 
     function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
-                              log::Bool=false, verbose::Bool=false, logfilename::String="") where {T<:AbstractFloat}
+                              log::Bool=false, verbose::Bool=false, logfilename::String="",updates::Int=1) where {T<:AbstractFloat}
 
         @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u, y = hmc
         Nt  = round(Int,tr/Δt)
         Δt′ = Δt/Nb
 
-        updates  = 0
         t        = 0
         accepted = false
         H        = 0.0
@@ -277,8 +275,12 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         K        = 0.0
         iters    = 0
 
-        logfile = open(logfilename,"w")
-        write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
+        if isfile(logfilename)
+            logfile = open(logfilename,"a")
+        else
+            logfile = open(logfilename,"w")
+            write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
+        end
     
         return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
                       log, verbose, logfile, updates, t, accepted, H, S, K, iters)
@@ -319,9 +321,6 @@ function update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::Fou
     # only do an update if the model has a non-zero number of degrees of freedom.
     if hmc.Ndof > 0
 
-        # increment HMC update counter
-        hmc.updates += 1
-
         # set HMC timestep to zero
         hmc.t = 0
 
@@ -336,6 +335,9 @@ function update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::Fou
             hmc.t = -1
             update_log(hmc,model,fa)
         end
+
+        # increment HMC update counter
+        hmc.updates += 1
 
         return accepted, iters
     else

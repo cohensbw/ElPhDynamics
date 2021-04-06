@@ -2148,10 +2148,10 @@ function measure_PhononGreens!(container::Array{Complex{T1},6},model::SSHModel{T
 
     # iterate over bonds
     for b₂ in 1:nᵥ
-        # associated phonon fields
-        @views @. x₂ = x[:,:,:,:,b₂]
         # iterate over bonds
         for b₁ in 1:nᵥ
+            # associated phonon fields
+            @views @. x₂ = x[:,:,:,:,b₂]
             # associated phonon fields
             @views @. x₁ = x[:,:,:,:,b₁]
             # calculate translation average
