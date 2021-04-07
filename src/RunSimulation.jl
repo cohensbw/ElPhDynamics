@@ -46,7 +46,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     μ_update_freq = max(sim_params.meas_freq,1)
 
     # iterate over thermalization timesteps
-    for t in burnin_start:sim.burnin
+    for t in burnin_start:sim_params.burnin
 
         # check if checkpoint need to be written
         t_new = time()
@@ -55,7 +55,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=t, sim_start=1,
                       simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
                       iters=iters, accepted_updates=accepted_updates)
-            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         # update phonon fields
@@ -82,7 +82,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=t,
                       simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
                       iters=iters, accepted_updates=accepted_updates)
-            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         # udpate phonon fields
@@ -116,6 +116,14 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
                 # reset measurements container
                 measurement_time += @elapsed reset_measurements!(container,model)
+
+                # write checkpoint
+                t_new = time()
+                t_prev = t_new
+                chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=t+1,
+                          simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                          iters=iters, accepted_updates=accepted_updates)
+                write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
             end
         end
     end
@@ -128,9 +136,6 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     measurement_time /= 60.0
     write_time       /= 60.0
     acceptance_rate   = 1.0
-
-    # close log files
-    close(μ_tuner.logfile)
 
     return simulation_time, measurement_time, write_time, iters, acceptance_rate
 end
@@ -168,7 +173,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=n, sim_start=1,
                       simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
                       iters=iters, accepted_updates=accepted_updates)
-            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         simulation_time  += @elapsed accepted, niters = HMC.update!(model,burnin_hmc,fa,preconditioner)
@@ -199,7 +204,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=n,
                       simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
                       iters=iters, accepted_updates=accepted_updates)
-            serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         # do hybrid monte carlo update
@@ -235,6 +240,14 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
 
                 # reset measurements container
                 measurement_time += @elapsed reset_measurements!(container,model)
+
+                # write checkpoint
+                t_new = time()
+                t_prev = t_new
+                chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=n+1,
+                          simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
+                          iters=iters, accepted_updates=accepted_updates)
+                write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
             end
         end
     end

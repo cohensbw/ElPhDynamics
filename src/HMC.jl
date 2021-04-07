@@ -250,10 +250,13 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         K        = 0.0
         iters    = 0
 
-        logfile = open(logfilename,"w")
-        if log
-            write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
+        if isfile(logfilename)
+            logfile = open(logfilename,"a")
         else
+            logfile = open(logfilename,"w")
+            write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
+        end
+        if !log
             close(logfile)
         end
 
@@ -280,6 +283,9 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         else
             logfile = open(logfilename,"w")
             write(logfile,"updates accepted timestep tot_energy action kin_energy iters\n")
+        end
+        if !log
+            close(logfile)
         end
     
         return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
