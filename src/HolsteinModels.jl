@@ -19,7 +19,7 @@ import Base: eltype, size, length, *
 import LinearAlgebra: mul!, ldiv!, transpose!
 import Random: randn!
 
-mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
+mutable struct HolsteinModel{T1,T2,T3,T4} <: AbstractModel{T1,T2,T3,T4}
 
     ################################
     ## COMPLETE MODEL HAMILTONIAN ##
@@ -174,6 +174,11 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     solver::T3
 
     """
+    Random Number Generator
+    """
+    rng::T4
+
+    """
     data folder
     """
     datafolder::String
@@ -186,7 +191,7 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     Constructor for Holstein type.
     """
     function HolsteinModel(lattice::Lattice{T1}, β::T1, Δτ::T1;
-                           is_complex::Bool=false, iterativesolver::String="cg",
+                           is_complex::Bool=false, iterativesolver::String="cg",rng::AbstractRNG,
                            tol::T1=1e-4, maxiter::Int=10000, restart::Int=-1) where {T1<:AbstractFloat}
 
         # define data type of matrix elements of M matrix
@@ -295,12 +300,15 @@ mutable struct HolsteinModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         # get data type of iterative solver used
         T3 = typeof(solver)
 
+        # declare random number generator
+        T4  = typeof(rng)
+
         # constructing holstein model
-        return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
-                             lattice, x, expnΔτV,
-                             bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
-                             μ, ω, ω₄, λ, λ₂, ωᵢⱼ, neighbor_table_ωᵢⱼ, sign_ωᵢⱼ,
-                             mul_by_M, transposed, v′, v″, v‴, solver,"")
+        return new{T1,T2,T3,T4}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
+                                lattice, x, expnΔτV,
+                                bond_definitions, t, checkerboard_perm, cosht, sinht, neighbor_table,
+                                μ, ω, ω₄, λ, λ₂, ωᵢⱼ, neighbor_table_ωᵢⱼ, sign_ωᵢⱼ,
+                                mul_by_M, transposed, v′, v″, v‴, solver,rng,"")
     end
 
 end
@@ -315,12 +323,12 @@ Assign chemical potential in model for given type of orbital.
 function assign_μ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
-        R = randn(holstein.Nsites)
+        R = randn(holstein.rng,holstein.Nsites)
         @. holstein.μ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nsites
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.μ[i] = μ0 + σ0 * randn()
+                holstein.μ[i] = μ0 + σ0 * randn(holstein.rng)
             end
         end
     end
@@ -334,12 +342,12 @@ Assign electron-phonon coupling in model for given type of orbital.
 function assign_λ!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
-        R = randn(holstein.Nph)
+        R = randn(holstein.rng,holstein.Nph)
         @. holstein.λ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nph
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.λ[i] = μ0 + σ0 * randn()
+                holstein.λ[i] = μ0 + σ0 * randn(holstein.rng)
             end
         end
     end
@@ -353,12 +361,12 @@ Assign electron-phonon coupling in model for given type of orbital.
 function assign_λ₂!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
-        R = randn(holstein.Nph)
+        R = randn(holstein.rng,holstein.Nph)
         @. holstein.λ₂ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nph
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.λ₂[i] = μ0 + σ0 * randn()
+                holstein.λ₂[i] = μ0 + σ0 * randn(holstein.rng)
             end
         end
     end
@@ -372,12 +380,12 @@ Assign phonon frequency in model.
 function assign_ω!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
-        R = randn(holstein.Nph)
+        R = randn(holstein.rng,holstein.Nph)
         @. holstein.ω = μ0 + σ0 * R
     else
         for i in 1:holstein.Nph
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.ω[i] = μ0 + σ0 * randn()
+                holstein.ω[i] = μ0 + σ0 * randn(holstein.rng)
             end
         end
     end
@@ -391,12 +399,12 @@ Assign coefficient for quartic phonon term.
 function assign_ω₄!(holstein::HolsteinModel,μ0::T,σ0::T,orbit::Int=0) where {T<:AbstractFloat}
 
     if orbit==0
-        R = randn(holstein.Nsites)
+        R = randn(holstein.rng,holstein.Nsites)
         @. holstein.ω₄ = μ0 + σ0 * R
     else
         for i in 1:holstein.Nsites
             if holstein.lattice.site_to_orbit[i]==orbit
-                holstein.ω₄[i] = μ0 + σ0 * randn()
+                holstein.ω₄[i] = μ0 + σ0 * randn(holstein.rng)
             end
         end
     end
@@ -429,7 +437,7 @@ function assign_t!(holstein::HolsteinModel{T1,T2,T3}, t::T2, σt::T2, o₁::Int,
     phase = t/abs(t)
 
     # adding new hopping values
-    t_new = @. phase * ( fill(abs(t),Nnewneighbors) + σt*randn(Nnewneighbors) )
+    t_new = @. phase * ( fill(abs(t),Nnewneighbors) + σt*randn(holstein.rng,Nnewneighbors) )
     append!(holstein.t, t_new)
 
     return nothing
@@ -450,7 +458,7 @@ function assign_ωᵢⱼ!(holstein::HolsteinModel{T1,T2,T3}, μω::T1, σω::T1,
     holstein.neighbor_table = hcat(holstein.neighbor_table,newneighbors)
 
     # adding new hopping values
-    append!(holstein.ωᵢⱼ, fill(μω,Nnewneighbors) + σω*randn(Nnewneighbors) )
+    append!(holstein.ωᵢⱼ, fill(μω,Nnewneighbors) + σω*randn(holstein.rng,Nnewneighbors) )
 
     # updating neighbor table and parameter values
     assign_ωᵢⱼ!(holstein,μω,σω,o1,o2,v)
@@ -546,7 +554,7 @@ Fill vector that will ultimate be used to update fields in model.
 function randn!(v::AbstractVector{T},holstein::HolsteinModel{T}) where {T}
 
     # fill with random numbers
-    randn!(v)
+    randn!(holstein.rng,v)
 
     return nothing
 end

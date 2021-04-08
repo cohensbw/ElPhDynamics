@@ -1,5 +1,7 @@
 module InitializePhonons
 
+using Random
+
 using ..Models: HolsteinModel, SSHModel, update_model!
 using ..Utilities: get_index, reshaped
 
@@ -31,9 +33,9 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
         α    = ssh.α[phonon]
         ω    = ssh.ω[phonon]
         if iszero(α) || iszero(t)
-            x0 = sample_qho(ω,β)
+            x0 = sample_qho(ω,β,ssh.rng)
         else
-            x0 = (2.0*rand()-1.0)/5.0 * (t/α)
+            x0 = (2.0*rand(ssh.rng)-1.0)/5.0 * (t/α)
         end
 
         # iterate over imaginary time slices
@@ -78,8 +80,8 @@ function init_phonons_half_filled!(holstein::HolsteinModel{T1,T2}) where {T1,T2}
 
         # shift levy path by ammount corresponding having either
         # a density of 0, 1 or 2 on the site
-        x0 = -λ/ω^2 * rand(0:2)
-        xr = x0 + sample_qho(ω,β)
+        x0 = -λ/ω^2 * rand(holstein.rng,0:2)
+        xr = x0 + sample_qho(ω,β,holstein.rng)
         @. path = xr
     end
 
@@ -92,14 +94,14 @@ end
 """
 Samples the position distribution of a QHO with frequency `ω` at inverse temperature `β`.
 """
-function sample_qho(ω::T,β::T)::T where {T<:Number}
+function sample_qho(ω::T,β::T,rng::AbstractRNG)::T where {T<:Number}
     
     if ω>0
         σ = 1/sqrt(2*ω*tanh(β*ω/2))
     else
         σ = 1.0
     end
-    return σ*randn()
+    return σ*randn(rng)
 end
 
 end

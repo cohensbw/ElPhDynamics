@@ -76,7 +76,7 @@ struct SSHBond{T1<:AbstractFloat,T2<:Continuous} <: AbstractBond
     end
 end
 
-mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
+mutable struct SSHModel{T1,T2,T3,T4} <: AbstractModel{T1,T2,T3,T4}
 
     "Inverse temperature"
     β::T1
@@ -209,13 +209,18 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
     solver::T3
 
     """
+    Random Number Generator
+    """
+    rng::T4
+
+    """
     data folder
     """
     datafolder::String
 
 
     function SSHModel(lattice::Lattice{T1}, β::T1, Δτ::T1;
-                     is_complex::Bool=false, iterativesolver::String="cg",
+                     is_complex::Bool=false, iterativesolver::String="cg",rng::AbstractRNG,
                      tol::T1=1e-4, maxiter::Int=10000, restart::Int=-1) where {T1<:AbstractFloat}
 
         # determines data type of matrix elements of M
@@ -295,13 +300,16 @@ mutable struct SSHModel{T1,T2,T3} <: AbstractModel{T1,T2,T3}
         end
         T3 = typeof(solver)
 
-        return new{T1,T2,T3}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
-                             lattice, bond_definitions,
-                             x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
-                             field_to_phonon,field_to_τ,primary_field,
-                             phonon_to_bond, bond_to_phonon,bond_to_definition,
-                             checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
-                             mul_by_M, transposed, v′, v″, v‴, solver,"")
+        # type of random number generator
+        T4  = typeof(rng)
+
+        return new{T1,T2,T3,T4}(β,Δτ,Lτ,Nsites,Nbonds,Nph,Ndim,Ndof,nbonds,nph,
+                                lattice, bond_definitions,
+                                x,t,ω,ω₄,α,α₂,μ,expΔτμ,t′,
+                                field_to_phonon,field_to_τ,primary_field,
+                                phonon_to_bond, bond_to_phonon,bond_to_definition,
+                                checkerboard_perm,inv_checkerboard_perm,neighbor_table,cosht,sinht,
+                                mul_by_M, transposed, v′, v″, v‴, solver,rng,"")
     end
 end
 
@@ -326,7 +334,7 @@ function assign_μ!(ssh::SSHModel,μ::T1,σμ::T1,orbit::Int) where {T1<:Abstrac
     site_to_orbit = ssh.lattice.site_to_orbit::Vector{Int}
     for i in 1:ssh.Nsites
         if orbit==0 || orbit==site_to_orbit[i]
-            ssh.μ[i]      = μ + σμ * randn()
+            ssh.μ[i]      = μ + σμ * randn(ssh.rng)
             ssh.expΔτμ[i] = exp( ssh.Δτ * ssh.μ[i] )
         end
     end
@@ -371,7 +379,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         end
 
         # adding new hopppings for current bond
-        t_new = @. phase * ( fill(abs(t),Nnewbonds) + σt*randn(Nnewbonds) )
+        t_new = @. phase * ( fill(abs(t),Nnewbonds) + σt*randn(ssh.rng,Nnewbonds) )
         append!(ssh.t, t_new)
 
         # adding bond to definition mapping
@@ -387,11 +395,11 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             push!(names,name)
 
             # adding new phonon frequencies
-            ω_new = @. fill(ω,Nnewbonds) + σω*randn(Nnewbonds)
+            ω_new = @. fill(ω,Nnewbonds) + σω*randn(ssh.rng,Nnewbonds)
             append!(ssh.ω, ω_new)
 
             # adding anharmonic phonon coefficient
-            ω₄_new = @. fill(ω₄,Nnewbonds) + σω₄*randn(Nnewbonds)
+            ω₄_new = @. fill(ω₄,Nnewbonds) + σω₄*randn(ssh.rng,Nnewbonds)
             append!(ssh.ω₄, ω₄_new)
 
             # adding new linear electron-phonon coupling
@@ -400,7 +408,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             else
                 phase = α/abs(α)
             end
-            α_new = @. phase * ( fill(abs(α),Nnewbonds) + σα*randn(Nnewbonds) )
+            α_new = @. phase * ( fill(abs(α),Nnewbonds) + σα*randn(ssh.rng,Nnewbonds) )
             append!(ssh.α, α_new)
 
             # adding new non-linear electron-phonon coupling
@@ -409,7 +417,7 @@ function initialize_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
             else
                 phase = α₂/abs(α₂)
             end
-            α₂_new = @. phase * ( fill(abs(α₂),Nnewbonds) + σα₂*randn(Nnewbonds) )
+            α₂_new = @. phase * ( fill(abs(α₂),Nnewbonds) + σα₂*randn(ssh.rng,Nnewbonds) )
             append!(ssh.α₂, α₂_new)
 
             # adding phonon to bond mapping
@@ -559,7 +567,7 @@ Fill vector that will ultimate be used to update fields in model.
 function randn!(v::AbstractVector{T},ssh::SSHModel{T}) where {T}
 
     # fill with random numbers
-    randn!(v)
+    randn!(ssh.rng,v)
 
     # account for some fields being equivalent
     @views @. v = v[ssh.primary_field]

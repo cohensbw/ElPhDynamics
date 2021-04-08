@@ -272,7 +272,7 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
         update_A!(op)
 
         # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-        e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4)
+        e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4, op.model.rng)
 
         # compute λ_lo and λ_hi
         λ_lo = max(0.0 , (1-2*op.buf)*e_min)
@@ -841,7 +841,7 @@ end
 Computes a basis of the (n + 1)-Krylov subspace of A: the space spanned by {b, Ab, ..., A^n b}.
 Then use this to approximate the min and max eigenvalues of A.
 """
-function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}) where {T1<:Continuous,T2<:Continuous}
+function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}, rng::AbstractRNG) where {T1<:Continuous,T2<:Continuous}
 
     # dimension of Krylov subspace, must be >= 1
     n = size(h,2)
@@ -855,7 +855,7 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
 
     # randomize input vector
     for i in 1:m
-        b[i] = randn(T1)
+        b[i] = randn(rng,T1)
     end
 
     # normalize input vector
@@ -896,7 +896,7 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
 
     # randomize input vector
     for i in 1:m
-        b[i] = randn(T1)
+        b[i] = randn(rng,T1)
     end
 
     # normalize input vector

@@ -97,7 +97,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::EulerDynamics{T1}, fa::Fou
     randn!(η,model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
-    randn!(R)
+    randn!(model.rng,R)
     iters = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # dSdx ==> Q⋅dSdx
@@ -181,7 +181,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::RungeKuttaDynamics{T1}, fa
     randn!(η,model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
-    randn!(R)
+    randn!(model.rng,R)
     iters = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # get the update for the fields using euler method
@@ -194,7 +194,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::RungeKuttaDynamics{T1}, fa
     update_model!(model)
 
     # calculate dSdx = [∂S/∂x₁(1),...,∂S/∂xₙ(1),...,∂S/∂x₁(τ),...,∂S/∂xₙ(τ),...,∂S/∂x₁(Lτ),...,∂S/∂xₙ(Lτ)]
-    randn!(R)
+    randn!(model.rng,R)
     iters = calc_dSdx!(dSdx′, R, M⁻¹R, model, preconditioner)
 
     # revert back to original phonon fields
@@ -293,7 +293,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::HeunsDynamics{T1}, fa::Fou
 
     # 3. calcualte dS/dx
     update_model!(model)
-    randn!(R)
+    randn!(model.rng,R)
     iters1 = calc_dSdx!(dSdx, R, M⁻¹R, model, preconditioner)
 
     # 4. dΓ/dx  = [F⁻¹⋅Q⋅F]⋅dS/dx
@@ -307,7 +307,7 @@ function evolve!(model::AbstractModel{T1,T2,T3}, dyn::HeunsDynamics{T1}, fa::Fou
     update_model!(model)
 
     # 7. calculate dS/dx′
-    randn!(R)
+    randn!(model.rng,R)
     iters2 = calc_dSdx!(dSdx′, R, M⁻¹R, model, preconditioner)
 
     # 8. dΓ/dx′ = [F⁻¹⋅Q⋅F]⋅dS/dx′
@@ -357,7 +357,7 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Ab
     # things would no longer work, and a loop over each individual phonon field xᵢ(τ) would need to be added.
 
     # intialize random vector g.
-    randn!(g)
+    randn!(model.rng,g)
 
     # solve linear system to get M⁻¹⋅g
     iters = 0

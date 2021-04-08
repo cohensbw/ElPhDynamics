@@ -188,8 +188,8 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
     fill!(M⁻¹r₂,0.0)
 
     # initialize random vectors
-    randn!(r₁)
-    randn!(r₂)
+    randn!(model.rng,r₁)
+    randn!(model.rng,r₂)
 
     # setup preconditioner
     setup!(preconditioner)

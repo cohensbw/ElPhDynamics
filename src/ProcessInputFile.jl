@@ -31,13 +31,12 @@ export process_input_file, initialize_holstein_model
 
 
 function process_input_file(filename::String,input::Dict)
-    
-    ########################
-    ## READ IN INPUT FILE ##
-    ########################
 
-    # Input file must describe either a Langevin or a Hyrbid Monte Carlo Simulation but not both.
+    # Input file must describe either a Langevin or HMC Simulation but not both.
     @assert haskey(input,"hmc") ⊻ haskey(input,"langevin")
+
+    # Input file must describe either a Holstein or SSH model but not both.
+    @assert haskey(input,"holstein") ⊻ haskey(input,"ssh")
 
     ##################################
     ## DEFINE SIMULATION PARAMETERS ##
@@ -49,23 +48,22 @@ function process_input_file(filename::String,input::Dict)
     # copy input file into data folder
     cp(filename, joinpath(sim_params.datafolder,filename))
 
-    # initialize random number generator with seed
-    if !("random_seed" in keys(input["simulation"]))
-        input["simulation"]["random_seed"] = abs(rand(Int))
-    end
-    Random.seed!(input["simulation"]["random_seed"])
-    
-    # write current git commit tag of code to log file
-    @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("ElPhDynamics")), ".."))) )
-    logger = global_logger()
-    flush(logger.stream)
+    # # write current git commit tag of code to log file
+    # @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("ElPhDynamics")), ".."))) )
+    # logger = global_logger()
+    # flush(logger.stream)
 
     ######################
     ## INITIALIZE MODEL ##
     ######################
 
-    # initialize model
     model = initialize_model(input)
+
+    ##############################
+    ## INITIALIZE PHONON FIELDS ##
+    ##############################
+
+    initialize_phonon_fields!(input,model)
 
     #####################################
     ## TUNE DENSITY/CHEMICAL POTENTIAL ##
@@ -78,7 +76,6 @@ function process_input_file(filename::String,input::Dict)
     ## DEFINE PRECONDITIONER ##
     ###########################
 
-    # initiliaze preconditioner
     preconditioner = initialize_preconditioner(input,model)
     
     #################################
@@ -187,10 +184,17 @@ function initialize_model(input::Dict)
         error("Config file cannot include both ssh and holstein tables.")
     end
 
+    if !haskey(input,"holstein") && !haskey(input,"ssh")
+        error("No valid model table detected in config file.")
+    end
+
+    # initialize random number generator
+    rng = initialize_rng(input)
+
     if haskey(input,"holstein")
-        model = initialize_holstein_model(input)
+        model = initialize_holstein_model(input,rng)
     elseif haskey(input,"ssh")
-        model = initialize_ssh_model(input)
+        model = initialize_ssh_model(input,rng)
     else
         error("Neither holstein or ssh model defined.")
     end
@@ -204,7 +208,7 @@ end
 """
 Initialize Holstein Model from config file.
 """
-function initialize_holstein_model(input::Dict)
+function initialize_holstein_model(input::Dict,rng::AbstractRNG)
     
     # define lattice geometry
     unit_cell = UnitCell(input["lattice"]["ndim"],
@@ -228,6 +232,7 @@ function initialize_holstein_model(input::Dict)
                              input["holstein"]["dtau"],
                              is_complex      = false,
                              iterativesolver = input["solver"]["type"],
+                             rng             = rng,
                              tol             = input["solver"]["tol"],
                              maxiter         = input["solver"]["maxiter"],
                              restart         = restart)
@@ -312,25 +317,13 @@ function initialize_holstein_model(input::Dict)
     # initialize model
     initialize_model!(holstein)
 
-    # intialize phonon field
-    if !haskey(input["holstein"],"read_phonon_config")
-        input["holstein"]["read_phonon_config"] = false
-    end
-    if input["holstein"]["read_phonon_config"] # read in phonon field
-        phononfile = input["holstein"]["phonon_config_file"]
-        read_phonons!(holstein, phononfile)
-        cp(filename, joinpath(sim_params.datafolder,phononfile))
-    else # initialize to random phonon field
-        init_phonons_half_filled!(holstein)
-    end
-
     return holstein
 end
 
 """
 Initialize SSH model from config file.
 """
-function initialize_ssh_model(input::Dict)
+function initialize_ssh_model(input::Dict,rng::AbstractRNG)
     
     # define lattice geometry
     unit_cell = UnitCell(input["lattice"]["ndim"],
@@ -354,6 +347,7 @@ function initialize_ssh_model(input::Dict)
                    input["ssh"]["dtau"],
                    is_complex      = false,
                    iterativesolver = input["solver"]["type"],
+                   rng             = rng,
                    tol             = input["solver"]["tol"],
                    maxiter         = input["solver"]["maxiter"],
                    restart         = restart)
@@ -438,19 +432,34 @@ function initialize_ssh_model(input::Dict)
     # initialize model
     initialize_model!(ssh)
 
-    # intialize phonon field
-    if !haskey(input["ssh"],"read_phonon_config")
-        input["ssh"]["read_phonon_config"] = false
-    end
-    if input["ssh"]["read_phonon_config"] # read in phonon field
-        phononfile = input["ssh"]["phonon_config_file"]
-        read_phonons!(ssh, phononfile)
-        cp(filename, joinpath(sim_params.datafolder,phononfile))
-    else # initialize to random phonon field
-        init_phonons_half_filled!(ssh)
+    return ssh
+end
+
+"""
+Initialize Phonon Fields.
+"""
+function initialize_phonon_fields!(input::Dict,model::AbstractModel)
+
+    # determine type of el-ph hamiltonian
+    if haskey(input,"holstein")
+        model_type = "holstein"
+    else
+        model_type= "ssh"
     end
 
-    return ssh
+    # intialize phonon field
+    if !haskey(input[model_type],"read_phonon_config")
+        input[model_type]["read_phonon_config"] = false
+    end
+    if input[model_type]["read_phonon_config"] # read in phonon field
+        phononfile = input[model_type]["phonon_config_file"]
+        read_phonons!(model, phononfile)
+        cp(filename, joinpath(sim_params.datafolder,phononfile))
+    else # initialize to random phonon field
+        init_phonons_half_filled!(model)
+    end
+
+    return nothing
 end
 
 """
@@ -558,12 +567,32 @@ function initialize_simulation_params(input::Dict)
     end
 
     # create log for simulation
-    logfilename = joinpath(sim_params.datafolder, sim_params.foldername*".log")
+    logfilename = joinpath(sim_params.datafolder, "$(sim_params.foldername).log")
     logio       = open(logfilename,"w+")
     logger      = SimpleLogger(logio)
     global_logger(logger)
 
     return sim_params
+end
+
+"""
+Initialize Random Number Generator with Seed
+"""
+function initialize_rng(input::Dict)
+
+    # initialize random number generator with seed
+    if !haskey(input["simulation"],"random_seed")
+        input["simulation"]["random_seed"] = abs(rand(Int))
+    end
+    seed = input["simulation"]["random_seed"]
+    rng  = MersenneTwister(seed)
+
+    # write current git commit tag of code to log file
+    @info("Random Seed: $seed")
+    logger = global_logger()
+    flush(logger.stream)
+
+    return rng
 end
 
 """

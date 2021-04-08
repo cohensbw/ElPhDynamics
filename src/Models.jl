@@ -1,7 +1,7 @@
 module Models
 
 using LinearAlgebra
-
+using Random
 using Logging
 using Printf
 
@@ -62,12 +62,11 @@ Abstract type to represent models.
     T2: data type for matrix elements of M
     T3: data type describing which iterative solver is being used
 """
-abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver} end
+abstract type AbstractModel{T1<:AbstractFloat,T2<:Continuous,T3<:IterativeSolver,T4<:AbstractRNG} end
 
 # include code for models
 include("HolsteinModels.jl")
 include("SSHModels.jl")
-
 
 """
 Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b.

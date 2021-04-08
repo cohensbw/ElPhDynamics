@@ -213,7 +213,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
 
         x0     = zeros(T,Ndof)
         dSdx   = zeros(T,Ndof)
-        v      = randn(T,Ndof)
+        v      = zeros(T,Ndof)
         v0     = zeros(T,Ndof)
 
         R      = zeros(T,Ndim)
@@ -452,7 +452,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     P = min(1.0, exp(-ΔH))
 
     # Metropolis-Hasting Accept/Reject Step
-    if rand() < P # if accepted
+    if rand(model.rng) < P # if accepted
 
         hmc.accepted = true
         return hmc.accepted, T1(cld(iters,Nt+2))
@@ -591,7 +591,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
 
     # calculate final energy
-    H₁, S, K = calc_H(hmc, model, fa)
+    H₁, S, K = calc_H(hmc,model,fa)
 
     # calculate change in energy
     ΔH = H₁ - H₀
@@ -600,7 +600,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     P = min(1.0, exp(-ΔH))
 
     # Metropolis-Hasting Accept/Reject Step
-    if rand() < P # if accepted
+    if rand(model.rng) < P # if accepted
 
         hmc.accepted = true
         return hmc.accepted, T1(cld(iters,Nt+2))
@@ -630,21 +630,7 @@ and `Q` is the fourier acceleration matrix and `M` is the dynamical mass matrix.
 More specifically, this function supports partial momentum refreshes of the
 form `v = α⋅v + √(1-α²)⋅v′` where `v′=√(Q)⋅R=√(M⁻¹)⋅R`⋅
 """
-function refresh_v!(hmc::HybridMonteCarlo{T},model::HolsteinModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
-
-    R       = hmc.y
-    sqrtQR  = hmc.y
-    v       = hmc.v
-    α       = hmc.α
-
-    randn!(R,model)
-    fourier_accelerate!(sqrtQR,fa,R,-0.5,use_mass=true)
-    @. v = α*v + sqrt(1.0-α^2)*sqrtQR
-
-    return nothing
-end
-
-function refresh_v!(hmc::HybridMonteCarlo{T},model::SSHModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
+function refresh_v!(hmc::HybridMonteCarlo{T},model::AbstractModel{T},fa::FourierAccelerator{T}) where {T<:AbstractFloat}
 
     R       = hmc.y
     sqrtQR  = hmc.y
@@ -681,7 +667,7 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     # REFRESH ϕ₊
 
     # ϕ₊ = Mᵀ⋅R₊
-    randn!(R)
+    randn!(model.rng,R)
     mulMᵀ!(ϕ₊,model,R)
 
     # intially M⁻ᵀ⋅ϕ₊ = R₊
@@ -694,7 +680,7 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     # REFRESH ϕ₋
 
     # ϕ₋ = Mᵀ⋅R₋
-    randn!(R)
+    randn!(model.rng,R)
     mulMᵀ!(ϕ₋,model,R)
 
     # intially M⁻ᵀ⋅ϕ₋ = R₋
@@ -970,24 +956,24 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
     return hmc.iters
 end
 
-"""
-Apply the BDP thermostat as defined in equation A7 of the appendix of the paper
-"Canonical sampling through velocity rescaling"
-"""
-function bdp_thermostat!(v::AbstractVector{T},R::AbstractVector{T},K::T,τ::T,Δt::T) where {T<:AbstractFloat}
+# """
+# Apply the BDP thermostat as defined in equation A7 of the appendix of the paper
+# "Canonical sampling through velocity rescaling"
+# """
+# function bdp_thermostat!(v::AbstractVector{T},R::AbstractVector{T},K::T,τ::T,Δt::T) where {T<:AbstractFloat}
 
-    if isfinite(τ)
-        randn!(R)
-        R² = norm(R)^2
-        R₁ = R[1]
-        N  = length(v)
-        K̄  = N/2
-        c  = exp(-Δt/τ)
-        α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
-        @. v = sqrt(α²) * v
-    end
+#     if isfinite(τ)
+#         randn!(R)
+#         R² = norm(R)^2
+#         R₁ = R[1]
+#         N  = length(v)
+#         K̄  = N/2
+#         c  = exp(-Δt/τ)
+#         α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
+#         @. v = sqrt(α²) * v
+#     end
 
-    return nothing
-end
+#     return nothing
+# end
 
 end
