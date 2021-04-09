@@ -141,7 +141,7 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     # write to log file
     if tuner.active && tuner.log
         open(tuner.logfile,"a") do file
-            @printf file "%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar (tuner.κ_bar/tuner.N) tuner.N_bar/tuner.N tuner.N²_bar tuner.μ (N/tuner.N) N²
+            @printf file "%.5f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar (tuner.κ_bar/tuner.N) (tuner.N_bar/tuner.N) tuner.N²_bar tuner.μ (N/tuner.N) N²
         end
     end
 
@@ -184,7 +184,7 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
             open(tuner.logfile,"w") do file
                 # iterate over trajectory
                 for i in 1:length(tuner.N_traj)
-                    @printf file "%5.f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar_traj[i] (tuner.κ_bar_traj[i]/N) (tuner.N_bar_traj[i]/N) tuner.N²_bar_traj[i] tuner.μ_traj[i] (tuner.N_traj[i]/N) tuner.N²_traj[i]
+                    @printf file "%.5f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar_traj[i] (tuner.κ_bar_traj[i]/N) (tuner.N_bar_traj[i]/N) tuner.N²_bar_traj[i] tuner.μ_traj[i] (tuner.N_traj[i]/N) tuner.N²_traj[i]
                 end
             end
         end
