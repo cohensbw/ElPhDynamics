@@ -96,7 +96,7 @@ function process_input_file(filename::String,input::Dict)
     #########################
 
     # construct object of estimating Green's function
-    Gr = EstimateGreensFunction(model)
+    Gr = EstimateGreensFunction(model,input["measurements"]["num_random_vectors"])
 
     # construct measurements container
     container = initialize_measurements_container(model,input["measurements"])
@@ -159,7 +159,7 @@ function process_checkpoint(input::Dict)
     ## INITIALIZE GREENS FUNCTION ESTIMATOR ##
     ##########################################
 
-    Gr = EstimateGreensFunction(model)
+    Gr = EstimateGreensFunction(model,input["measurements"]["num_random_vectors"])
 
     ###################################
     ## INITIALIZE FOUIER ACCELERATOR ##

@@ -11,7 +11,7 @@ using ..Utilities: get_index, get_site, get_τ, θ, δ, reshaped, translational_
 using ..Models: HolsteinModel, SSHModel, AbstractModel
 using ..SimulationParams: SimulationParameters
 using ..GreensFunctions: EstimateGreensFunction, update!, estimate
-using ..GreensFunctions: measure_GΔ0, measure_GΔ0_GΔ0, measure_GΔΔ_G00, measure_GΔ0_G0Δ
+using ..GreensFunctions: update!, setup!, measure_GΔ0, measure_GΔ0_GΔ0, measure_GΔΔ_G00, measure_GΔ0_G0Δ
 
 export initialize_measurements_container
 export initialize_measurement_files!
@@ -376,13 +376,19 @@ Make measurements.
 """
 function make_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction,preconditioner)
 
-    for i in 1:container.n_rand_vecs
-        update!(Gr,model,preconditioner)
-        make_global_measurements!(container,model,Gr)
-        measure_onsite_correlations!(container,model,Gr)
-        measure_intersite_correlations!(container,model,Gr)
-        make_onsite_measurements!(container,model,Gr)
-        make_intersite_measurements!(container,model,Gr)
+    # sample new random vectors and solve corresponding linear systems
+    update!(Gr,model,preconditioner)
+
+    # iterate over all possible pairs of random vectors
+    for i in 1:(Gr.nᵥ-1)
+        for j in (i+1):Gr.nᵥ
+            setup!(Gr,i,j)
+            make_global_measurements!(container,model,Gr)
+            measure_onsite_correlations!(container,model,Gr)
+            measure_intersite_correlations!(container,model,Gr)
+            make_onsite_measurements!(container,model,Gr)
+            make_intersite_measurements!(container,model,Gr)
+        end
     end
     return nothing
 end
@@ -416,7 +422,7 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
     n_rand_vecs = container.n_rand_vecs
 
     # normalization constant
-    V = bin_size * n_rand_vecs
+    V = bin_size * binomial(n_rand_vecs,2)
 
     # normalize global measurements
     global_meas = container.global_meas

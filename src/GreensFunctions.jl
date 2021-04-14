@@ -4,11 +4,12 @@ using Statistics
 using Random
 using LinearAlgebra
 using FFTW
+using Parameters
 
 using ..Models: AbstractModel, mulMᵀ!, mulM!, update_model!
 using ..Utilities: get_index, get_site, get_τ, reshaped
 
-using ..KPMPreconditioners: setup!
+using ..KPMPreconditioners
 
 export EstimateGreensFunction, update!, measure_GΔ0, measure_GΔ0_G0Δ, measure_GΔ0_GΔ0, measure_GΔΔ_G00, estimate
 
@@ -19,8 +20,23 @@ export EstimateGreensFunction, update!, measure_GΔ0, measure_GΔ0_G0Δ, measure
 """
 A type for facilitating the stochastic estimation needed to make measurements
 """
-struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
+mutable struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.Plan}
 
+    """
+    Number of random vectors to be use.
+    """
+    nᵥ::Int
+
+    """
+    First in pair of random vectors to convolve together.
+    """
+    n₁::Int
+
+    """
+    Second in pair of random vectors to convolve together.
+    """
+    n₂::Int
+    
     """
     Number of degrees of freedom.
     """
@@ -55,6 +71,16 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
     Number of sites/orbitals per unit cell.
     """
     nₛ::Int
+
+    """
+    All the random vectors.
+    """
+    R::Vector{Vector{T}}
+
+    """
+    All solutions to linear systems associated with random vectors.
+    """
+    M⁻¹R::Vector{Vector{T}}
 
     """
     First random vector of length NL.
@@ -135,8 +161,9 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
     """
     Constructor for GreensFunction.
     """
-    function EstimateGreensFunction(model::AbstractModel{T}) where {T<:AbstractFloat}
+    function EstimateGreensFunction(model::AbstractModel{T},nᵥ::Int=2) where {T<:AbstractFloat}
 
+        nᵥ      = max(2,nᵥ)
         NL      = model.Ndim
         N       = model.Nsites
         L       = model.Lτ
@@ -144,10 +171,12 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
         L₂      = model.lattice.L2
         L₁      = model.lattice.L1
         nₛ      = model.lattice.unit_cell.norbits
-        r₁      = zeros(T,NL)
-        r₂      = zeros(T,NL)
-        M⁻¹r₁   = zeros(T,NL)
-        M⁻¹r₂   = zeros(T,NL)
+        R       = [zeros(T,NL) for _ in 1:nᵥ]
+        M⁻¹R    = [zeros(T,NL) for _ in 1:nᵥ]
+        r₁      = R[1]
+        r₂      = R[2]
+        M⁻¹r₁   = M⁻¹R[1]
+        M⁻¹r₂   = M⁻¹R[2]
         GΔ0     = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
         GΔΔ_G00 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
         GΔ0_GΔ0 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
@@ -162,57 +191,71 @@ struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:Ab
         Tfft    = typeof(pfft)
         Tifft   = typeof(pifft)
 
-        return new{T,Tfft,Tifft}(NL,L,N,L₃,L₂,L₁,nₛ,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab′,ab″,z)
+        return new{T,Tfft,Tifft}(nᵥ,1,2,NL,L,N,L₃,L₂,L₁,nₛ,R,M⁻¹R,r₁,r₂,M⁻¹r₁,M⁻¹r₂,GΔ0,GΔΔ_G00,GΔ0_GΔ0,GΔ0_G0Δ,pfft,pifft,a,b,ab′,ab″,z)
     end
 end
 
 """
-Updates the estimate of the Green's Function based on current phonon field configuration.
+Update Green's functions with new random vectors.
 """
 function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) where {T<:AbstractModel}
 
-    r₁    = estimator.r₁
-    r₂    = estimator.r₂
-    M⁻¹r₁ = estimator.M⁻¹r₁
-    M⁻¹r₂ = estimator.M⁻¹r₂
-    L     = estimator.L
+    # update preconditioner
+    KPMPreconditioners.setup!(preconditioner)
+
+    # iterate over number or random vectors
+    for i in 1:estimator.nᵥ
+
+        # get random and solution vectors
+        R    = estimator.R[i]
+        M⁻¹R = estimator.M⁻¹R[i]
+
+        # initialize random vector with new random number
+        randn!(R)
+        fill!(M⁻¹R,0.0)
+
+        # solve linear system
+        if model.mul_by_M
+            model.transposed = false
+            # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
+            iters, err = ldiv!(M⁻¹R, model, R, preconditioner)
+        else
+            model.transposed = false
+            # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₁
+            MᵀR = model.v″
+            mulMᵀ!(MᵀR, model, R)
+            iters, err = ldiv!(M⁻¹R, model, MᵀR, preconditioner)
+        end
+    end
+
+    return nothing
+end
+
+"""
+Setup Green's function convolutions with specified random vectors.
+"""
+function setup!(estimator::EstimateGreensFunction, v::Int, u::Int) where {T<:AbstractModel}
+
+    # total number of random vector
+    nᵥ = estimator.nᵥ
+
+    # assign current random vectors and solutions
+    @assert v!=u && 1<=v<=nᵥ && 1<=u<=nᵥ
+    estimator.n₁    = v
+    estimator.n₂    = u
+    estimator.r₁    = estimator.R[v]
+    estimator.r₂    = estimator.R[u]
+    estimator.M⁻¹r₁ = estimator.M⁻¹R[v]
+    estimator.M⁻¹r₂ = estimator.M⁻¹R[u]
+
+    # unpack variables
+    @unpack r₁, r₂, M⁻¹r₁, M⁻¹r₂, a, b, L = estimator
 
     # initialize measured values to zero
     fill!(estimator.GΔ0,0.0)
     fill!(estimator.GΔ0_GΔ0,0.0)
     fill!(estimator.GΔ0_G0Δ,0.0)
     fill!(estimator.GΔΔ_G00,0.0)
-
-    # initialize vectors to zero
-    fill!(M⁻¹r₁,0.0)
-    fill!(M⁻¹r₂,0.0)
-
-    # initialize random vectors
-    randn!(model.rng,r₁)
-    randn!(model.rng,r₂)
-
-    # setup preconditioner
-    setup!(preconditioner)
-
-    # solve linear system to get M⁻¹⋅r₁ and M⁻¹⋅r₂
-    if model.mul_by_M
-
-        model.transposed = false
-        # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-        iters, err = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
-        # solve M⋅x=r₂ ==> x=M⁻¹⋅r₂
-        iters, err = ldiv!(M⁻¹r₂, model, r₂, preconditioner)
-    else
-
-        Mᵀr = model.v″
-        model.transposed = false
-        # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₁
-        mulMᵀ!(Mᵀr, model, r₁)
-        iters, err = ldiv!(M⁻¹r₁, model, Mᵀr, preconditioner)
-        # solve MᵀM⋅x=Mᵀr₂ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₂
-        mulMᵀ!(Mᵀr, model, r₂)
-        iters, err = ldiv!(M⁻¹r₂, model, Mᵀr, preconditioner)
-    end
 
     # vector to be convolved together
     a = estimator.a

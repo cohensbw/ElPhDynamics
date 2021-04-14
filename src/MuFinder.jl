@@ -7,7 +7,7 @@ using Printf
 using Statistics
 
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!
-using ..GreensFunctions: EstimateGreensFunction
+using ..GreensFunctions: EstimateGreensFunction, setup!
 using ..Measurements: measure_N², measure_density
 
 export MuTuner, update_μ!
@@ -65,7 +65,7 @@ end
 
 """
 Update μ values in model.
-""" 
+"""
 function update_μ!(model::AbstractModel{T},  tuner::MuTuner{T}, estimator::EstimateGreensFunction{T})::T where {T<:AbstractFloat}
     
     μ  = model.μ::Vector{T}
@@ -73,12 +73,28 @@ function update_μ!(model::AbstractModel{T},  tuner::MuTuner{T}, estimator::Esti
 
     if tuner.active
 
-        # measure ⟨N⟩
-        n = measure_density(model,estimator)
-        N = n * model.Nsites
+        # ⟨N⟩ and ⟨N²⟩ value
+        N  = 0.0
+        N² = 0.0
 
-        # measure ⟨N²⟩
-        N² = real(measure_N²(model,estimator))
+        # iterate over all possible pairs of random vectors
+        for i in 1:(estimator.nᵥ-1)
+            for j in (i+1):estimator.nᵥ
+
+                # set up estimates
+                setup!(estimator,i,j)
+
+                # measure ⟨N⟩
+                N  += model.Nsites * measure_density(model,estimator)
+
+                # measure ⟨N²⟩
+                N² += real(measure_N²(model,estimator))
+            end
+        end
+
+        # normalize measurement
+        N  /= binomial(estimator.nᵥ,2)
+        N² /= binomial(estimator.nᵥ,2)
 
         # update μ
         μ₁      = update_μ!(tuner,N,N²)
