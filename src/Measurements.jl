@@ -114,6 +114,9 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     # Current-Current correlation function
     init_corr_container!(container["intersite_corr"],"CurrentCurrent",info,holstein,holstein.nbonds,L₃,L₂,L₁,Lₜ)
 
+    # Bond Pair Greens function
+    init_corr_container!(container["intersite_corr"],"BondPairGreens",info,holstein,holstein.nbonds,L₃,L₂,L₁,Lₜ)
+
     ####################
     ## SUSCEPTIBILITY ##
     ####################
@@ -126,6 +129,9 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
 
     # spin susceptibility
     init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",holstein)
+
+    # bond pair susceptibility
+    init_susc_container!(container["susceptibility"],container["intersite_corr"],"BondPairSusc","BondPairGreens",holstein)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -238,6 +244,9 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     # current-current correlation function
     init_corr_container!(container["intersite_corr"],"CurrentCurrent",info,ssh,ssh.nbonds,L₃,L₂,L₁,Lₜ)
 
+    # Bond Pair Greens function
+    init_corr_container!(container["intersite_corr"],"BondPairGreens",info,ssh,ssh.nbonds,L₃,L₂,L₁,Lₜ)
+
     ####################
     ## SUSCEPTIBILITY ##
     ####################
@@ -250,6 +259,9 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
 
     # spin susceptibility
     init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",ssh)
+
+    # bond pair susceptibility
+    init_susc_container!(container["susceptibility"],container["intersite_corr"],"BondPairSusc","BondPairGreens",ssh)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -473,6 +485,16 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
                                 model)
     end
 
+    # measure bond pair susceptibility
+    if haskey(container.susceptibility,:BondPairSusc)
+        measure_susceptibility!(container.susceptibility.BondPairSusc.position,
+                                container.intersite_corr.BondPairGreens.position,
+                                model)
+        measure_susceptibility!(container.susceptibility.BondPairSusc.momentum,
+                                container.intersite_corr.BondPairGreens.momentum,
+                                model)
+    end
+
     # measure charge susceptibility
     if haskey(container.susceptibility,:ChargeSusc)
         measure_susceptibility!(container.susceptibility.ChargeSusc.position,
@@ -638,7 +660,7 @@ end
 """
 Measure on-site correlation functions
 """
-function measure_onsite_correlations!(container::NamedTuple,model::HolsteinModel,Gr::EstimateGreensFunction)
+function measure_onsite_correlations!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction)
 
     onsite_corr = container.onsite_corr
 
@@ -659,42 +681,10 @@ function measure_onsite_correlations!(container::NamedTuple,model::HolsteinModel
     return nothing
 end
 
-function measure_onsite_correlations!(container::NamedTuple,model::SSHModel,Gr::EstimateGreensFunction)
-
-    onsite_corr = container.onsite_corr
-
-    for measurement in keys(onsite_corr)
-        if measurement == :Greens
-            measure_Greens!(onsite_corr.Greens.position,model,Gr)
-        elseif measurement == :DenDen
-            measure_DenDen!(onsite_corr.DenDen.position,model,Gr)
-        elseif measurement == :PairGreens
-            measure_PairGreens!(onsite_corr.PairGreens.position,model,Gr)
-        end
-    end
-
-    return nothing
-end
-
 """
 Measure inter-site correlation functions
 """
-function measure_intersite_correlations!(container::NamedTuple,model::HolsteinModel,Gr::EstimateGreensFunction)
-
-    intersite_corr = container.intersite_corr
-
-    for measurement in keys(intersite_corr)
-        if measurement == :BondBond
-            measure_BondBond!(intersite_corr.BondBond.position,model,Gr)
-        elseif measurement == :CurrentCurrent
-            measure_CurrentCurrent!(intersite_corr.CurrentCurrent.position,model,Gr)
-        end
-    end
-
-    return nothing
-end
-
-function measure_intersite_correlations!(container::NamedTuple,model::SSHModel,Gr::EstimateGreensFunction)
+function measure_intersite_correlations!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction)
 
     intersite_corr = container.intersite_corr
 
@@ -705,6 +695,8 @@ function measure_intersite_correlations!(container::NamedTuple,model::SSHModel,G
             measure_PhononGreens!(intersite_corr.PhononGreens.position,model,Gr)
         elseif measurement == :CurrentCurrent
             measure_CurrentCurrent!(intersite_corr.CurrentCurrent.position,model,Gr)
+        elseif measurement == :BondPairGreens
+            measure_BondPairGreens!(intersite_corr.BondPairGreens.position,model,Gr)
         end
     end
 
@@ -1461,13 +1453,13 @@ function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{
             b  = bonds[n′].o₁::Int # starting orbital
             a  = bonds[n′].o₂::Int # ending   orbital
 
-            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
+            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,0)⋅c⁺(i+r″,0)⟩
             M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
             R₁    = @view    r₁[:,a,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[2])) # R₁′   = shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[2])) # R₂″   = shift(R₂,r″)
+            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # R₁′   = shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # R₂″   = shift(R₂,r″)
             @. G₁ = M⁻¹R₁ * R₁′                      # G₁    = [M⁻¹R₁⋅R₁′]
             @. G₂ = M⁻¹R₂ * R₂″                      # G₂    = [M⁻¹R₂⋅R₂″]
             translational_average!(G₁G₂,G₁,G₂)       # G₁⋅G₂ = [M⁻¹R₁⋅R₁′]⋆[M⁻¹R₂⋅R₂″]
@@ -1480,8 +1472,8 @@ function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{
             R₁    = @view    r₁[:,c,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[2])) # R₂′   = shift(R₂,r′)
-            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[2])) # R₁″   = shift(R₁,r″)
+            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3])) # R₂′   = shift(R₂,r′)
+            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3])) # R₁″   = shift(R₁,r″)
             @. G₂ = M⁻¹R₁ * R₂′                      # G₂    = [M⁻¹R₁⋅R₂′]
             @. G₁ = M⁻¹R₂ * R₁″                      # G₁    = [M⁻¹R₂⋅R₁″]
             translational_average!(G₁G₂,G₁,G₂)       # G₂⋅G₁ = [M⁻¹R₁⋅R₂′]⋆[M⁻¹R₂⋅R₁″]
@@ -1490,11 +1482,10 @@ function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{
             @. bondbond -= 2*G₁G₂
 
             # CALCULATE G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
-            #           G₁ = δ(τ)⋅δ(r+r′)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
+            #           G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
             if a==d
-                # δ(r+r′)               ⟶ r = -r′
-                # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r = r - r″
-                # therefore             ⟶ r = -r′-r″
+                # δ(r+r′)               ⟶ r    = -r′
+                # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r-r″ = -r′-r″
                 l₁ = mod(-r′[1]-r″[1],L₁)
                 l₂ = mod(-r′[2]-r″[2],L₂)
                 l₃ = mod(-r′[3]-r″[3],L₃)
@@ -1601,8 +1592,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,a,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
             @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
             @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
             @views for τ in Lₜ
@@ -1619,8 +1610,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,a,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
+            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
             @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
             @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
             @views for τ in Lₜ
@@ -1637,8 +1628,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,b,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
             @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
             @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
             @views for τ in Lₜ
@@ -1655,8 +1646,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,b,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
             @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
             @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
             @views for τ in Lₜ
@@ -1673,8 +1664,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,d,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-            circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+            circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
             @. G₁ = M⁻¹R₁  * R₁′
             @. G₂ = M⁻¹R₂″ * R₁
             @views for τ in Lₜ
@@ -1691,8 +1682,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,c,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
-            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
+            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
             @. G₁ = R₁″   * M⁻¹R₂
             @. G₂ = M⁻¹R₁ * R₂′
             @views for τ in Lₜ
@@ -1709,8 +1700,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,d,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
             @. G₁ = M⁻¹R₁′ * R₂
             @. G₂ = R₁     * M⁻¹R₂″
             @views for τ in Lₜ
@@ -1727,8 +1718,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             R₁    = @view    r₁[:,c,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-            circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
             @. G₁ = M⁻¹R₁′ * R₂
             @. G₂ = R₂″    * M⁻¹R₂
             @views for τ in Lₜ
@@ -1770,7 +1761,7 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
                 copyto!(G₁,M⁻¹R₁)
-                circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
+                circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
                     @. G₂[τ,:,:,:] *= t″
@@ -1789,7 +1780,7 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
                 # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,d,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
                 copyto!(G₂,R₁)
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
@@ -1804,8 +1795,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
             if b==d
                 M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
+                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+                circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
                 @views for τ in Lₜ
                     @. G₁[τ,:,:,:] *= t′
                     @. G₂[τ,:,:,:] *= t″
@@ -1908,8 +1899,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,a,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(R₁′,   R₁   ,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
             @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
             @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
             @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
@@ -1924,8 +1915,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,a,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,r′[1],r′[2],r′[3])) # shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3])) # shift(R₂,r″)
+            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
             @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
             @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
             @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
@@ -1940,8 +1931,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,b,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3])) # shift(M⁻¹R₂,r″)
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
             @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
             @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
             @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
@@ -1956,8 +1947,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,b,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(R₂″,R₂,(0,r″[1],r″[2],r″[3]))       # shift(R₂,r″)
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
             @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
             @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
             @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
@@ -1972,8 +1963,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,d,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
-            circshift!(   R₁′,   R₂,(0,r′[1],r′[2],r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+            circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
             @. G₁ = M⁻¹R₁  * R₁′
             @. G₂ = M⁻¹R₂″ * R₁
             @. G₁ *= t′
@@ -1988,8 +1979,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,c,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₁″,R₁,(0,r″[1],r″[2],r″[3]))
-            circshift!(R₂′,R₂,(0,r′[1],r′[2],r′[3]))
+            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
             @. G₁ = R₁″   * M⁻¹R₂
             @. G₂ = M⁻¹R₁ * R₂′
             @. G₁ *= t″
@@ -2004,8 +1995,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,d,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
             R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,r″[1],r″[2],r″[3]))
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
             @. G₁ = M⁻¹R₁′ * R₂
             @. G₂ = R₁     * M⁻¹R₂″
             @. G₁ *= t′
@@ -2020,8 +2011,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             R₁    = @view    r₁[:,c,:,:,:]
             M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
             R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-            circshift!(R₂″,   R₁,   (0,r″[1],r″[2],r″[3]))
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
             @. G₁ = M⁻¹R₁′ * R₂
             @. G₂ = R₂″    * M⁻¹R₂
             @. G₁ *= t′
@@ -2059,7 +2050,7 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
                 copyto!(G₁,M⁻¹R₁)
-                circshift!(G₂,R₁,(0,r″[1],r″[2],r″[3]))
+                circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
                 @. G₁ *= t′
                 @. G₂ *= t″
                 circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
@@ -2076,7 +2067,7 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
                 # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
                 M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
                 R₁    = @view    r₁[:,d,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
+                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
                 copyto!(G₂,R₁)
                 @. G₁ *= t′
                 @. G₂ *= t″
@@ -2089,8 +2080,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
             if b==d
                 M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
                 R₁    = @view    r₁[:,c,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,r′[1],r′[2],r′[3]))
-                circshift!(G₂,   R₁,(0,r″[1],r″[2],r″[3]))
+                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+                circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
                 @. G₁ *= t′
                 @. G₂ *= t″
                 @. G₁G₂ = G₁ * G₂
@@ -2111,6 +2102,103 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
                             nl₃ = mod(-l₃,L₃)
                             # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
                             container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
+Measure Bond Pair Green's function.
+"""
+function measure_BondPairGreens!(container::Array{Complex{T1},6},model::HolsteinModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+
+    # size of lattice
+    Lₜ = model.Lτ::Int
+    L₁ = model.lattice.L1::Int
+    L₂ = model.lattice.L2::Int
+    L₃ = model.lattice.L3::Int
+    nₒ = model.lattice.unit_cell.norbits::Int
+    nᵤ = model.lattice.ncells::Int
+
+    @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, ab″, ab′, a, b, = estimator
+
+    r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
+
+    # containers for performing calculation
+    pairgrns = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+
+    # displacement vectors describing each type of bond
+    bonds = model.bond_definitions
+
+    # length of axis corresponding to imaginary time axis
+    L₀ = size(container,1)
+
+    # number of vectors
+    nᵥ = length(bonds)
+
+    # iterate over first bond
+    for n″ in 1:nᵥ
+
+        # create pair of electrons on d ⟶ c displaced r″ unit cells apart
+        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
+        d  = bonds[n″].o₁::Int        # starting orbital
+        c  = bonds[n″].o₂::Int        # ending   orbital
+
+        # iterate over second bond
+        for n′ in 1:nᵥ
+
+            # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
+            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+            b  = bonds[n′].o₁::Int        # starting orbital
+            a  = bonds[n′].o₂::Int        # ending   orbital
+
+            # initialize pair-greens correlation to zero
+            fill!(pairgrns,0.0)
+
+            # CALCULATE G₁⋅G₂ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
+            M⁻¹R₁  = @view M⁻¹r₁[:,a,:,:,:]
+            R₁     = @view    r₁[:,c,:,:,:]
+            M⁻¹R₂  = @view M⁻¹r₂[:,b,:,:,:]
+            R₂     = @view    r₂[:,d,:,:,:]
+            M⁻¹R₁′ = G₁
+            R₁″    = G₂
+            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+            @. G₁ = M⁻¹R₁′ * M⁻¹R₂
+            @. G₂ = R₁″ * R₂
+            translational_average!(G₁G₂,G₁,G₁)
+            @. pairgrns += G₁G₂
+
+            # record measurements
+            if L₀==1 # if time independent measurement
+                @views @. container[:,:,:,:,n′,n″]    += pairgrns[1,:,:,:]
+            else # if time dependent measurement
+                @views @. container[1:Lₜ,:,:,:,n′,n″] += pairgrns
+                # deal with τ=β time slice
+                for l₃ in 0:L₃-1
+                    for l₂ in 0:L₂-1
+                        for l₁ in 0:L₁-1
+                            δ_a_c     = δ(a,c)
+                            δ_r″_r′   = δ(r′[1],r″[1])*δ(r′[2],r″[2])*δ(r′[3],r″[3])
+                            δ_b_d     = δ(b,d)
+                            δ_r_0     = δ(l₁)*δ(l₂)*δ(l₃)
+                            δ_r″_r′pr = δ(r″[1],mod(r′[1]+l₁,L₁)) * δ(r″[2],mod(r′[2]+l₂,L₂)) * δ(r″[3],mod(r′[3]+l₃,L₃))
+                            val       = pairgrns[1,l₁+1,l₂+1,l₃+1]
+                            val      += δ_a_c * δ_r″_r′ * δ_b_d * δ_r_0
+                            val      -= δ_b_d * δ_r_0 * measure_GΔ0( estimator, mod(r′[1]+l₁-r″[1],L₁), mod(r′[2]+l₂-r″[2],L₂), mod(r′[3]+l₃-r″[3],L₃), c, a, 0)
+                            val      -= δ_a_c * δ_r″_r′pr * measure_GΔ0( estimator, l₁,l₂,l₃,d,b,0)
+                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n′,n″] += val
                         end
                     end
                 end

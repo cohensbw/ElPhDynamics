@@ -454,7 +454,7 @@ function initialize_phonon_fields!(input::Dict,model::AbstractModel)
     if input[model_type]["read_phonon_config"] # read in phonon field
         phononfile = input[model_type]["phonon_config_file"]
         read_phonons!(model, phononfile)
-        cp(filename, joinpath(sim_params.datafolder,phononfile))
+        cp(phononfile, joinpath(input["simulation"]["datafolder"],basename(phononfile)) )
     else # initialize to random phonon field
         init_phonons_half_filled!(model)
     end
