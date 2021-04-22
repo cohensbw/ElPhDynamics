@@ -208,25 +208,25 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     ###########################
 
     # see if any snapshots have been declared
-    if haskey(input,"Snapshots")
+    if haskey(info,"Snapshots")
 
         # density snapshots
-        if haskey(input["Snapshots"],"density")
-            if input["Snapshots"]["density"]
+        if haskey(info["Snapshots"],"density")
+            if info["Snapshots"]["density"]
                 container["snapshots"]["density"] = zeros(Complex{T1},ssh.Nsites)
             end
         end
 
         # double occupancy snapshots
-        if haskey(input["Snapshots"],"double_occupancy")
-            if input["Snapshots"]["double_occupancy"]
+        if haskey(info["Snapshots"],"double_occupancy")
+            if info["Snapshots"]["double_occupancy"]
                 container["snapshots"]["double_occupancy"] = zeros(Complex{T1},ssh.Nsites)
             end
         end
 
         # phonon position snapshots
-        if haskey(input["Snapshots"],"phonon_position")
-            if input["Snapshots"]["phonon_position"]
+        if haskey(info["Snapshots"],"phonon_position")
+            if info["Snapshots"]["phonon_position"]
                 container["snapshots"]["phonon_position"] = zeros(Complex{T1},ssh.Nph)
             end
         end
@@ -2333,7 +2333,7 @@ end
 """
 Measure Bond Pair Green's function.
 """
-function measure_BondPairGreens!(container::Array{Complex{T1},6},model::HolsteinModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_BondPairGreens!(container::Array{Complex{T1},6},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
