@@ -21,7 +21,7 @@ Initialize simulation summary file.
 function initialize_simulation_summary!(model::AbstractModel{T1,T2,T3},sim_params::SimulationParameters,input::Dict) where {T1,T2,T3}
 
     # construct filename for summary filen
-    filename = joinpath(sim_params.datafolder, sim_params.datafolder * "_summary.out")
+    filename = joinpath(sim_params.datafolder, "$(splitpath(sim_params.datafolder)[end])_summary.out")
 
     # open summary file
     open(filename,"w") do fout
@@ -71,7 +71,7 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
     end
 
     # construct filename for summary file
-    filename = joinpath(datafolder, "$(foldername)_summary.out")
+    filename = joinpath(sim_params.datafolder, "$(splitpath(sim_params.datafolder)[end])_summary.out")
 
     # open summary file
     open(filename,"a") do fout
