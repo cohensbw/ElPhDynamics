@@ -46,7 +46,37 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
     container["susceptibility"] = Dict()
+    container["snapshots"]      = Dict()
     container["n_rand_vecs"]    = num_random_vectors
+
+    ###########################
+    ## SNAPSHOT MEASUREMENTS ##
+    ###########################
+
+    # see if any snapshots have been declared
+    if haskey(info,"Snapshots")
+
+        # density snapshots
+        if haskey(info["Snapshots"],"density")
+            if info["Snapshots"]["density"]
+                container["snapshots"]["density"] = zeros(Complex{T1},holstein.Nsites)
+            end
+        end
+
+        # double occupancy snapshots
+        if haskey(info["Snapshots"],"double_occupancy")
+            if info["Snapshots"]["double_occupancy"]
+                container["snapshots"]["double_occupancy"] = zeros(Complex{T1},holstein.Nsites)
+            end
+        end
+
+        # phonon position snapshots
+        if haskey(info["Snapshots"],"phonon_position")
+            if info["Snapshots"]["phonon_position"]
+                container["snapshots"]["phonon_position"] = zeros(Complex{T1},holstein.Nph)
+            end
+        end
+    end
     
     #########################
     ## GLOBAL MEASUREMENTS ##
@@ -142,6 +172,7 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
     container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
+    container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
@@ -169,7 +200,37 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
     container["susceptibility"] = Dict()
+    container["snapshots"]      = Dict()
     container["n_rand_vecs"]    = num_random_vectors
+
+    ###########################
+    ## SNAPSHOT MEASUREMENTS ##
+    ###########################
+
+    # see if any snapshots have been declared
+    if haskey(input,"Snapshots")
+
+        # density snapshots
+        if haskey(input["Snapshots"],"density")
+            if input["Snapshots"]["density"]
+                container["snapshots"]["density"] = zeros(Complex{T1},ssh.Nsites)
+            end
+        end
+
+        # double occupancy snapshots
+        if haskey(input["Snapshots"],"double_occupancy")
+            if input["Snapshots"]["double_occupancy"]
+                container["snapshots"]["double_occupancy"] = zeros(Complex{T1},ssh.Nsites)
+            end
+        end
+
+        # phonon position snapshots
+        if haskey(input["Snapshots"],"phonon_position")
+            if input["Snapshots"]["phonon_position"]
+                container["snapshots"]["phonon_position"] = zeros(Complex{T1},ssh.Nph)
+            end
+        end
+    end
 
     #########################
     ## GLOBAL MEASUREMENTS ##
@@ -272,6 +333,7 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
     container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
+    container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
@@ -282,6 +344,20 @@ Initialize Measurement Files.
 """
 function initialize_measurement_files!(container::NamedTuple,sim_params::SimulationParameters)
 
+    ###########################################
+    ## Initialize Snapshot Measurement Files ##
+    ###########################################
+
+    for k in keys(container.snapshots)
+        # measurement name
+        measurement = string(k)
+        # initialize file of snapshot measurement
+        open(joinpath(sim_params.datafolder,"$(measurement)_snapshots.out"), "a") do file
+            # write header
+            write(file,"snapshot,index,$(measurement)\n")
+        end
+    end
+    
     #############################################
     ## Initialize File For Global Measurements ##
     #############################################
@@ -329,12 +405,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # measurement name
         measurement = string(k)
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
@@ -349,12 +425,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # measurement name
         measurement = string(k)
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "vector1", ",", "vector2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "vector1", ",", "vector2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
@@ -369,12 +445,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # measurement name
         measurement = string(k)
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_position.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
         end
         # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,measurement*"_momentum.out"), "w") do file
+        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
             write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
         end
@@ -400,6 +476,7 @@ function make_measurements!(container::NamedTuple,model::AbstractModel,Gr::Estim
             measure_intersite_correlations!(container,model,Gr)
             make_onsite_measurements!(container,model,Gr)
             make_intersite_measurements!(container,model,Gr)
+            make_snapshot_measurements!(container,model,Gr)
         end
     end
     return nothing
@@ -468,6 +545,12 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
         intersite_corr[key].momentum ./= V
     end
 
+    # normalize snapshot measurements
+    snapshots = container.snapshots
+    for key in keys(snapshots)
+        snapshots[key] ./= V
+    end
+
     ##############################
     ## MEASURE SUSCEPTIBILITIES ##
     ##############################
@@ -529,6 +612,7 @@ function write_measurements!(container::NamedTuple,sim_params::SimulationParamet
     write_correlations!(           container.onsite_corr,    sim_params, model, bin)
     write_correlations!(           container.intersite_corr, sim_params, model, bin)
     write_susceptibilities!(       container.susceptibility, sim_params, model, bin)
+    write_snapshots!(              container.snapshots, sim_params, model, bin)
 
     return nothing
 end
@@ -538,10 +622,17 @@ Reset the measurements container i.e. resent all values to zero.
 """
 function reset_measurements!(container::NamedTuple,model::AbstractModel{T1,T2}) where {T1,T2}
 
+    
     # reset global measurements
     global_measurements = container.global_meas
     for key in keys(global_measurements)
         global_measurements[key] = 0.0
+    end
+
+    # reset snapshot measurements
+    snapshots = container.snapshots
+    for key in keys(snapshots)
+        fill!(snapshots[key],0.0)
     end
 
     # reset on-site measurements
@@ -630,6 +721,26 @@ function init_susc_container!(susc_container::Dict,corr_container::Dict,susc::St
             position = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
             momentum = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
             susc_container[susc] = (position=position,momentum=momentum)
+        end
+    end
+
+    return nothing
+end
+
+"""
+Make snapshot measurements.
+"""
+function make_snapshot_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction)
+
+    snapshots = container.snapshots
+
+    for key in keys(snapshots)
+        if key == :density
+            take_density_snapshot!(snapshots[key],model,Gr)
+        elseif key == :double_occupancy
+            take_double_occupancy_snapshot!(snapshots[key],model,Gr)
+        elseif key == :phonon_position
+            take_phonon_position_snapshot!(snapshots[key],model,Gr)
         end
     end
 
@@ -976,6 +1087,33 @@ function fourier_transform_correlations!(container::NamedTuple)
 end
 
 """
+Write snapshot measurements.
+"""
+function write_snapshots!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+
+    # iterate over snapshot measurements
+    for key in keys(container)
+
+        # construct filename
+        measurement = string(key)
+        filename    = joinpath(sim_params.datafolder,"$(measurement)_snapshots.out")
+
+        # get the snapshot
+        data = container[key]
+
+        # open data file
+        open(filename, "a") do file
+            # iterate over elements of snapshot
+            for i in 1:length(data)
+                @printf file "%d,%d,%.6f\n" bin i data[i]
+            end
+        end
+    end
+
+    return nothing
+end
+
+"""
 Write global measurements to file.
 """
 function write_global_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
@@ -1202,6 +1340,86 @@ function measure_κ(β,N,N²,ΔN²,n,Δn)
     Δκ = β*sqrt(ΔN²^2 + ΔN̄²^2)
 
     return κ/N, Δκ/N^2
+end
+
+########################################
+## IMPLEMENTING SNAPSHOT MEASUREMENTS ##
+########################################
+
+"""
+Take density snapshot measurement.
+"""
+function take_density_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
+                                estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+        
+        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
+        @unpack Nsites, Lτ = model
+
+        R₁    = reshaped(r₁,(Lτ,Nsites))
+        M⁻¹R₁ = reshaped(M⁻¹r₁,(Lτ,Nsites))
+        R₂    = reshaped(r₂,(Lτ,Nsites))
+        M⁻¹R₂ = reshaped(M⁻¹r₂,(Lτ,Nsites))
+
+        # iterate over sites in lattice
+        for i in 1:Nsites
+            # iterate over time slices
+            for τ in 1:Lτ
+                # measure density
+                container[i] += ((1.0-M⁻¹R₁[τ,i]*R₁[τ,i]) + (1.0-M⁻¹R₂[τ,i]*R₂[τ,i])) / Lτ
+            end
+        end
+
+    return nothing
+end
+
+"""
+Take double occupancy snapshot measurement.
+"""
+function take_double_occupancy_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
+                                         estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+        
+        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
+        @unpack Nsites, Lτ = model
+
+        R₁    = reshaped(r₁,(Lτ,Nsites))
+        M⁻¹R₁ = reshaped(M⁻¹r₁,(Lτ,Nsites))
+        R₂    = reshaped(r₂,(Lτ,Nsites))
+        M⁻¹R₂ = reshaped(M⁻¹r₂,(Lτ,Nsites))
+
+        # iterate over sites in lattice
+        for i in 1:Nsites
+            # iterate over time slices
+            for τ in 1:Lτ
+                # measure density
+                container[i] += ((1-M⁻¹R₁[τ,i]*R₁[τ,i]) * (1-M⁻¹R₂[τ,i]*R₂[τ,i])) / Lτ
+            end
+        end
+
+    return nothing
+end
+
+"""
+Take double occupancy snapshot measurement.
+"""
+function take_phonon_position_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
+                                        estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+        
+        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
+        @unpack Nph, Lτ = model
+
+        # get phonon fields
+        x  = reshaped(model.x,(Lτ,Nph))
+
+        # iterate over phonons in lattice
+        for i in 1:Nph
+            # iterate over time slices
+            for τ in 1:Lτ
+                # measure density
+                container[i] += x[τ,i] / Lτ
+            end
+        end
+
+    return nothing
 end
 
 ############################################################
@@ -2171,13 +2389,13 @@ function measure_BondPairGreens!(container::Array{Complex{T1},6},model::Holstein
             R₁     = @view    r₁[:,c,:,:,:]
             M⁻¹R₂  = @view M⁻¹r₂[:,b,:,:,:]
             R₂     = @view    r₂[:,d,:,:,:]
-            M⁻¹R₁′ = G₁
-            R₁″    = G₂
+            R₁″    = G₁
+            M⁻¹R₁′ = G₂
             circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
             circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = M⁻¹R₁′ * M⁻¹R₂
-            @. G₂ = R₁″ * R₂
-            translational_average!(G₁G₂,G₁,G₁)
+            @. G₁ = R₁″ * R₂
+            @. G₂ = M⁻¹R₁′ * M⁻¹R₂
+            translational_average!(G₁G₂,G₂,G₁)
             @. pairgrns += G₁G₂
 
             # record measurements

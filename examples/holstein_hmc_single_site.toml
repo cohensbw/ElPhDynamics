@@ -231,3 +231,9 @@ time_dependent = false
 [measurements.CurrentCurrent]
 measure        = false
 time_dependent = false
+
+# Snapshot measurements
+[measurements.Snapshots]
+density          = true
+double_occupancy = true
+phonon_position  = true
