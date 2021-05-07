@@ -45,7 +45,8 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["intersite_meas"] = Dict()
     container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
-    container["susceptibility"] = Dict()
+    container["onsite_susc"]    = Dict()
+    container["intersite_susc"] = Dict()
     container["snapshots"]      = Dict()
     container["n_rand_vecs"]    = num_random_vectors
 
@@ -100,15 +101,6 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["onsite_meas"]["elph_energy"] = zeros(Complex{T1},nₒ)
     container["onsite_meas"]["mu"]          = zeros(Complex{T1},nₒ)
 
-    # determining whether s-wave susceptibility is measured
-    if haskey(info,"PairGreens")
-        if info["PairGreens"]["measure"]==true
-            if info["PairGreens"]["time_dependent"]==true
-                container["onsite_meas"]["swave_susc"] = zeros(Complex{T1},nₒ)
-            end
-        end
-    end
-
     #############################
     ## INTER-SITE MEASUREMENTS ##
     #############################
@@ -147,21 +139,25 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     # Bond Pair Greens function
     init_corr_container!(container["intersite_corr"],"BondPairGreens",info,holstein,holstein.nbonds,L₃,L₂,L₁,Lₜ)
 
-    ####################
-    ## SUSCEPTIBILITY ##
-    ####################
+    ############################
+    ## ON-SITE SUSCEPTIBILITY ##
+    ############################
 
     # pair susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"PairSusc","PairGreens",holstein)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"PairSusc","PairGreens",holstein)
 
     # charge susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",holstein)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"ChargeSusc","DenDen",holstein)
 
     # spin susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",holstein)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"SpinSusc","SpinSpin",holstein)
+
+    ###############################
+    ## INTER-SITE SUSCEPTIBILITY ##
+    ###############################
 
     # bond pair susceptibility
-    init_susc_container!(container["susceptibility"],container["intersite_corr"],"BondPairSusc","BondPairGreens",holstein)
+    init_susc_container!(container["intersite_susc"],container["intersite_corr"],"BondPairSusc","BondPairGreens",holstein)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -171,7 +167,8 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
-    container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
+    container["onsite_susc"]    = (;(Symbol(k)=>container["onsite_susc"][k] for k in keys(container["onsite_susc"]))...)
+    container["intersite_susc"] = (;(Symbol(k)=>container["intersite_susc"][k] for k in keys(container["intersite_susc"]))...)
     container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
@@ -199,7 +196,8 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["intersite_meas"] = Dict()
     container["onsite_corr"]    = Dict()
     container["intersite_corr"] = Dict()
-    container["susceptibility"] = Dict()
+    container["onsite_susc"]    = Dict()
+    container["intersite_susc"] = Dict()
     container["snapshots"]      = Dict()
     container["n_rand_vecs"]    = num_random_vectors
 
@@ -247,16 +245,6 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["onsite_meas"]["density"]    = zeros(Complex{T1},nₒ)
     container["onsite_meas"]["double_occ"] = zeros(Complex{T1},nₒ)
     container["onsite_meas"]["mu"]         = zeros(Complex{T1},nₒ)
-
-    # determining whether s-wave susceptibility is measured
-    if haskey(info,"PairGreens")
-        if info["PairGreens"]["measure"]==true
-            if info["PairGreens"]["time_dependent"]==true
-                container["onsite_meas"]["swave_susc"] = zeros(Complex{T1},nₒ)
-            end
-        end
-    end
-
 
     #############################
     ## INTER-SITE MEASUREMENTS ##
@@ -308,21 +296,25 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     # Bond Pair Greens function
     init_corr_container!(container["intersite_corr"],"BondPairGreens",info,ssh,ssh.nbonds,L₃,L₂,L₁,Lₜ)
 
-    ####################
-    ## SUSCEPTIBILITY ##
-    ####################
+    ############################
+    ## ON-SITE SUSCEPTIBILITY ##
+    ############################
 
     # pair susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"PairSusc","PairGreens",ssh)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"PairSusc","PairGreens",ssh)
 
     # charge susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"ChargeSusc","DenDen",ssh)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"ChargeSusc","DenDen",ssh)
 
     # spin susceptibility
-    init_susc_container!(container["susceptibility"],container["onsite_corr"],"SpinSusc","SpinSpin",ssh)
+    init_susc_container!(container["onsite_susc"],container["onsite_corr"],"SpinSusc","SpinSpin",ssh)
+
+    ###############################
+    ## INTER-SITE SUSCEPTIBILITY ##
+    ###############################
 
     # bond pair susceptibility
-    init_susc_container!(container["susceptibility"],container["intersite_corr"],"BondPairSusc","BondPairGreens",ssh)
+    init_susc_container!(container["intersite_susc"],container["intersite_corr"],"BondPairSusc","BondPairGreens",ssh)
 
     ##########################################
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
@@ -332,7 +324,8 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
-    container["susceptibility"] = (;(Symbol(k)=>container["susceptibility"][k] for k in keys(container["susceptibility"]))...)
+    container["onsite_susc"]    = (;(Symbol(k)=>container["onsite_susc"][k] for k in keys(container["onsite_susc"]))...)
+    container["intersite_susc"] = (;(Symbol(k)=>container["intersite_susc"][k] for k in keys(container["intersite_susc"]))...)
     container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
@@ -407,12 +400,12 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
     end
 
@@ -427,32 +420,52 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "vector1", ",", "vector2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
         end
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "vector1", ",", "vector2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
         end
     end
 
-    ###########################################
-    ## Initialize Files For Susceptibilities ##
-    ###########################################
+    ###################################################
+    ## Initialize Files For On-Site Susceptibilities ##
+    ###################################################
 
     # iterate over on-site correlation functions
-    for k in keys(container.susceptibility)
+    for k in keys(container.onsite_susc)
         # measurement name
         measurement = string(k)
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
         end
         # initialize file for position-space data
         open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
             # writing file header
-            write(file, "bin", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
+            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
+        end
+    end
+
+    ######################################################
+    ## Initialize Files For Inter-Site Susceptibilities ##
+    ######################################################
+
+    # iterate over on-site correlation functions
+    for k in keys(container.intersite_susc)
+        # measurement name
+        measurement = string(k)
+        # initialize file for position-space data
+        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
+            # writing file header
+            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
+        end
+        # initialize file for position-space data
+        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
+            # writing file header
+            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
         end
     end
 
@@ -555,46 +568,43 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
     ## MEASURE SUSCEPTIBILITIES ##
     ##############################
 
-    # measure local S-wave Pair Susceptibility
-    measure_swave!(container,model)
-
     # measure pair susceptibility
-    if haskey(container.susceptibility,:PairSusc)
-        measure_susceptibility!(container.susceptibility.PairSusc.position,
+    if haskey(container.onsite_susc,:PairSusc)
+        measure_susceptibility!(container.onsite_susc.PairSusc.position,
                                 container.onsite_corr.PairGreens.position,
                                 model)
-        measure_susceptibility!(container.susceptibility.PairSusc.momentum,
+        measure_susceptibility!(container.onsite_susc.PairSusc.momentum,
                                 container.onsite_corr.PairGreens.momentum,
                                 model)
     end
 
-    # measure bond pair susceptibility
-    if haskey(container.susceptibility,:BondPairSusc)
-        measure_susceptibility!(container.susceptibility.BondPairSusc.position,
-                                container.intersite_corr.BondPairGreens.position,
-                                model)
-        measure_susceptibility!(container.susceptibility.BondPairSusc.momentum,
-                                container.intersite_corr.BondPairGreens.momentum,
-                                model)
-    end
-
     # measure charge susceptibility
-    if haskey(container.susceptibility,:ChargeSusc)
-        measure_susceptibility!(container.susceptibility.ChargeSusc.position,
+    if haskey(container.onsite_susc,:ChargeSusc)
+        measure_susceptibility!(container.onsite_susc.ChargeSusc.position,
                                 container.onsite_corr.DenDen.position,
                                 model)
-        measure_susceptibility!(container.susceptibility.ChargeSusc.momentum,
+        measure_susceptibility!(container.onsite_susc.ChargeSusc.momentum,
                                 container.onsite_corr.DenDen.momentum,
                                 model)
     end
 
     # measure spin susceptibility
-    if haskey(container.susceptibility,:SpinSusc)
-        measure_susceptibility!(container.susceptibility.SpinSusc.position,
+    if haskey(container.onsite_susc,:SpinSusc)
+        measure_susceptibility!(container.onsite_susc.SpinSusc.position,
                                 container.onsite_corr.SpinSpin.position,
                                 model)
-        measure_susceptibility!(container.susceptibility.SpinSusc.momentum,
+        measure_susceptibility!(container.onsite_susc.SpinSusc.momentum,
                                 container.onsite_corr.SpinSpin.momentum,
+                                model)
+    end
+
+    # measure bond pair susceptibility
+    if haskey(container.intersite_susc,:BondPairSusc)
+        measure_susceptibility!(container.intersite_susc.BondPairSusc.position,
+                                container.intersite_corr.BondPairGreens.position,
+                                model)
+        measure_susceptibility!(container.intersite_susc.BondPairSusc.momentum,
+                                container.intersite_corr.BondPairGreens.momentum,
                                 model)
     end
 
@@ -611,7 +621,8 @@ function write_measurements!(container::NamedTuple,sim_params::SimulationParamet
     write_intersite_measurements!( container.intersite_meas, sim_params, model, bin)
     write_correlations!(           container.onsite_corr,    sim_params, model, bin)
     write_correlations!(           container.intersite_corr, sim_params, model, bin)
-    write_susceptibilities!(       container.susceptibility, sim_params, model, bin)
+    write_susceptibilities!(       container.onsite_susc, sim_params, model, bin)
+    write_susceptibilities!(       container.intersite_susc, sim_params, model, bin)
     write_snapshots!(              container.snapshots, sim_params, model, bin)
 
     return nothing
@@ -652,8 +663,8 @@ function reset_measurements!(container::NamedTuple,model::AbstractModel{T1,T2}) 
     # reset on-site correlations
     onsite_correlations = container.onsite_corr
     for key  in keys(onsite_correlations)
-        position = onsite_correlations[key].position::Array{Complex{T1},6}
-        momentum = onsite_correlations[key].momentum::Array{Complex{T1},6}
+        position = onsite_correlations[key].position::Array{Complex{T1},5}
+        momentum = onsite_correlations[key].momentum::Array{Complex{T1},5}
         fill!(position,0.0)
         fill!(momentum,0.0)
     end
@@ -661,17 +672,26 @@ function reset_measurements!(container::NamedTuple,model::AbstractModel{T1,T2}) 
     # reset inter-site correlations
     intersite_correlations = container.intersite_corr
     for key in keys(intersite_correlations)
-        position = intersite_correlations[key].position::Array{Complex{T1},6}
-        momentum = intersite_correlations[key].momentum::Array{Complex{T1},6}
+        position = intersite_correlations[key].position::Array{Complex{T1},5}
+        momentum = intersite_correlations[key].momentum::Array{Complex{T1},5}
         fill!(position,0.0)
         fill!(momentum,0.0)
     end
 
     # reset susceptibilities
-    susceptibility = container.susceptibility
+    susceptibility = container.onsite_susc
     for key in keys(susceptibility)
-        position = susceptibility[key].position::Array{Complex{T1},5}
-        momentum = susceptibility[key].momentum::Array{Complex{T1},5}
+        position = susceptibility[key].position::Array{Complex{T1},4}
+        momentum = susceptibility[key].momentum::Array{Complex{T1},4}
+        fill!(position,0.0)
+        fill!(momentum,0.0)
+    end
+
+    # reset susceptibilities
+    susceptibility = container.intersite_susc
+    for key in keys(susceptibility)
+        position = susceptibility[key].position::Array{Complex{T1},4}
+        momentum = susceptibility[key].momentum::Array{Complex{T1},4}
         fill!(position,0.0)
         fill!(momentum,0.0)
     end
@@ -689,18 +709,29 @@ Intialize multi-dimensional array to contain correlation measurement.
 function init_corr_container!(container::Dict,measurement::String,info::Dict,model::AbstractModel{T1,T2,T3},
                               n::Int,L₃::Int,L₂::Int,L₁::Int,Lₜ::Int) where {T1,T2,T3}
     
+    # check if key associated with measurement is present
     if haskey(info,measurement)
+        # check if measurement is to be made
         if info[measurement]["measure"]==true
             container[measurement] = Dict()
+            # get which pairs of said correlation function are to be measured
+            if haskey(info[measurement],"pairs")
+                pairs = info[measurement]["pairs"]::Vector{Vector{Int}}
+                sort!(pairs)
+            else
+                pairs = [[i,j] for i in 1:n for j in 1:n]::Vector{Vector{Int}}
+            end
+            pairs  = hcat(pairs...)::Matrix{Int}
+            nₚ     = size(pairs,2)
             # declare multi-dimnesional arrays to hold measurement
             if info[measurement]["time_dependent"]==true
-                position = zeros(Complex{T1},Lₜ+1,L₁,L₂,L₃,n,n)
-                momentum = zeros(Complex{T1},Lₜ+1,L₁,L₂,L₃,n,n)
+                position = zeros(Complex{T1},Lₜ+1,L₁,L₂,L₃,nₚ)
+                momentum = zeros(Complex{T1},Lₜ+1,L₁,L₂,L₃,nₚ)
             else
-                position = zeros(Complex{T1},1,L₁,L₂,L₃,n,n)
-                momentum = zeros(Complex{T1},1,L₁,L₂,L₃,n,n)
+                position = zeros(Complex{T1},1,L₁,L₂,L₃,nₚ)
+                momentum = zeros(Complex{T1},1,L₁,L₂,L₃,nₚ)
             end
-            container[measurement] = (position=position, momentum=momentum)
+            container[measurement] = (position=position, momentum=momentum, pairs=pairs)
         end
     end
     return nothing
@@ -714,13 +745,15 @@ function init_susc_container!(susc_container::Dict,corr_container::Dict,susc::St
 
     # if correlation function is being measured
     if haskey(corr_container,corr)
+        # get pairs
+        pairs = corr_container[corr].pairs
         # size of container for correlation measurements
-        Lₜ, L₁, L₂, L₃, n, extra = size(corr_container[corr].position)
+        Lₜ, L₁, L₂, L₃, nₚ = size(corr_container[corr].position)
         # if time-dependent correlation function is being measured
         if Lₜ > 1
-            position = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
-            momentum = zeros(Complex{T1}, L₁, L₂, L₃, n, n)
-            susc_container[susc] = (position=position,momentum=momentum)
+            position = zeros(Complex{T1}, L₁, L₂, L₃, nₚ)
+            momentum = zeros(Complex{T1}, L₁, L₂, L₃, nₚ)
+            susc_container[susc] = (position=position,momentum=momentum,pairs=pairs)
         end
     end
 
@@ -776,16 +809,18 @@ function measure_onsite_correlations!(container::NamedTuple,model::AbstractModel
     onsite_corr = container.onsite_corr
 
     for measurement in keys(onsite_corr)
+        pos_corr = onsite_corr[measurement].position
+        pairs    = onsite_corr[measurement].pairs
         if measurement == :Greens
-            measure_Greens!(onsite_corr.Greens.position,model,Gr)
+            measure_Greens!(pos_corr,pairs,model,Gr)
         elseif measurement == :DenDen
-            measure_DenDen!(onsite_corr.DenDen.position,model,Gr)
+            measure_DenDen!(pos_corr,pairs,model,Gr)
         elseif measurement == :SpinSpin
-            measure_SpinSpin!(onsite_corr.SpinSpin.position,model,Gr)
+            measure_SpinSpin!(pos_corr,pairs,model,Gr)
         elseif measurement == :PairGreens
-            measure_PairGreens!(onsite_corr.PairGreens.position,model,Gr)
+            measure_PairGreens!(pos_corr,pairs,model,Gr)
         elseif measurement == :PhononGreens
-            measure_PhononGreens!(onsite_corr.PhononGreens.position,model,Gr)
+            measure_PhononGreens!(pos_corr,pairs,model,Gr)
         end
     end
 
@@ -800,14 +835,16 @@ function measure_intersite_correlations!(container::NamedTuple,model::AbstractMo
     intersite_corr = container.intersite_corr
 
     for measurement in keys(intersite_corr)
+        pos_corr = intersite_corr[measurement].position
+        pairs    = intersite_corr[measurement].pairs
         if measurement == :BondBond
-            measure_BondBond!(intersite_corr.BondBond.position,model,Gr)
+            measure_BondBond!(pos_corr,pairs,model,Gr)
         elseif measurement == :PhononGreens
-            measure_PhononGreens!(intersite_corr.PhononGreens.position,model,Gr)
+            measure_PhononGreens!(pos_corr,pairs,model,Gr)
         elseif measurement == :CurrentCurrent
-            measure_CurrentCurrent!(intersite_corr.CurrentCurrent.position,model,Gr)
+            measure_CurrentCurrent!(pos_corr,pairs,model,Gr)
         elseif measurement == :BondPairGreens
-            measure_BondPairGreens!(intersite_corr.BondPairGreens.position,model,Gr)
+            measure_BondPairGreens!(pos_corr,pairs,model,Gr)
         end
     end
 
@@ -1189,11 +1226,11 @@ function write_correlations!(container::NamedTuple,sim_params::SimulationParamet
 
         # write position space correlations to file
         filename = joinpath(sim_params.datafolder,string(key)*"_position.out")
-        write_correlation!(filename,container[key].position,bin)
+        write_correlation!(filename,container[key].position,container[key].pairs,bin)
 
         # write momemtum space correlations to file
         filename = joinpath(sim_params.datafolder,string(key)*"_momentum.out")
-        write_correlation!(filename,container[key].momentum,bin)
+        write_correlation!(filename,container[key].momentum,container[key].pairs,bin)
     end
 
     return nothing
@@ -1202,22 +1239,22 @@ end
 """
 Write a correlation function to file.
 """
-function write_correlation!(filename::String,correlations::Array{Complex{T},6},bin::Int) where {T<:AbstractFloat}
+function write_correlation!(filename::String,correlations::Array{Complex{T},5},pairs::Matrix{Int},bin::Int) where {T<:AbstractFloat}
 
     open(filename,"a") do file
         Lₜ = size(correlations,1)
         L₁ = size(correlations,2)
         L₂ = size(correlations,3)
         L₃ = size(correlations,4)
-        n  = size(correlations,5)
-        for n₁ in 1:n
-            for n₂ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            for τ in 1:Lₜ
-                                @printf file "%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin n₁ n₂ l₃-1 l₂-1 l₁-1 τ-1 real(correlations[τ,l₁,l₂,l₃,n₂,n₁])
-                            end
+        nₚ = size(pairs,2)
+        for p in 1:nₚ
+            n₁ = pairs[1,p]
+            n₂ = pairs[2,p]
+            for l₃ in 1:L₃
+                for l₂ in 1:L₂
+                    for l₁ in 1:L₁
+                        for τ in 1:Lₜ
+                            @printf file "%d,%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin p n₁ n₂ l₃-1 l₂-1 l₁-1 τ-1 real(correlations[τ,l₁,l₂,l₃,p])
                         end
                     end
                 end
@@ -1237,11 +1274,11 @@ function write_susceptibilities!(container::NamedTuple,sim_params::SimulationPar
 
         # write position space susceptibility to file
         filename = joinpath(sim_params.datafolder,string(key)*"_position.out")
-        write_susceptibility!(filename,container[key].position,bin)
+        write_susceptibility!(filename,container[key].position,container[key].pairs,bin)
 
         # write momemtum space susceptibility to file
         filename = joinpath(sim_params.datafolder,string(key)*"_momentum.out")
-        write_susceptibility!(filename,container[key].momentum,bin)
+        write_susceptibility!(filename,container[key].momentum,container[key].pairs,bin)
     end
 
     return nothing
@@ -1250,20 +1287,20 @@ end
 """
 Write a susceptibility to file.
 """
-function write_susceptibility!(filename::String,susceptibility::Array{Complex{T},5},bin::Int) where {T<:AbstractFloat}
+function write_susceptibility!(filename::String,susceptibility::Array{Complex{T},4},pairs::Matrix{Int},bin::Int) where {T<:AbstractFloat}
 
     open(filename,"a") do file
         L₁ = size(susceptibility,1)
         L₂ = size(susceptibility,2)
         L₃ = size(susceptibility,3)
-        n  = size(susceptibility,4)
-        for n₁ in 1:n
-            for n₂ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            @printf file "%d,%d,%d,%d,%d,%d,%.6f\n" bin n₁ n₂ l₃-1 l₂-1 l₁-1 real(susceptibility[l₁,l₂,l₃,n₂,n₁])
-                        end
+        nₚ  = size(pairs,2)
+        for p in 1:nₚ
+            n₁ = pairs[1,p]
+            n₂ = pairs[2,p]
+            for l₃ in 1:L₃
+                for l₂ in 1:L₂
+                    for l₁ in 1:L₁
+                        @printf file "%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin p n₁ n₂ l₃-1 l₂-1 l₁-1 real(susceptibility[l₁,l₂,l₃,p])
                     end
                 end
             end
@@ -1524,7 +1561,7 @@ for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
     measure = Symbol(:measure_,measurement)
 
     @eval begin
-        function $op(container::Array{Complex{T1},6}, model::AbstractModel{T1,T2,T3},
+        function $op(container::Array{Complex{T1},5}, pairs::Matrix{Int}, model::AbstractModel{T1,T2,T3},
                      Gr::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
             # getting size of system
@@ -1532,17 +1569,17 @@ for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
             L₁ = size(container,2)
             L₂ = size(container,3)
             L₃ = size(container,4)
-            n₀ = size(container,5)
+            nₚ = size(pairs,2)
 
             # iterate over all relevant space-time displacement vectors
-            for o₂ in 1:n₀
-                for o₁ in 1:n₀
-                    for l₃ in 0:L₃-1
-                        for l₂ in 0:L₂-1
-                            for l₁ in 0:L₁-1
-                                for τ in 0:L
-                                    container[ τ+1, l₁+1, l₂+1, l₃+1, o₁, o₂] += $measure(model,Gr,l₁,l₂,l₃,o₁,o₂,τ)
-                                end
+            for p in 1:nₚ
+                o₁ = pairs[1,p]
+                o₂ = pairs[2,p]
+                for l₃ in 0:L₃-1
+                    for l₂ in 0:L₂-1
+                        for l₁ in 0:L₁-1
+                            for τ in 0:L
+                                container[ τ+1, l₁+1, l₂+1, l₃+1, p] += $measure(model,Gr,l₁,l₂,l₃,o₁,o₂,τ)
                             end
                         end
                     end
@@ -1556,7 +1593,7 @@ end
 """
 Measure Phonon Green's function for Holstein model.
 """
-function measure_PhononGreens!(container::Array{Complex{T1},6}, model::HolsteinModel{T1,T2,T3},
+function measure_PhononGreens!(container::Array{Complex{T1},5}, pairs::Matrix{Int}, model::HolsteinModel{T1,T2,T3},
                                Gr::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     @unpack a, b, ab′ = Gr
@@ -1578,27 +1615,32 @@ function measure_PhononGreens!(container::Array{Complex{T1},6}, model::HolsteinM
     # phonon fields
     x = reshaped(x₀,(Lₜ,nₒ,L₁,L₂,L₃))
 
+    # number of pairs
+    nₚ = size(pairs,2)
+
     # containers for performing calculation
     x₁x₂ = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
     x₁   = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
     x₂   = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
 
-    for o₂ in 1:nₒ
+    # iterate over pairs
+    for p in 1:nₚ
+        # get pair of orbitals
+        o₁ = pairs[1,p]
+        o₂ = pairs[2,p]
+        # phonon fields for orbital o₁
+        @views @. x₁ = x[:,o₁,:,:,:]
         # phonon fields for orbital o₂
         @views @. x₂ = x[:,o₂,:,:,:]
-        for o₁ in 1:nₒ
-            # phonon fields for orbital o₁
-            @views @. x₁ = x[:,o₁,:,:,:]
-            # translationally average
-            translational_average!(x₁x₂,x₁,x₂)
-            # save the results
-            if L₀==1 # equal time measurment
-                @views @. container[1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
-            else # unequal time measurement
-                @views @. container[1:Lₜ,:,:,:,o₁,o₂] += x₁x₂
-                # dealing with τ=β time slice
-                @views @. container[Lₜ+1,:,:,:,o₁,o₂] += x₁x₂[1,:,:,:]
-            end
+        # translationally average
+        translational_average!(x₁x₂,x₁,x₂)
+        # save the results
+        if L₀==1 # equal time measurment
+            @views @. container[1,:,:,:,p] += x₁x₂[1,:,:,:]
+        else # unequal time measurement
+            @views @. container[1:Lₜ,:,:,:,p] += x₁x₂
+            # dealing with τ=β time slice
+            @views @. container[Lₜ+1,:,:,:,p] += x₁x₂[1,:,:,:]
         end
     end
 
@@ -1616,7 +1658,7 @@ Therefore, the bond-bond correlation is given by
 B[a,b,r′;c,d,r″](τ,r) = ⟨K[a,b,r′](τ,r)⋅K[c,d,r″](0,0)⟩
 B[a,b,r′;c,d,r″](τ,r) = ⟨[a⁺(↑,i+r+r′,τ)⋅b(↑,i+r,τ)+a⁺(↓,i+r+r′,τ)⋅b(↓,i+r,τ)]⋅[c⁺(↑,i+r″,0)⋅d(↑,i,0)+c⁺(↓,i+r″,0)⋅d(↓,i,0)]⟩
 """
-function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_BondBond!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
@@ -1649,85 +1691,88 @@ function measure_BondBond!(container::Array{Complex{T1},6},model::AbstractModel{
     # length of axis corresponding to imaginary time axis
     L₀ = size(container,1)
 
-    # number of vectors
+    # number of bonds
     nᵥ = length(bonds)
 
-    # iterate over first bond
-    for n″ in 1:nᵥ
+    # number of bond pairs to make measurement for
+    nₚ = size(pairs,2)
+
+    # iterate over bond pairs
+    for p in 1:nₚ
+
+        # get pair of relevant bonds
+        n′ = pairs[1,p]
+        n″ = pairs[2,p]
 
         # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
         d  = bonds[n″].o₁::Int # starting orbital
         c  = bonds[n″].o₂::Int # ending   orbital
 
-        # iterate over second bond
-        for n′ in 1:nᵥ
+        # initialize bond-bond correlation to zero
+        fill!(bondbond,0.0)
 
-            # initialize bond-bond correlation to zero
-            fill!(bondbond,0.0)
+        # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+        r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+        b  = bonds[n′].o₁::Int # starting orbital
+        a  = bonds[n′].o₂::Int # ending   orbital
 
-            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-            b  = bonds[n′].o₁::Int # starting orbital
-            a  = bonds[n′].o₂::Int # ending   orbital
+        # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,0)⋅c⁺(i+r″,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,a,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,c,:,:,:]
+        circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # R₁′   = shift(R₁,r′)
+        circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # R₂″   = shift(R₂,r″)
+        @. G₁ = M⁻¹R₁ * R₁′                      # G₁    = [M⁻¹R₁⋅R₁′]
+        @. G₂ = M⁻¹R₂ * R₂″                      # G₂    = [M⁻¹R₂⋅R₂″]
+        translational_average!(G₁G₂,G₁,G₂)       # G₁⋅G₂ = [M⁻¹R₁⋅R₁′]⋆[M⁻¹R₂⋅R₂″]
 
-            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,0)⋅c⁺(i+r″,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,a,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # R₁′   = shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # R₂″   = shift(R₂,r″)
-            @. G₁ = M⁻¹R₁ * R₁′                      # G₁    = [M⁻¹R₁⋅R₁′]
-            @. G₂ = M⁻¹R₂ * R₂″                      # G₂    = [M⁻¹R₂⋅R₂″]
-            translational_average!(G₁G₂,G₁,G₂)       # G₁⋅G₂ = [M⁻¹R₁⋅R₁′]⋆[M⁻¹R₂⋅R₂″]
+        # B = B + 4*⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
+        @. bondbond += 4*G₁G₂
 
-            # B = B + 4*⟨T⋅b(i+r,τ)⋅a⁺(i+r+r′,τ)⟩⋅⟨T⋅d(i,τ)⋅c⁺(i+r″,τ)⟩
-            @. bondbond += 4*G₁G₂
+        # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,a,:,:,:]
+        circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3])) # R₂′   = shift(R₂,r′)
+        circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3])) # R₁″   = shift(R₁,r″)
+        @. G₂ = M⁻¹R₁ * R₂′                      # G₂    = [M⁻¹R₁⋅R₂′]
+        @. G₁ = M⁻¹R₂ * R₁″                      # G₁    = [M⁻¹R₂⋅R₁″]
+        translational_average!(G₁G₂,G₁,G₂)       # G₂⋅G₁ = [M⁻¹R₁⋅R₂′]⋆[M⁻¹R₂⋅R₁″]
 
-            # CALCULATE G₁⋅G₂ = ⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3])) # R₂′   = shift(R₂,r′)
-            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3])) # R₁″   = shift(R₁,r″)
-            @. G₂ = M⁻¹R₁ * R₂′                      # G₂    = [M⁻¹R₁⋅R₂′]
-            @. G₁ = M⁻¹R₂ * R₁″                      # G₁    = [M⁻¹R₂⋅R₁″]
-            translational_average!(G₁G₂,G₁,G₂)       # G₂⋅G₁ = [M⁻¹R₁⋅R₂′]⋆[M⁻¹R₂⋅R₁″]
+        # B = B - 2*⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
+        @. bondbond -= 2*G₁G₂
 
-            # B = B - 2*⟨T⋅b(i+r,τ)⋅c⁺(i+r″,0)⟩⋅⟨T⋅d(i,0)⋅a⁺(i+r+r′,τ)⟩
-            @. bondbond -= 2*G₁G₂
+        # CALCULATE G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
+        #           G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
+        if a==d
+            # δ(r+r′)               ⟶ r    = -r′
+            # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r-r″ = -r′-r″
+            l₁ = mod(-r′[1]-r″[1],L₁)
+            l₂ = mod(-r′[2]-r″[2],L₂)
+            l₃ = mod(-r′[3]-r″[3],L₃)
+            G  = measure_GΔ0(estimator,l₁,l₂,l₃,c,b,0)
 
-            # CALCULATE G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
-            #           G₁ = δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩
-            if a==d
-                # δ(r+r′)               ⟶ r    = -r′
-                # ⟨b(i+r-r″,τ)⋅c⁺(i,0)⟩ ⟶ r-r″ = -r′-r″
-                l₁ = mod(-r′[1]-r″[1],L₁)
-                l₂ = mod(-r′[2]-r″[2],L₂)
-                l₃ = mod(-r′[3]-r″[3],L₃)
-                G  = measure_GΔ0(estimator,l₁,l₂,l₃,c,b,0)
+            # B = B + 2⋅δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
+            bondbond[1,l₁+1,l₂+1,l₃+1] += 2*G
+        end
 
-                # B = B + 2⋅δ(τ)⋅δ(r′+r)⋅δ(a,d)⋅⟨b(i+r,τ)⋅c⁺(i+r″,0)⟩
-                bondbond[1,l₁+1,l₂+1,l₃+1] += 2*G
-            end
-
-            # record measurements
-            if L₀==1 # if time independent measurement
-                @views @. container[1,:,:,:,n′,n″]    += bondbond[1,:,:,:]
-            else # if time dependent measurement
-                @views @. container[1:Lₜ,:,:,:,n′,n″] += bondbond
-                # deal with τ=β time slice
-                for l₃ in 0:L₃-1
-                    for l₂ in 0:L₂-1
-                        for l₁ in 0:L₁-1
-                            nl₁ = mod(-l₁,L₁)
-                            nl₂ = mod(-l₂,L₂)
-                            nl₃ = mod(-l₃,L₃)
-                            # B[a,b,r′;c,d,r″](β,r) = B[c,d,r″;a,b,r′](0,-r)
-                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += bondbond[1,nl₁+1,nl₂+1,nl₃+1]
-                        end
+        # record measurements
+        if L₀==1 # if time independent measurement
+            @views @. container[1,:,:,:,p]    += bondbond[1,:,:,:]
+        else # if time dependent measurement
+            @views @. container[1:Lₜ,:,:,:,p] += bondbond
+            # deal with τ=β time slice
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        nl₁ = mod(-l₁,L₁)
+                        nl₂ = mod(-l₂,L₂)
+                        nl₃ = mod(-l₃,L₃)
+                        # B[a,b,r′;c,d,r″](β,r) = B[c,d,r″;a,b,r′](0,-r)
+                        container[Lₜ+1,l₁+1,l₂+1,l₃+1,p] += bondbond[1,nl₁+1,nl₂+1,nl₃+1]
                     end
                 end
             end
@@ -1740,7 +1785,7 @@ end
 """
 Measure current-current correlation.
 """
-function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::HolsteinModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_CurrentCurrent!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::HolsteinModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
@@ -1781,11 +1826,21 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
     # number of vectors
     nᵥ = length(bonds)
 
+    # number of pairs
+    nₚ = size(pairs,2)
+
     # hopping ampltidues
     t = reshaped(t₀,(L₁,L₂,L₃,nᵥ))
 
     # iterate over first bond
-    for n″ in 1:nᵥ
+    for p in 1:nₚ
+
+        # initialize bond-bond correlation to zero
+        fill!(crntcrnt,0.0)
+
+        # get pair of bonds
+        n′ = pairs[1,p]
+        n″ = pairs[2,p]
 
         # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
@@ -1793,251 +1848,244 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
         c  = bonds[n″].o₂::Int # ending   orbital
         t″ = @view t[:,:,:,n″] # hopping amplitudes associated with bond
 
-        # iterate over second bond
-        for n′ in 1:nᵥ
+        # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+        r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+        b  = bonds[n′].o₁::Int # starting orbital
+        a  = bonds[n′].o₂::Int # ending   orbital
+        t′ = @view t[:,:,:,n′] # hopping amplitudes associated with bond
 
-            # initialize bond-bond correlation to zero
-            fill!(crntcrnt,0.0)
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,a,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,d,:,:,:]
+        circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
+        @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
+        @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
+            @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
+        end
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
 
-            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-            b  = bonds[n′].o₁::Int # starting orbital
-            a  = bonds[n′].o₂::Int # ending   orbital
-            t′ = @view t[:,:,:,n′] # hopping amplitudes associated with bond
+        # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        @. crntcrnt += 4*G₁G₂
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,a,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
-            @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
-            @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
-            @views for τ in Lₜ
-                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
-                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
-            end
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,a,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,c,:,:,:]
+        circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+        circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
+        @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
+        @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
+            @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+        end
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            @. crntcrnt += 4*G₁G₂
+        # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,a,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
-            @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
-            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-            @views for τ in Lₜ
-                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
-                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-            end
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,b,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,d,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
+        @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
+        @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+            @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
+        end
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
 
-            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,b,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
-            @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
-            @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
-            @views for τ in Lₜ
-                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
-            end
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,b,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,c,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+        circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
+        @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
+        @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+            @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+        end
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,b,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
-            @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
-            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-            @views for τ in Lₜ
-                @. G₁[τ,:,:,:] *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-                @. G₂[τ,:,:,:] *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-            end
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,d,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,a,:,:,:]
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+        circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
+        @. G₁ = M⁻¹R₁  * R₁′
+        @. G₂ = M⁻¹R₂″ * R₁
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′
+            @. G₂[τ,:,:,:] *= t″
+        end
+        translational_average!(G₁G₂,G₁,G₂)
 
-            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        @. crntcrnt -= 2*G₁G₂
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,a,:,:,:]
+        circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+        circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
+        @. G₁ = R₁″   * M⁻¹R₂
+        @. G₂ = M⁻¹R₁ * R₂′
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t″
+            @. G₂[τ,:,:,:] *= t′
+        end
+        translational_average!(G₁G₂,G₁,G₂)
+
+        # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        @. crntcrnt += 2*G₁G₂
+
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,d,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,b,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+        @. G₁ = M⁻¹R₁′ * R₂
+        @. G₂ = R₁     * M⁻¹R₂″
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′
+            @. G₂[τ,:,:,:] *= t″
+        end
+        translational_average!(G₁G₂,G₁,G₂)
+
+        # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+        @. crntcrnt += 2*G₁G₂
+
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,b,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+        circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
+        @. G₁ = M⁻¹R₁′ * R₂
+        @. G₂ = R₂″    * M⁻¹R₂
+        @views for τ in Lₜ
+            @. G₁[τ,:,:,:] *= t′
+            @. G₂[τ,:,:,:] *= t″
+        end
+        translational_average!(G₁G₂,G₁,G₂)
+
+        # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        @. crntcrnt -= 2*G₁G₂
+
+        # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
+        if a==c
+            # r = r″-r′
+            l₁ = mod(r″[1]-r′[1],L₁)
+            l₂ = mod(r″[2]-r′[2],L₂)
+            l₃ = mod(r″[3]-r′[3],L₃)
+            # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
             M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
             R₁    = @view    r₁[:,d,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
-            circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
-            @. G₁ = M⁻¹R₁  * R₁′
-            @. G₂ = M⁻¹R₂″ * R₁
+            copyto!(G₁,M⁻¹R₁)
+            copyto!(G₂,R₁)
             @views for τ in Lₜ
                 @. G₁[τ,:,:,:] *= t′
                 @. G₂[τ,:,:,:] *= t″
             end
-            translational_average!(G₁G₂,G₁,G₂)
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
-            @. crntcrnt -= 2*G₁G₂
-
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
+        if a==d
+            # r = -r′
+            l₁ = mod(-r′[1],L₁)
+            l₂ = mod(-r′[2],L₂)
+            l₃ = mod(-r′[3],L₃)
+            # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
             M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
             R₁    = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
-            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
-            @. G₁ = R₁″   * M⁻¹R₂
-            @. G₂ = M⁻¹R₁ * R₂′
-            @views for τ in Lₜ
-                @. G₁[τ,:,:,:] *= t″
-                @. G₂[τ,:,:,:] *= t′
-            end
-            translational_average!(G₁G₂,G₁,G₂)
-
-            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
-            @. crntcrnt += 2*G₁G₂
-
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,d,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = M⁻¹R₁′ * R₂
-            @. G₂ = R₁     * M⁻¹R₂″
+            copyto!(G₁,M⁻¹R₁)
+            circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
             @views for τ in Lₜ
                 @. G₁[τ,:,:,:] *= t′
                 @. G₂[τ,:,:,:] *= t″
             end
-            translational_average!(G₁G₂,G₁,G₂)
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-            @. crntcrnt += 2*G₁G₂
+        # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+        if b==c
+            # r = r″
+            l₁ = r″[1]
+            l₂ = r″[2]
+            l₃ = r″[3]
+            # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            copyto!(G₂,R₁)
+            @views for τ in Lₜ
+                @. G₁[τ,:,:,:] *= t′
+                @. G₂[τ,:,:,:] *= t″
+            end
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
+        if b==d
             M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
             R₁    = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-            circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = M⁻¹R₁′ * R₂
-            @. G₂ = R₂″    * M⁻¹R₂
+            circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
             @views for τ in Lₜ
                 @. G₁[τ,:,:,:] *= t′
                 @. G₂[τ,:,:,:] *= t″
             end
-            translational_average!(G₁G₂,G₁,G₂)
+            @. G₁G₂ = G₁ * G₂
+            crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
-            @. crntcrnt -= 2*G₁G₂
-
-            # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-            if a==c
-                # r = r″-r′
-                l₁ = mod(r″[1]-r′[1],L₁)
-                l₂ = mod(r″[2]-r′[2],L₂)
-                l₃ = mod(r″[3]-r′[3],L₃)
-                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                copyto!(G₁,M⁻¹R₁)
-                copyto!(G₂,R₁)
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′
-                    @. G₂[τ,:,:,:] *= t″
-                end
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-            if a==d
-                # r = -r′
-                l₁ = mod(-r′[1],L₁)
-                l₂ = mod(-r′[2],L₂)
-                l₃ = mod(-r′[3],L₃)
-                # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,c,:,:,:]
-                copyto!(G₁,M⁻¹R₁)
-                circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′
-                    @. G₂[τ,:,:,:] *= t″
-                end
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-            if b==c
-                # r = r″
-                l₁ = r″[1]
-                l₂ = r″[2]
-                l₃ = r″[3]
-                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-                copyto!(G₂,R₁)
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′
-                    @. G₂[τ,:,:,:] *= t″
-                end
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
-            if b==d
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,c,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-                circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
-                @views for τ in Lₜ
-                    @. G₁[τ,:,:,:] *= t′
-                    @. G₂[τ,:,:,:] *= t″
-                end
-                @. G₁G₂ = G₁ * G₂
-                crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # record measurements
-            if L₀==1 # if time independent measurement
-                @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
-            else # if time dependent measurement
-                @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
-                # deal with τ=β time slice
-                for l₃ in 0:L₃-1
-                    for l₂ in 0:L₂-1
-                        for l₁ in 0:L₁-1
-                            nl₁ = mod(-l₁,L₁)
-                            nl₂ = mod(-l₂,L₂)
-                            nl₃ = mod(-l₃,L₃)
-                            # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
-                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
-                        end
+        # record measurements
+        if L₀==1 # if time independent measurement
+            @views @. container[:,:,:,:,p]    += crntcrnt[1,:,:,:]
+        else # if time dependent measurement
+            @views @. container[1:Lₜ,:,:,:,p] += crntcrnt
+            # deal with τ=β time slice
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        nl₁ = mod(-l₁,L₁)
+                        nl₂ = mod(-l₂,L₂)
+                        nl₃ = mod(-l₃,L₃)
+                        # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
+                        container[Lₜ+1,l₁+1,l₂+1,l₃+1,p] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
                     end
                 end
             end
@@ -2047,7 +2095,7 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::Holstein
     return nothing
 end
 
-function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_CurrentCurrent!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::SSHModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
@@ -2088,11 +2136,27 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
     # number of vectors
     nᵥ = length(bonds)
 
+    # number of pairs
+    nₚ = size(pairs,2)
+
     # hopping ampltidues
     t = reshaped(t₀,(Lₜ,L₁,L₂,L₃,nᵥ))
 
     # iterate over first bond
-    for n″ in 1:nᵥ
+    for p in 1:nₚ
+
+        # initialize bond-bond correlation to zero
+        fill!(crntcrnt,0.0)
+
+        # get pair of bonds
+        n′ = pairs[1,p]
+        n″ = pairs[2,p]
+
+        # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
+        r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+        b  = bonds[n′].o₁::Int # starting orbital
+        a  = bonds[n′].o₂::Int # ending   orbital
+        t′ = @view t[:,:,:,:,n′] # hopping amplitudes associated with bond
 
         # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
@@ -2100,227 +2164,214 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},6},model::SSHModel
         c  = bonds[n″].o₂::Int # ending   orbital
         t″ = @view t[:,:,:,:,n″] # hopping amplitudes associated with bond
 
-        # iterate over second bond
-        for n′ in 1:nᵥ
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,a,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,d,:,:,:]
+        circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
+        @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
+        @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
+        @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
+        @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
 
-            # initialize bond-bond correlation to zero
-            fill!(crntcrnt,0.0)
+        # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        @. crntcrnt += 4*G₁G₂
 
-            # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
-            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-            b  = bonds[n′].o₁::Int # starting orbital
-            a  = bonds[n′].o₂::Int # ending   orbital
-            t′ = @view t[:,:,:,:,n′] # hopping amplitudes associated with bond
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,a,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,c,:,:,:]
+        circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
+        circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
+        @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
+        @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+        @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
+        @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,a,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(R₁′,   R₁   ,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
-            @. G₁ = M⁻¹R₁  * R₁′ # G₁ = [M⁻¹R₁ ⋅R₁′]
-            @. G₂ = M⁻¹R₂″ * R₂  # G₂ = [M⁻¹R₂″⋅R₂ ]
-            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁ ⋅R₁′]
-            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂ ]
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁ ⋅R₁′]⋆[t″⋅M⁻¹R₂″⋅R₂ ]
+        # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            @. crntcrnt += 4*G₁G₂
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,b,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,d,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
+        @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
+        @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
+        @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+        @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-            R₁    = @view    r₁[:,a,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(R₁′,R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(R₁,r′)
-            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(R₂,r″)
-            @. G₁ = M⁻¹R₁ * R₁′ # G₁ = [M⁻¹R₁⋅R₁′]
-            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁⋅R₁′]
-            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁⋅R₁′]⋆[t″⋅M⁻¹R₂⋅R₂″]
+        # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) a⁺(r′+r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,b,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,c,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
+        circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
+        @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
+        @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
+        @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
+        @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
+        translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,b,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,d,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3])) # shift(M⁻¹R₂,r″)
-            @. G₁ = M⁻¹R₁′ * R₁ # G₁ = [M⁻¹R₁′⋅R₁]
-            @. G₂ = M⁻¹R₂″ * R₂ # G₂ = [M⁻¹R₂″⋅R₂]
-            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂″⋅R₂]
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂″⋅R₂]
+        # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
+        @. crntcrnt -= 4*G₁G₂
 
-            # J -= 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨c(r″+i,0) d⁺(i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,d,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,a,:,:,:]
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+        circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
+        @. G₁ = M⁻¹R₁  * R₁′
+        @. G₂ = M⁻¹R₂″ * R₁
+        @. G₁ *= t′
+        @. G₂ *= t″
+        translational_average!(G₁G₂,G₁,G₂)
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,b,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,c,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3])) # shift(M⁻¹R₁,r′)
-            circshift!(R₂″,R₂,(0,-r″[1],-r″[2],-r″[3]))       # shift(R₂,r″)
-            @. G₁ = M⁻¹R₁′* R₁  # G₁ = [M⁻¹R₁′⋅R₁]
-            @. G₂ = M⁻¹R₂ * R₂″ # G₂ = [M⁻¹R₂⋅R₂″]
-            @. G₁ *= t′ # G₁ = [t′⋅M⁻¹R₁′⋅R₁]
-            @. G₂ *= t″ # G₂ = [t″⋅M⁻¹R₂⋅R₂″]
-            translational_average!(G₁G₂,G₁,G₂) # G₁⋅G₂ = [t′⋅M⁻¹R₁′⋅R₁]⋆[t″⋅M⁻¹R₂⋅R₂″]
+        # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        @. crntcrnt -= 2*G₁G₂
 
-            # J += 4⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) b⁺(r+i,τ)⟩⋅⟨d(i,0) c⁺(r″+i,0)⟩
-            @. crntcrnt -= 4*G₁G₂
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+        R₁    = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,a,:,:,:]
+        circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+        circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
+        @. G₁ = R₁″   * M⁻¹R₂
+        @. G₂ = M⁻¹R₁ * R₂′
+        @. G₁ *= t″
+        @. G₂ *= t′
+        translational_average!(G₁G₂,G₁,G₂)
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
+        # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        @. crntcrnt += 2*G₁G₂
+
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,d,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
+        R₂    = @view    r₂[:,b,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+        circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
+        @. G₁ = M⁻¹R₁′ * R₂
+        @. G₂ = R₁     * M⁻¹R₂″
+        @. G₁ *= t′
+        @. G₂ *= t″
+        translational_average!(G₁G₂,G₁,G₂)
+
+        # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
+        @. crntcrnt += 2*G₁G₂
+
+        # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
+        R₁    = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
+        R₂    = @view    r₂[:,b,:,:,:]
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+        circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
+        @. G₁ = M⁻¹R₁′ * R₂
+        @. G₂ = R₂″    * M⁻¹R₂
+        @. G₁ *= t′
+        @. G₂ *= t″
+        translational_average!(G₁G₂,G₁,G₂)
+
+        # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        @. crntcrnt -= 2*G₁G₂
+
+        # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
+        if a==c
+            # r = r″-r′
+            l₁ = mod(r″[1]-r′[1],L₁)
+            l₂ = mod(r″[2]-r′[2],L₂)
+            l₃ = mod(r″[3]-r′[3],L₃)
+            # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
             M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
             R₁    = @view    r₁[:,d,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
-            circshift!(   R₁′,   R₂,(0,-r′[1],-r′[2],-r′[3]))
-            @. G₁ = M⁻¹R₁  * R₁′
-            @. G₂ = M⁻¹R₂″ * R₁
+            copyto!(G₁,M⁻¹R₁)
+            copyto!(G₂,R₁)
             @. G₁ *= t′
             @. G₂ *= t″
-            translational_average!(G₁G₂,G₁,G₂)
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) a⁺(r′+r+i,τ)⟩
-            @. crntcrnt -= 2*G₁G₂
-
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
+        # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
+        if a==d
+            # r = -r′
+            l₁ = mod(-r′[1],L₁)
+            l₂ = mod(-r′[2],L₂)
+            l₃ = mod(-r′[3],L₃)
+            # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
             M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
             R₁    = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,a,:,:,:]
-            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
-            circshift!(R₂′,R₂,(0,-r′[1],-r′[2],-r′[3]))
-            @. G₁ = R₁″   * M⁻¹R₂
-            @. G₂ = M⁻¹R₁ * R₂′
-            @. G₁ *= t″
-            @. G₂ *= t′
-            translational_average!(G₁G₂,G₁,G₂)
-
-            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) a⁺(r′+r+i,τ)⟩
-            @. crntcrnt += 2*G₁G₂
-
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-            M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-            R₁    = @view    r₁[:,d,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,c,:,:,:]
-            R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-            circshift!(M⁻¹R₂″,M⁻¹R₂,(0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = M⁻¹R₁′ * R₂
-            @. G₂ = R₁     * M⁻¹R₂″
+            copyto!(G₁,M⁻¹R₁)
+            circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
             @. G₁ *= t′
             @. G₂ *= t″
-            translational_average!(G₁G₂,G₁,G₂)
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J += 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) d⁺(i,0)⟩⋅⟨c(r″+i,0) b⁺(r+i,τ)⟩
-            @. crntcrnt += 2*G₁G₂
+        # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+        if b==c
+            # r = r″
+            l₁ = r″[1]
+            l₂ = r″[2]
+            l₃ = r″[3]
+            # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
+            M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
+            R₁    = @view    r₁[:,d,:,:,:]
+            circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            copyto!(G₂,R₁)
+            @. G₁ *= t′
+            @. G₂ *= t″
+            circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
+            @. G₁G₂ *= G₂
+            crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # CALCULATE ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
+        # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
+        if b==d
             M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
             R₁    = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂ = @view M⁻¹r₂[:,d,:,:,:]
-            R₂    = @view    r₂[:,b,:,:,:]
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-            circshift!(R₂″,   R₁,   (0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = M⁻¹R₁′ * R₂
-            @. G₂ = R₂″    * M⁻¹R₂
+            circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+            circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
             @. G₁ *= t′
             @. G₂ *= t″
-            translational_average!(G₁G₂,G₁,G₂)
+            @. G₁G₂ = G₁ * G₂
+            crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
+        end
 
-            # J -= 2⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,τ) c⁺(r″+i,0)⟩⋅⟨d(i,0) b⁺(r+i,τ)⟩
-            @. crntcrnt -= 2*G₁G₂
-
-            # CALCULATE 2⋅δ(τ)⋅δ(a,c)⋅δ(r″,r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-            if a==c
-                # r = r″-r′
-                l₁ = mod(r″[1]-r′[1],L₁)
-                l₂ = mod(r″[2]-r′[2],L₂)
-                l₃ = mod(r″[3]-r′[3],L₃)
-                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                copyto!(G₁,M⁻¹R₁)
-                copyto!(G₂,R₁)
-                @. G₁ *= t′
-                @. G₂ *= t″
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] += 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE -2⋅δ(τ)⋅δ(a,d)⋅δ(r′+r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-            if a==d
-                # r = -r′
-                l₁ = mod(-r′[1],L₁)
-                l₂ = mod(-r′[2],L₂)
-                l₃ = mod(-r′[3],L₃)
-                # t′(r+i,τ) t″(i,0)⟩⋅⟨b(r+i,0) c⁺(r″+i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,c,:,:,:]
-                copyto!(G₁,M⁻¹R₁)
-                circshift!(G₂,R₁,(0,-r″[1],-r″[2],-r″[3]))
-                @. G₁ *= t′
-                @. G₂ *= t″
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE -2⋅δ(τ)⋅δ(b,c)⋅δ(r-r″)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-            if b==c
-                # r = r″
-                l₁ = r″[1]
-                l₂ = r″[2]
-                l₃ = r″[3]
-                # ⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) d⁺(i,0)⟩
-                M⁻¹R₁ = @view M⁻¹r₁[:,b,:,:,:]
-                R₁    = @view    r₁[:,d,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-                copyto!(G₂,R₁)
-                @. G₁ *= t′
-                @. G₂ *= t″
-                circshift!(G₁G₂,G₁,(0,l₁,l₂,l₃))
-                @. G₁G₂ *= G₂
-                crntcrnt[1,l₁+1,l₂+1,l₃+1] -= 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # CALCULATE 2⋅δ(τ)⋅δ(b,d)⋅δ(r)⋅⟨t′(r+i,τ) t″(i,0)⟩⋅⟨a(r′+r+i,0) c⁺(r″+i)⟩
-            if b==d
-                M⁻¹R₁ = @view M⁻¹r₁[:,a,:,:,:]
-                R₁    = @view    r₁[:,c,:,:,:]
-                circshift!(G₁,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-                circshift!(G₂,   R₁,(0,-r″[1],-r″[2],-r″[3]))
-                @. G₁ *= t′
-                @. G₂ *= t″
-                @. G₁G₂ = G₁ * G₂
-                crntcrnt[1,1,1,1] += 2 * sum(G₁G₂) / length(G₁G₂)
-            end
-
-            # record measurements
-            if L₀==1 # if time independent measurement
-                @views @. container[:,:,:,:,n′,n″]    += crntcrnt[1,:,:,:]
-            else # if time dependent measurement
-                @views @. container[1:Lₜ,:,:,:,n′,n″] += crntcrnt
-                # deal with τ=β time slice
-                for l₃ in 0:L₃-1
-                    for l₂ in 0:L₂-1
-                        for l₁ in 0:L₁-1
-                            nl₁ = mod(-l₁,L₁)
-                            nl₂ = mod(-l₂,L₂)
-                            nl₃ = mod(-l₃,L₃)
-                            # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
-                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n″,n′] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
-                        end
+        # record measurements
+        if L₀==1 # if time independent measurement
+            @views @. container[:,:,:,:,p]    += crntcrnt[1,:,:,:]
+        else # if time dependent measurement
+            @views @. container[1:Lₜ,:,:,:,p] += crntcrnt
+            # deal with τ=β time slice
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        nl₁ = mod(-l₁,L₁)
+                        nl₂ = mod(-l₂,L₂)
+                        nl₃ = mod(-l₃,L₃)
+                        # J[a,b,r′;c,d,r″](β,r) = J[c,d,r″;a,b,r′](0,-r)
+                        container[Lₜ+1,l₁+1,l₂+1,l₃+1,p] += crntcrnt[1,nl₁+1,nl₂+1,nl₃+1]
                     end
                 end
             end
@@ -2333,7 +2384,7 @@ end
 """
 Measure Bond Pair Green's function.
 """
-function measure_BondPairGreens!(container::Array{Complex{T1},6},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
@@ -2365,59 +2416,62 @@ function measure_BondPairGreens!(container::Array{Complex{T1},6},model::Abstract
     # number of vectors
     nᵥ = length(bonds)
 
+    # number of pairs
+    nₚ = size(pairs,2)
+
     # iterate over first bond
-    for n″ in 1:nᵥ
+    for p in 1:nₚ
 
-        # create pair of electrons on d ⟶ c displaced r″ unit cells apart
+        # initialize pair-greens correlation to zero
+        fill!(pairgrns,0.0)
+
+        # get pair of bonds
+        n′ = pairs[1,p]
+        n″ = pairs[2,p]
+
+        # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
+        r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
+        b  = bonds[n′].o₁::Int        # starting orbital
+        a  = bonds[n′].o₂::Int        # ending   orbital
+
+        # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
-        d  = bonds[n″].o₁::Int        # starting orbital
-        c  = bonds[n″].o₂::Int        # ending   orbital
+        c  = bonds[n″].o₁::Int        # starting orbital
+        d  = bonds[n″].o₂::Int        # ending   orbital
 
-        # iterate over second bond
-        for n′ in 1:nᵥ
+        # CALCULATE G₁⋅G₂ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
+        M⁻¹R₁  = @view M⁻¹r₁[:,a,:,:,:]
+        R₁     = @view    r₁[:,c,:,:,:]
+        M⁻¹R₂  = @view M⁻¹r₂[:,b,:,:,:]
+        R₂     = @view    r₂[:,d,:,:,:]
+        R₁″    = G₁
+        M⁻¹R₁′ = G₂
+        circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
+        circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
+        @. G₁ = R₁″ * R₂
+        @. G₂ = M⁻¹R₁′ * M⁻¹R₂
+        translational_average!(G₁G₂,G₂,G₁)
+        @. pairgrns += G₁G₂
 
-            # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
-            r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
-            b  = bonds[n′].o₁::Int        # starting orbital
-            a  = bonds[n′].o₂::Int        # ending   orbital
-
-            # initialize pair-greens correlation to zero
-            fill!(pairgrns,0.0)
-
-            # CALCULATE G₁⋅G₂ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
-            M⁻¹R₁  = @view M⁻¹r₁[:,a,:,:,:]
-            R₁     = @view    r₁[:,c,:,:,:]
-            M⁻¹R₂  = @view M⁻¹r₂[:,b,:,:,:]
-            R₂     = @view    r₂[:,d,:,:,:]
-            R₁″    = G₁
-            M⁻¹R₁′ = G₂
-            circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
-            circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
-            @. G₁ = R₁″ * R₂
-            @. G₂ = M⁻¹R₁′ * M⁻¹R₂
-            translational_average!(G₁G₂,G₂,G₁)
-            @. pairgrns += G₁G₂
-
-            # record measurements
-            if L₀==1 # if time independent measurement
-                @views @. container[:,:,:,:,n′,n″]    += pairgrns[1,:,:,:]
-            else # if time dependent measurement
-                @views @. container[1:Lₜ,:,:,:,n′,n″] += pairgrns
-                # deal with τ=β time slice
-                for l₃ in 0:L₃-1
-                    for l₂ in 0:L₂-1
-                        for l₁ in 0:L₁-1
-                            δ_a_c     = δ(a,c)
-                            δ_r″_r′   = δ(r′[1],r″[1])*δ(r′[2],r″[2])*δ(r′[3],r″[3])
-                            δ_b_d     = δ(b,d)
-                            δ_r_0     = δ(l₁)*δ(l₂)*δ(l₃)
-                            δ_r″_r′pr = δ(r″[1],mod(r′[1]+l₁,L₁)) * δ(r″[2],mod(r′[2]+l₂,L₂)) * δ(r″[3],mod(r′[3]+l₃,L₃))
-                            val       = pairgrns[1,l₁+1,l₂+1,l₃+1]
-                            val      += δ_a_c * δ_r″_r′ * δ_b_d * δ_r_0
-                            val      -= δ_b_d * δ_r_0 * measure_GΔ0( estimator, mod(r′[1]+l₁-r″[1],L₁), mod(r′[2]+l₂-r″[2],L₂), mod(r′[3]+l₃-r″[3],L₃), c, a, 0)
-                            val      -= δ_a_c * δ_r″_r′pr * measure_GΔ0( estimator, l₁,l₂,l₃,d,b,0)
-                            container[Lₜ+1,l₁+1,l₂+1,l₃+1,n′,n″] += val
-                        end
+        # record measurements
+        if L₀==1 # if time independent measurement
+            @views @. container[:,:,:,:,p]    += pairgrns[1,:,:,:]
+        else # if time dependent measurement
+            @views @. container[1:Lₜ,:,:,:,p] += pairgrns
+            # deal with τ=β time slice
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        δ_a_c     = δ(a,c)
+                        δ_r″_r′   = δ(r′[1],r″[1])*δ(r′[2],r″[2])*δ(r′[3],r″[3])
+                        δ_b_d     = δ(b,d)
+                        δ_r_0     = δ(l₁)*δ(l₂)*δ(l₃)
+                        δ_r″_r′pr = δ(r″[1],mod(r′[1]+l₁,L₁)) * δ(r″[2],mod(r′[2]+l₂,L₂)) * δ(r″[3],mod(r′[3]+l₃,L₃))
+                        val       = pairgrns[1,l₁+1,l₂+1,l₃+1]
+                        val      += δ_a_c * δ_r″_r′ * δ_b_d * δ_r_0
+                        val      -= δ_b_d * δ_r_0 * measure_GΔ0( estimator, mod(r′[1]+l₁-r″[1],L₁), mod(r′[2]+l₂-r″[2],L₂), mod(r′[3]+l₃-r″[3],L₃), c, a, 0)
+                        val      -= δ_a_c * δ_r″_r′pr * measure_GΔ0( estimator, l₁,l₂,l₃,d,b,0)
+                        container[Lₜ+1,l₁+1,l₂+1,l₃+1,p] += val
                     end
                 end
             end
@@ -2430,7 +2484,7 @@ end
 """
 Measure Phonon Green's function for SSH model.
 """
-function measure_PhononGreens!(container::Array{Complex{T1},6},model::SSHModel{T1,T2,T3},Gr::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function measure_PhononGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::SSHModel{T1,T2,T3},Gr::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
     # size of lattice
     Lₜ = model.Lτ::Int
@@ -2458,24 +2512,27 @@ function measure_PhononGreens!(container::Array{Complex{T1},6},model::SSHModel{T
     x₂   = reshaped(view(b,  1:NL),(Lₜ,L₁,L₂,L₃))
     x₁x₂ = reshaped(view(ab′,1:NL),(Lₜ,L₁,L₂,L₃))
 
-    # iterate over bonds
-    for b₂ in 1:nᵥ
-        # iterate over bonds
-        for b₁ in 1:nᵥ
-            # associated phonon fields
-            @views @. x₂ = x[:,:,:,:,b₂]
-            # associated phonon fields
-            @views @. x₁ = x[:,:,:,:,b₁]
-            # calculate translation average
-            translational_average!(x₁x₂,x₁,x₂)
-            # save the results
-            if L₀==1 # equal time measurment
-                @views @. container[1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
-            else # unequal time measurement
-                @views @. container[1:Lₜ,:,:,:,b₁,b₂] += x₁x₂
-                # dealing with τ=β time slice
-                @views @. container[Lₜ+1,:,:,:,b₁,b₂] += x₁x₂[1,:,:,:]
-            end
+    # number of pairs
+    nₚ = size(pairs,2)
+
+    # iterate over pairs
+    for p in 1:nₚ
+        # get pair
+        b₁ = pairs[1,p]
+        b₂ = pairs[2,p]
+        # associated phonon fields
+        @views @. x₂ = x[:,:,:,:,b₂]
+        # associated phonon fields
+        @views @. x₁ = x[:,:,:,:,b₁]
+        # calculate translation average
+        translational_average!(x₁x₂,x₁,x₂)
+        # save the results
+        if L₀==1 # equal time measurment
+            @views @. container[1,:,:,:,p] += x₁x₂[1,:,:,:]
+        else # unequal time measurement
+            @views @. container[1:Lₜ,:,:,:,p] += x₁x₂
+            # dealing with τ=β time slice
+            @views @. container[Lₜ+1,:,:,:,p] += x₁x₂[1,:,:,:]
         end
     end
 
@@ -2489,55 +2546,24 @@ end
 """
 Measure generic susceptibility.
 """
-function measure_susceptibility!(susc::AbstractArray{Complex{T1},5},corr::AbstractArray{Complex{T1},6},model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
+function measure_susceptibility!(susc::AbstractArray{Complex{T1},4},corr::AbstractArray{Complex{T1},5},model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
 
     Δτ = model.Δτ
     L₁ = size(susc,1)
     L₂ = size(susc,2)
     L₃ = size(susc,3)
-    n  = size(susc,4)
+    nₚ = size(susc,4)
 
     # iterate over all possible (displacement vectors/k-points)
-    for n₂ in 1:n
-        for n₁ in 1:n
-            for l₃ in 1:L₃
-                for l₂ in 1:L₂
-                    for l₁ in 1:L₁
-                        # numerically integrate from 0 to β
-                        vals = @view corr[:,l₁,l₂,l₃,n₁,n₂]
-                        susc[l₁,l₂,l₃,n₁,n₂] = simpson(vals,Δτ)
-                    end
+    for p in 1:nₚ
+        for l₃ in 1:L₃
+            for l₂ in 1:L₂
+                for l₁ in 1:L₁
+                    # numerically integrate from 0 to β
+                    vals = @view corr[:,l₁,l₂,l₃,p]
+                    susc[l₁,l₂,l₃,p] = simpson(vals,Δτ)
                 end
             end
-        end
-    end
-
-    return nothing
-end
-
-"""
-Measure S-Wave Susceptibility.
-"""
-function measure_swave!(container::NamedTuple,model::AbstractModel{T1,T2,T3}) where {T1,T2,T3}
-
-    if haskey(container.onsite_meas, :swave_susc)
-
-        # to container S-wave susceptibility measurement
-        swave = container.onsite_meas.swave_susc
-        
-        # number of orbitals per unit cell
-        nₒ = model.lattice.unit_cell.norbits::Int
-        L₁ = model.lattice.L1
-        L₂ = model.lattice.L2
-        L₃ = model.lattice.L3
-        L  = model.Lτ
-
-        # array contain momentum space pair green's function
-        pairs = container.onsite_corr.PairGreens.momentum::Array{Complex{T1},6}
-
-        for o in 1:nₒ
-            p        = @view pairs[:,1,1,1,o,o]
-            swave[o] = simpson(p,model.Δτ)
         end
     end
 

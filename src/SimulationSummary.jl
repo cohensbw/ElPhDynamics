@@ -131,11 +131,19 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
 
         # write susceptibilities
         write(fout,"\n")
-        write(fout, "######################","\n")
-        write(fout, "## SUSCEPTIBILITIES ##","\n")
-        write(fout, "######################","\n","\n")
+        write(fout, "##############################","\n")
+        write(fout, "## ON-SITE SUSCEPTIBILITIES ##","\n")
+        write(fout, "##############################","\n","\n")
 
-        write_susceptibilities!(fout,model,container.susceptibility,sim_params,Nbins)
+        write_susceptibilities!(fout,model,container.onsite_susc,sim_params,Nbins)
+
+        # write susceptibilities
+        write(fout,"\n")
+        write(fout, "#################################","\n")
+        write(fout, "## INTER-SITE SUSCEPTIBILITIES ##","\n")
+        write(fout, "#################################","\n","\n")
+
+        write_susceptibilities!(fout,model,container.intersite_susc,sim_params,Nbins)
 
     end
 
@@ -671,8 +679,9 @@ function write_correlations!(fout,model::AbstractModel{T1,T2,T3},container::Name
         measurement = string(key)
         position    = container[key].position
         momentum    = container[key].momentum
-        write_correlation!(fout,measurement,model,position,sim_params,Nbins,true)
-        write_correlation!(fout,measurement,model,momentum,sim_params,Nbins,false)
+        pairs       = container[key].pairs
+        write_correlation!(fout,measurement,model,position,pairs,sim_params,Nbins,true)
+        write_correlation!(fout,measurement,model,momentum,pairs,sim_params,Nbins,false)
     end
 
     return nothing
@@ -681,13 +690,13 @@ end
 """
 Write a correlation to file.
 """
-function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},6},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
+function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},5},pairs::Matrix{Int},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
     
     # get size of conatiner
-    Lₜ, L₁, L₂, L₃, n, extra = size(container)
+    Lₜ, L₁, L₂, L₃, nₚ = size(container)
 
     # declare array to contained binned data
-    binned_data = zeros(T1,Nbins,Lₜ,L₁,L₂,L₃,n,n)
+    binned_data = zeros(T1,Nbins,Lₜ,L₁,L₂,L₃,nₚ)
 
     # number of measurements in data file
     Nmeas = sim_params.num_bins
@@ -733,20 +742,20 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
         write(statsout,header)
 
         # iterate over all measurements
-        for n₁ in 1:n
-            for n₂ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            for τ in 1:Lₜ
-                                data = @view binned_data[:,τ,l₁,l₂,l₃,n₂,n₁]
-                                # calculate average and error of measurement
-                                avg, err = mean_and_error(data)
-                                # write to file
-                                line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
-                                write(fout,line)
-                                write(statsout,line)
-                            end
+        for p in 1:nₚ
+            n₁ = pairs[1,p]
+            n₂ = pairs[2,p]
+            for l₃ in 1:L₃
+                for l₂ in 1:L₂
+                    for l₁ in 1:L₁
+                        for τ in 1:Lₜ
+                            data = @view binned_data[:,τ,l₁,l₂,l₃,p]
+                            # calculate average and error of measurement
+                            avg, err = mean_and_error(data)
+                            # write to file
+                            line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
+                            write(fout,line)
+                            write(statsout,line)
                         end
                     end
                 end
@@ -762,7 +771,10 @@ end
 """
 Read correlation data.
 """
-function read_correlation!(binned_data::AbstractArray{T,7}, datafn::String, N::Int) where {T}
+function read_correlation!(binned_data::AbstractArray{T,6}, datafn::String, N::Int) where {T}
+
+    # number of pairs
+    Nbins,Lₜ,L₁,L₂,L₃,nₚ = size(binned_data)
 
     # open data file
     open(datafn,"r") do fin
@@ -771,7 +783,7 @@ function read_correlation!(binned_data::AbstractArray{T,7}, datafn::String, N::I
         datafile_header = readline(fin)
 
         # iterate over lines in data file
-        for line in eachline(fin)
+        for (index,line) in enumerate(eachline(fin))
 
             # split line apart
             atoms = split(line,",")
@@ -783,16 +795,15 @@ function read_correlation!(binned_data::AbstractArray{T,7}, datafn::String, N::I
             bin = div(nmeas-1,N) + 1
             
             # parse the data
-            n₁ = parse(Int, atoms[2])
-            n₂ = parse(Int, atoms[3])
-            l₃ = parse(Int, atoms[4]) + 1
-            l₂ = parse(Int, atoms[5]) + 1
-            l₁ = parse(Int, atoms[6]) + 1
-            τ  = parse(Int, atoms[7]) + 1
-            v  = parse(T,   atoms[8])
+            p  = parse(Int, atoms[2])
+            l₃ = parse(Int, atoms[5]) + 1
+            l₂ = parse(Int, atoms[6]) + 1
+            l₁ = parse(Int, atoms[7]) + 1
+            τ  = parse(Int, atoms[8]) + 1
+            v  = parse(T,   atoms[9])
 
             # record measurement
-            binned_data[bin,τ,l₁,l₂,l₃,n₂,n₁] += v/N
+            binned_data[bin,τ,l₁,l₂,l₃,p] += v/N
         end
     end
 
@@ -809,8 +820,9 @@ function write_susceptibilities!(fout,model::AbstractModel{T1,T2,T3},container::
         measurement = string(key)
         position    = container[key].position
         momentum    = container[key].momentum
-        write_susceptibility!(fout,measurement,model,position,sim_params,Nbins,true)
-        write_susceptibility!(fout,measurement,model,momentum,sim_params,Nbins,false)
+        pairs       = container[key].pairs
+        write_susceptibility!(fout,measurement,model,position,pairs,sim_params,Nbins,true)
+        write_susceptibility!(fout,measurement,model,momentum,pairs,sim_params,Nbins,false)
     end
 
     return nothing
@@ -819,13 +831,13 @@ end
 """
 Write a susceptibility to file.
 """
-function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},5},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
+function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},4},pairs::Matrix{Int},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
     
     # get size of conatiner
-    L₁, L₂, L₃, n, extra = size(container)
+    L₁, L₂, L₃, nₚ = size(container)
 
     # declare array to contained binned data
-    binned_data = zeros(T1,Nbins,L₁,L₂,L₃,n,n)
+    binned_data = zeros(T1,Nbins,L₁,L₂,L₃,nₚ)
 
     # number of measurements in data file
     Nmeas = sim_params.num_bins
@@ -871,19 +883,19 @@ function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,
         write(statsout,header)
 
         # iterate over all measurements
-        for n₁ in 1:n
-            for n₂ in 1:n
-                for l₃ in 1:L₃
-                    for l₂ in 1:L₂
-                        for l₁ in 1:L₁
-                            data = @view binned_data[:,l₁,l₂,l₃,n₂,n₁]
-                            # calculate average and error of measurement
-                            avg, err = mean_and_error(data)
-                            # write to file
-                            line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
-                            write(fout,line)
-                            write(statsout,line)
-                        end
+        for p in 1:nₚ
+            n₁ = pairs[1,p]
+            n₂ = pairs[2,p]
+            for l₃ in 1:L₃
+                for l₂ in 1:L₂
+                    for l₁ in 1:L₁
+                        data = @view binned_data[:,l₁,l₂,l₃,p]
+                        # calculate average and error of measurement
+                        avg, err = mean_and_error(data)
+                        # write to file
+                        line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
+                        write(fout,line)
+                        write(statsout,line)
                     end
                 end
             end
@@ -898,7 +910,13 @@ end
 """
 Read susceptibility data.
 """
-function read_susceptibility!(binned_data::AbstractArray{T,6}, datafn::String, N::Int) where {T}
+function read_susceptibility!(binned_data::AbstractArray{T,5}, datafn::String, N::Int) where {T}
+
+    # number of pairs
+    Nbins,L₁,L₂,L₃,nₚ = size(binned_data)
+
+    # number of distinct measurement definitions
+    Ndefs = L₁*L₂*L₃*nₚ
 
     # open data file
     open(datafn,"r") do fin
@@ -907,7 +925,7 @@ function read_susceptibility!(binned_data::AbstractArray{T,6}, datafn::String, N
         datafile_header = readline(fin)
 
         # iterate over lines in data file
-        for line in eachline(fin)
+        for (index,line) in enumerate(eachline(fin))
 
             # split line apart
             atoms = split(line,",")
@@ -919,15 +937,14 @@ function read_susceptibility!(binned_data::AbstractArray{T,6}, datafn::String, N
             bin = div(nmeas-1,N) + 1
             
             # parse the data
-            n₁ = parse(Int, atoms[2])
-            n₂ = parse(Int, atoms[3])
-            l₃ = parse(Int, atoms[4]) + 1
-            l₂ = parse(Int, atoms[5]) + 1
-            l₁ = parse(Int, atoms[6]) + 1
-            v  = parse(T,   atoms[7])
+            p  = parse(Int, atoms[2])
+            l₃ = parse(Int, atoms[5]) + 1
+            l₂ = parse(Int, atoms[6]) + 1
+            l₁ = parse(Int, atoms[7]) + 1
+            v  = parse(T,   atoms[8])
 
             # record measurement
-            binned_data[bin,l₁,l₂,l₃,n₂,n₁] += v/N
+            binned_data[bin,l₁,l₂,l₃,p] += v/N
         end
     end
 
