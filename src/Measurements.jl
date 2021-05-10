@@ -1701,8 +1701,8 @@ function measure_BondBond!(container::Array{Complex{T1},5},pairs::Matrix{Int},mo
     for p in 1:nₚ
 
         # get pair of relevant bonds
-        n′ = pairs[1,p]
-        n″ = pairs[2,p]
+        n′ = pairs[2,p]
+        n″ = pairs[1,p]
 
         # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
@@ -1839,8 +1839,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},5},pairs::Matrix{I
         fill!(crntcrnt,0.0)
 
         # get pair of bonds
-        n′ = pairs[1,p]
-        n″ = pairs[2,p]
+        n′ = pairs[2,p]
+        n″ = pairs[1,p]
 
         # vector associated with bond going from orbitals d ⟶ c displaced r″ unit cells
         r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
@@ -2149,8 +2149,8 @@ function measure_CurrentCurrent!(container::Array{Complex{T1},5},pairs::Matrix{I
         fill!(crntcrnt,0.0)
 
         # get pair of bonds
-        n′ = pairs[1,p]
-        n″ = pairs[2,p]
+        n′ = pairs[2,p]
+        n″ = pairs[1,p]
 
         # vector associated with bond going from orbitals b ⟶ a displaced r′ unit cells
         r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
@@ -2383,6 +2383,7 @@ end
 
 """
 Measure Bond Pair Green's function.
+P[a,b,r′;c,d,r″](τ,r) =⟨Δ[a,b,r′](τ,r)⋅Δ⁺[c,d,r″](0,0)⟩ =⟨[b⁺(↓,τ,r)⋅a⁺(↑,τ,r′+r)]⋅[c⁺(↑,0,r″)⋅d⁺(↓,0,0)]⟩
 """
 function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
@@ -2426,8 +2427,8 @@ function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{I
         fill!(pairgrns,0.0)
 
         # get pair of bonds
-        n′ = pairs[1,p]
-        n″ = pairs[2,p]
+        n′ = pairs[2,p]
+        n″ = pairs[1,p]
 
         # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
         r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
@@ -2510,7 +2511,7 @@ function measure_PhononGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int
     NL   = Lₜ*L₁*L₂*L₃
     x₁   = reshaped(view(a,  1:NL),(Lₜ,L₁,L₂,L₃))
     x₂   = reshaped(view(b,  1:NL),(Lₜ,L₁,L₂,L₃))
-    x₁x₂ = reshaped(view(ab′,1:NL),(Lₜ,L₁,L₂,L₃))
+    x₂x₁ = reshaped(view(ab′,1:NL),(Lₜ,L₁,L₂,L₃))
 
     # number of pairs
     nₚ = size(pairs,2)
@@ -2525,14 +2526,14 @@ function measure_PhononGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int
         # associated phonon fields
         @views @. x₁ = x[:,:,:,:,b₁]
         # calculate translation average
-        translational_average!(x₁x₂,x₁,x₂)
+        translational_average!(x₂x₁,x₂,x₁)
         # save the results
         if L₀==1 # equal time measurment
-            @views @. container[1,:,:,:,p] += x₁x₂[1,:,:,:]
+            @views @. container[1,:,:,:,p] += x₂x₁[1,:,:,:]
         else # unequal time measurement
-            @views @. container[1:Lₜ,:,:,:,p] += x₁x₂
+            @views @. container[1:Lₜ,:,:,:,p] += x₂x₁
             # dealing with τ=β time slice
-            @views @. container[Lₜ+1,:,:,:,p] += x₁x₂[1,:,:,:]
+            @views @. container[Lₜ+1,:,:,:,p] += x₂x₁[1,:,:,:]
         end
     end
 
