@@ -75,12 +75,12 @@ mutable struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,T
     """
     All the random vectors.
     """
-    R::Vector{Vector{T}}
+    R::Matrix{T}
 
     """
     All solutions to linear systems associated with random vectors.
     """
-    M⁻¹R::Vector{Vector{T}}
+    M⁻¹R::Matrix{T}
 
     """
     First random vector of length NL.
@@ -171,12 +171,12 @@ mutable struct EstimateGreensFunction{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,T
         L₂      = model.lattice.L2
         L₁      = model.lattice.L1
         nₛ      = model.lattice.unit_cell.norbits
-        R       = [zeros(T,NL) for _ in 1:nᵥ]
-        M⁻¹R    = [zeros(T,NL) for _ in 1:nᵥ]
-        r₁      = R[1]
-        r₂      = R[2]
-        M⁻¹r₁   = M⁻¹R[1]
-        M⁻¹r₂   = M⁻¹R[2]
+        R       = zeros(T,NL,nᵥ)
+        M⁻¹R    = zeros(T,NL,nᵥ)
+        r₁      = zeros(T,NL)
+        r₂      = zeros(T,NL)
+        M⁻¹r₁   = zeros(T,NL)
+        M⁻¹r₂   = zeros(T,NL)
         GΔ0     = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
         GΔΔ_G00 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
         GΔ0_GΔ0 = zeros(Complex{T},2L,nₛ,nₛ,L₁,L₂,L₃)
@@ -200,32 +200,34 @@ Update Green's functions with new random vectors.
 """
 function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) where {T<:AbstractModel}
 
+    @unpack r₁, M⁻¹r₁, R, M⁻¹R = estimator
+    
     # update preconditioner
     KPMPreconditioners.setup!(preconditioner)
 
     # iterate over number or random vectors
     for i in 1:estimator.nᵥ
 
-        # get random and solution vectors
-        R    = estimator.R[i]
-        M⁻¹R = estimator.M⁻¹R[i]
-
         # initialize random vector with new random number
-        randn!(R)
-        fill!(M⁻¹R,0.0)
+        randn!(r₁)
+        fill!(M⁻¹r₁,0.0)
 
         # solve linear system
         if model.mul_by_M
             model.transposed = false
             # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-            iters, err = ldiv!(M⁻¹R, model, R, preconditioner)
+            iters, err = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
         else
             model.transposed = false
             # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₁
-            MᵀR = model.v″
-            mulMᵀ!(MᵀR, model, R)
-            iters, err = ldiv!(M⁻¹R, model, MᵀR, preconditioner)
+            Mᵀr₁ = model.v″
+            mulMᵀ!(Mᵀr₁, model, r₁)
+            iters, err = ldiv!(M⁻¹r₁, model, Mᵀr₁, preconditioner)
         end
+
+        # store result
+        @views @. R[:,i]    = r₁
+        @views @. M⁻¹R[:,i] = M⁻¹r₁
     end
 
     return nothing
@@ -234,22 +236,18 @@ end
 """
 Setup Green's function convolutions with specified random vectors.
 """
-function setup!(estimator::EstimateGreensFunction, v::Int, u::Int) where {T<:AbstractModel}
-
-    # total number of random vector
-    nᵥ = estimator.nᵥ
-
-    # assign current random vectors and solutions
-    @assert v!=u && 1<=v<=nᵥ && 1<=u<=nᵥ
-    estimator.n₁    = v
-    estimator.n₂    = u
-    estimator.r₁    = estimator.R[v]
-    estimator.r₂    = estimator.R[u]
-    estimator.M⁻¹r₁ = estimator.M⁻¹R[v]
-    estimator.M⁻¹r₂ = estimator.M⁻¹R[u]
+function setup!(estimator::EstimateGreensFunction, n₁::Int, n₂::Int) where {T<:AbstractModel}
 
     # unpack variables
-    @unpack r₁, r₂, M⁻¹r₁, M⁻¹r₂, a, b, L = estimator
+    @unpack nᵥ, r₁, r₂, M⁻¹r₁, M⁻¹r₂, R, M⁻¹R, a, b, L = estimator
+
+    # assign current random vectors and solutions
+    estimator.n₁    = n₁
+    estimator.n₂    = n₂
+    @views @. r₁    = R[:,n₁]
+    @views @. M⁻¹r₁ = M⁻¹R[:,n₁]
+    @views @. r₂    = R[:,n₂]
+    @views @. M⁻¹r₂ = M⁻¹R[:,n₂]
 
     # initialize measured values to zero
     fill!(estimator.GΔ0,0.0)
