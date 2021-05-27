@@ -2383,7 +2383,7 @@ end
 
 """
 Measure Bond Pair Green's function.
-P[a,b,r′;c,d,r″](τ,r) =⟨Δ[a,b,r′](τ,r)⋅Δ⁺[c,d,r″](0,0)⟩ =⟨[b⁺(↓,τ,r)⋅a⁺(↑,τ,r′+r)]⋅[c⁺(↑,0,r″)⋅d⁺(↓,0,0)]⟩
+P[a,b,r′;c,d,r″](τ,r) =⟨Δ[a,b,r′](τ,r)⋅Δ⁺[c,d,r″](0,0)⟩ =⟨[b(↓,τ,r)⋅a(↑,τ,r′+r)]⋅[c⁺(↑,0,r″)⋅d⁺(↓,0,0)]⟩
 """
 function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{Int},model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
