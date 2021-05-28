@@ -2395,18 +2395,16 @@ function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{I
     nₒ = model.lattice.unit_cell.norbits::Int
     nᵤ = model.lattice.ncells::Int
 
-    @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂, ab″, ab′, a, b, = estimator
-
-    r₁    = reshaped(r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
-    M⁻¹r₁ = reshaped(M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
-    r₂    = reshaped(r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
-    M⁻¹r₂ = reshaped(M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₁    = reshaped(estimator.r₁,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₁ = reshaped(estimator.M⁻¹r₁, (Lₜ,nₒ,L₁,L₂,L₃))
+    r₂    = reshaped(estimator.r₂,    (Lₜ,nₒ,L₁,L₂,L₃))
+    M⁻¹r₂ = reshaped(estimator.M⁻¹r₂, (Lₜ,nₒ,L₁,L₂,L₃))
 
     # containers for performing calculation
-    pairgrns = reshaped(view(ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-    G₁G₂     = reshaped(view(ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-    G₁       = reshaped(view(a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
-    G₂       = reshaped(view(b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    pairgrns = reshaped(view(estimator.ab″,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂G₁     = reshaped(view(estimator.ab′,1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₁       = reshaped(view(estimator.a,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
+    G₂       = reshaped(view(estimator.b,  1:Lₜ*nᵤ), (Lₜ,L₁,L₂,L₃))
 
     # displacement vectors describing each type of bond
     bonds = model.bond_definitions
@@ -2440,19 +2438,19 @@ function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{I
         c  = bonds[n″].o₁::Int        # starting orbital
         d  = bonds[n″].o₂::Int        # ending   orbital
 
-        # CALCULATE G₁⋅G₂ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
+        # CALCULATE G₂⋅G₁ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
         M⁻¹R₁  = @view M⁻¹r₁[:,a,:,:,:]
         R₁     = @view    r₁[:,c,:,:,:]
         M⁻¹R₂  = @view M⁻¹r₂[:,b,:,:,:]
         R₂     = @view    r₂[:,d,:,:,:]
-        R₁″    = G₁
         M⁻¹R₁′ = G₂
+        R₁″    = G₁
         circshift!(M⁻¹R₁′,M⁻¹R₁,(0,-r′[1],-r′[2],-r′[3]))
         circshift!(R₁″,R₁,(0,-r″[1],-r″[2],-r″[3]))
-        @. G₁ = R₁″ * R₂
         @. G₂ = M⁻¹R₁′ * M⁻¹R₂
-        translational_average!(G₁G₂,G₂,G₁)
-        @. pairgrns += G₁G₂
+        @. G₁ = R₁″ * R₂
+        translational_average!(G₂G₁,G₂,G₁)
+        @. pairgrns += G₂G₁
 
         # record measurements
         if L₀==1 # if time independent measurement

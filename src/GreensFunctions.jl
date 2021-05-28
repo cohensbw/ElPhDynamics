@@ -244,10 +244,10 @@ function setup!(estimator::EstimateGreensFunction, n₁::Int, n₂::Int) where {
     # assign current random vectors and solutions
     estimator.n₁    = n₁
     estimator.n₂    = n₂
-    @views @. r₁    = R[:,n₁]
     @views @. M⁻¹r₁ = M⁻¹R[:,n₁]
-    @views @. r₂    = R[:,n₂]
+    @views @. r₁    = R[:,n₁]
     @views @. M⁻¹r₂ = M⁻¹R[:,n₂]
+    @views @. r₂    = R[:,n₂]
 
     # initialize measured values to zero
     fill!(estimator.GΔ0,0.0)
@@ -261,27 +261,27 @@ function setup!(estimator::EstimateGreensFunction, n₁::Int, n₂::Int) where {
 
     # calcualte G[Δ,0]
     z = estimator.z
-    antiperiodic_copy!(a,r₁,L)
-    antiperiodic_copy!(z,r₂,L)
-    @. a = (a+z)/sqrt(2.0)
-    antiperiodic_copy!(b,M⁻¹r₁,L)
+    antiperiodic_copy!(a,M⁻¹r₁,L)
     antiperiodic_copy!(z,M⁻¹r₂,L)
+    @. a = (a+z)/sqrt(2.0)
+    antiperiodic_copy!(b,r₁,L)
+    antiperiodic_copy!(z,r₂,L)
     @. b = (b+z)/sqrt(2.0)
     convolve!(estimator.GΔ0,a,b,estimator)
 
     # calculate G[Δ,0]⋅G[Δ,0]
-    periodic_product!(a,r₁,r₂,L)
-    periodic_product!(b,M⁻¹r₁,M⁻¹r₂,L)
+    periodic_product!(a,M⁻¹r₁,M⁻¹r₂,L)
+    periodic_product!(b,r₁,r₂,L)
     convolve!(estimator.GΔ0_GΔ0,a,b,estimator)
 
     # calculate G[Δ,Δ]⋅G[0,0]
-    periodic_product!(a,M⁻¹r₁,r₁,L)
-    periodic_product!(b,M⁻¹r₂,r₂,L)
+    periodic_product!(a,M⁻¹r₂,r₂,L)
+    periodic_product!(b,M⁻¹r₁,r₁,L)
     convolve!(estimator.GΔΔ_G00,a,b,estimator)
 
     # calculate G[Δ,0]⋅G[0,Δ]
-    periodic_product!(a,M⁻¹r₂,r₁,L)
-    periodic_product!(b,M⁻¹r₁,r₂,L)
+    periodic_product!(a,M⁻¹r₁,r₂,L)
+    periodic_product!(b,M⁻¹r₂,r₁,L)
     convolve!(estimator.GΔ0_G0Δ,a,b,estimator)
 
     return nothing
@@ -382,7 +382,7 @@ function convolve!(ab::AbstractArray,a::AbstractArray,b::AbstractArray,estimator
                             nk₂ = mod1(-k₂+2,L₂)
                             nk₁ = mod1(-k₁+2,L₁)
                             nω  = mod1(-ω+2,2L)
-                            ab′[ω,s₂,s₁,k₁,k₂,k₃] = a′[nω,s₂,nk₁,nk₂,nk₃] * b′[ω,s₁,k₁,k₂,k₃] / V
+                            ab′[ω,s₂,s₁,k₁,k₂,k₃] = a′[ω,s₂,k₁,k₂,k₃] * b′[nω,s₁,nk₁,nk₂,nk₃] / V
                         end
                     end
                 end
