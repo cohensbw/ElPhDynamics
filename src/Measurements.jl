@@ -2425,18 +2425,18 @@ function measure_BondPairGreens!(container::Array{Complex{T1},5},pairs::Matrix{I
         fill!(pairgrns,0.0)
 
         # get pair of bonds
-        n′ = pairs[2,p]
         n″ = pairs[1,p]
+        n′ = pairs[2,p]
+
+        # annihilate pair of electrons on d ⟶ c displaced r″ unit cells apart
+        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
+        d  = bonds[n″].o₁::Int        # starting orbital
+        c  = bonds[n″].o₂::Int        # ending   orbital
 
         # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
         r′ = bonds[n′].v::Vector{Int} # displacement in unit cells
         b  = bonds[n′].o₁::Int        # starting orbital
         a  = bonds[n′].o₂::Int        # ending   orbital
-
-        # annihilate pair of electrons on b ⟶ a displaced r′ unit cells apart
-        r″ = bonds[n″].v::Vector{Int} # displacement in unit cells
-        c  = bonds[n″].o₁::Int        # starting orbital
-        d  = bonds[n″].o₂::Int        # ending   orbital
 
         # CALCULATE G₂⋅G₁ = ⟨T⋅a(r′+r+i,τ)⋅c⁺(r″+i,0)⟩⋅⟨T⋅b(r+i,τ)⋅d⁺(i,0)⟩
         M⁻¹R₁  = @view M⁻¹r₁[:,a,:,:,:]
