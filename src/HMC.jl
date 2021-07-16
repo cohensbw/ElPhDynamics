@@ -1,5 +1,6 @@
 module HMC
 
+using LinearAlgebra: fill!
 using Random
 using LinearAlgebra
 using Printf
@@ -8,7 +9,7 @@ using Printf
 using Statistics
 using Logging
 
-using ..Utilities: get_index
+using ..Utilities: get_index, reshaped
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulM!, muldMdx!, mulMᵀ!
 using ..PhononAction: calc_dSbdx!, calc_Sb
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
@@ -351,6 +352,7 @@ function update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}, fa::Fou
     end
 end
 
+
 """
 Standard HMC update.
 """
@@ -575,16 +577,6 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
-
-        # # calculate energy
-        # Hₜ, S, K = calc_H(hmc, model, fa)
-        # ΔHₜ = Hₜ - H₀
-        # if ΔHₜ > 10.0
-        #     @info("Instability has occurred, dH = $(ΔHₜ)\n")
-        #     logger = global_logger()
-        #     flush(logger.stream)
-        #     break
-        # end
     end
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
@@ -646,7 +638,7 @@ end
 
 
 """
-Refresh `ϕ` according to the relationship `ϕ ~ Mᵀ⋅R` where `R` is a vector of normal random numbers.
+Refresh `ϕ` according to the relationship `ϕ ~ exp(η/2)⋅Mᵀ⋅R` where `R` is a vector of normal random numbers.
 """
 function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) where {T1,T2}
 
@@ -664,11 +656,16 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     M⁻ᵀϕ₋′ = hmc.M⁻ᵀϕ₋′
     O⁻¹ϕ₋′ = hmc.O⁻¹ϕ₋′
 
+    # CALCULATE exp(η/2)
+    η = calc_η(model)
+    expηo2 = exp(η/2)
+
     # REFRESH ϕ₊
 
     # ϕ₊ = Mᵀ⋅R₊
     randn!(model.rng,R)
     mulMᵀ!(ϕ₊,model,R)
+    @. ϕ₊ = expηo2 * ϕ₊
 
     # intially M⁻ᵀ⋅ϕ₊ = R₊
     copyto!(M⁻ᵀϕ₊ ,R)
@@ -682,6 +679,7 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     # ϕ₋ = Mᵀ⋅R₋
     randn!(model.rng,R)
     mulMᵀ!(ϕ₋,model,R)
+    @. ϕ₋ = expηo2 * ϕ₋
 
     # intially M⁻ᵀ⋅ϕ₋ = R₋
     copyto!(M⁻ᵀϕ₋ ,R)
@@ -740,19 +738,21 @@ function calc_K(hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2,T3}, fa::Fourie
     return hmc.K
 end
 
+
 """
 Calcualte the action S = Sb + ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ/2
 """
 function calc_S(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2})::T1 where {T1,T2}
     
     # S = ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋/2
-    hmc.S = calc_Sf(hmc)
+    hmc.S = calc_Sf(hmc,model)
 
     # S = Sb + ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋/2
     hmc.S += calc_Sb(model)
 
     return hmc.S
 end
+
 
 """
 Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋
@@ -772,50 +772,65 @@ end
 
 
 """
-Calculate the fermionic action S = ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ/2 = ϕ₊ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ/2
+Calculate the fermionic action S = exp(-η)⋅[ϕ₊ᵀ⋅O⁻¹⋅ϕ₊ + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋]/2 = exp(-η)⋅[ϕ₊ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ₊ + ϕ₋ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ₋]/2
 """
-function calc_Sf(hmc::HybridMonteCarlo{T})::T where {T<:AbstractFloat}
+function calc_Sf(hmc::HybridMonteCarlo{T},model::AbstractModel{T})::T where {T<:AbstractFloat}
 
     ϕ₊    = hmc.ϕ₊
     O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
     ϕ₋    = hmc.ϕ₋
     O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
 
-    Sf    = dot(ϕ₊,O⁻¹ϕ₊)/2
-    Sf   += dot(ϕ₋,O⁻¹ϕ₋)/2
+    η     = calc_η(model)
+    expnη = exp(-η)
+    Sf    = expnη*dot(ϕ₊,O⁻¹ϕ₊)/2
+    Sf   += expnη*dot(ϕ₋,O⁻¹ϕ₋)/2
 
     return Sf
 end
 
+
 """
-Calculate the derivative of the fermionic action `dSf/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ + ₋ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋` where `O=MᵀM`.
+Calculate the derivative of the fermionic action
+`dSf/dx = -exp(-η)⋅ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - exp(-η)⋅ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ - Sf⋅dη/dx` where `O=MᵀM`.
 More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
 """
 function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
     
     dSdx  = hmc.dSdx
     dMdx  = hmc.y
+    dηdx  = hmc.y
     MO⁻¹ϕ = hmc.u
     
     O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
     O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
+
+    # calcualte η
+    η = calc_η(model)
+    expnη = exp(-η)
 
     # calculate M⋅O⁻¹⋅ϕ₊
     mulM!(MO⁻¹ϕ,model,O⁻¹ϕ₊)
 
     # calculate -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ = -[M⋅O⁻¹⋅ϕ₊]ᵀ⋅dM/dx⋅[O⁻¹⋅ϕ₊]
     muldMdx!(dMdx,MO⁻¹ϕ,model,O⁻¹ϕ₊)
-    @. dSdx = -dMdx
+    @. dSdx = -expnη*dMdx
 
     # calculate M⋅O⁻¹⋅ϕ₋
     mulM!(MO⁻¹ϕ,model,O⁻¹ϕ₋)
 
     # calculate -ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ = -[M⋅O⁻¹⋅ϕ₋]ᵀ⋅dM/dx⋅[O⁻¹⋅ϕ₋]
     muldMdx!(dMdx,MO⁻¹ϕ,model,O⁻¹ϕ₋)
-    @. dSdx = dSdx - dMdx
+    @. dSdx = dSdx - expnη*dMdx
+
+    # calculate -Sf⋅dη/dx
+    Sf = calc_Sf(hmc,model)
+    calc_dηdx!(dηdx,model)
+    @. dSdx = dSdx - Sf * dηdx
 
     return nothing
 end
+
 
 """
 Solve `O⋅x=ϕ₊ ==> x=O⁻¹⋅ϕ₊` and `O⋅x=ϕ₋ ==> x=O⁻¹⋅ϕ₋` where `O = Mᵀ⋅M`.
@@ -956,24 +971,52 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
     return hmc.iters
 end
 
-# """
-# Apply the BDP thermostat as defined in equation A7 of the appendix of the paper
-# "Canonical sampling through velocity rescaling"
-# """
-# function bdp_thermostat!(v::AbstractVector{T},R::AbstractVector{T},K::T,τ::T,Δt::T) where {T<:AbstractFloat}
+"""
+Calculate `η(x)` factor.
+"""
+function calc_η(model::HolsteinModel{T1,T2})::T1 where {T1,T2}
 
-#     if isfinite(τ)
-#         randn!(R)
-#         R² = norm(R)^2
-#         R₁ = R[1]
-#         N  = length(v)
-#         K̄  = N/2
-#         c  = exp(-Δt/τ)
-#         α² = c + K̄/(N*K)*(1-c)*R² + 2*sqrt(K̄/(N*K)*c*(1-c))*R₁
-#         @. v = sqrt(α²) * v
-#     end
+    @unpack λ, Nph, Lτ, Δτ = model
+    x = reshaped(model.x,Lτ,Nph)
 
-#     return nothing
-# end
+    η = 0.0
+    @fastmath @inbounds for i in 1:Nph
+        xᵢ = @view x[:,i]
+        x̄ᵢ = mean(xᵢ)
+        η += λ[i] * x̄ᵢ
+    end
+    η = (Δτ/Nph) * η
+
+    return η
+end
+
+function calc_η(model::AbstractModel{T1,T2})::T1 where {T1,T2}
+
+    return 0.0
+end
+
+"""
+Calculate `dη/dx` factor.
+"""
+function calc_dηdx!(dηdx::AbstractVector{T1},model::HolsteinModel{T1,T2}) where {T1,T2}
+
+    @unpack λ, Nph, Lτ, Δτ = model
+    x     = reshaped(model.x,Lτ,Nph)
+    dηdx′ = reshaped(dηdx,Lτ,Nph)
+
+    @fastmath @inbounds for i in 1:Nph
+        dηdxᵢ    = @view dηdx′[:,i]
+        @. dηdxᵢ = Δτ*λ[i]/(Nph*Lτ)
+    end
+
+    return nothing
+end
+
+function calc_dηdx!(dηdx::AbstractVector{T1},model::AbstractModel{T1,T2}) where {T1,T2}
+
+    fill!(dηdx,0.0)
+
+    return nothing
+end
 
 end
