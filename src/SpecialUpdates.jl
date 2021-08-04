@@ -83,17 +83,11 @@ mutable struct ReflectionUpdate{T<:AbstractFloat} <: SpecialUpdate
     """
     x̄::Vector{T}
 
-    """
-    Sorted permutation of x̄
-    """
-    perm::Vector{Int}
-
     function ReflectionUpdate(x::AbstractVector{T},Nph::Int,active::Bool,freq::Int,nsites::Int) where {T<:AbstractFloat}
 
         sites = zeros(Int,nsites)
         x̄     = zeros(T,Nph)
-        perm = collect(Int,1:Nph)
-        return new{T}(active,freq,nsites,sites,x̄,perm)
+        return new{T}(active,freq,nsites,sites,x̄)
     end
 end
 
@@ -114,25 +108,13 @@ Apply reflection updates to Holstein model.
 function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::ReflectionUpdate{T},preconditioner)::T where {T<:AbstractFloat}
 
     @unpack Nph, Lτ = model
-    @unpack x̄, perm, nsites, sites = ru
+    @unpack x̄, nsites, sites = ru
 
     # get all phonon fields
     x = reshaped(model.x,Lτ,Nph)
 
-    # # get mean phonon position on each site in lattice
-    # @fastmath @inbounds for i in 1:Nph
-    #     xᵢ   = @view x[:,i]
-    #     x̄[i] = mean(xᵢ)
-    # end
-
-    # # sort mean phonon positions on each site by absolute distance from zero
-    # sortperm!(perm,x̄,by=abs)
-
-    # # get sites that will have reflection opportunity applied to it
-    # @views @. sites = perm[1:nsites]
-
     # randomly sample sites
-    sample!(model.rng,perm,sites,replace=false)
+    sample!(model.rng,1:Nph,sites,replace=false)
 
     # counts number of accepted reflections
     accepted = 0.0

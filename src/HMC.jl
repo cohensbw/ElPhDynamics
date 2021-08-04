@@ -869,7 +869,6 @@ function update_Λ!(hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) wher
         for τ in 1:Lτ
             τp1   = mod1(τ+1,Lτ)
             Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τp1]/2)
-            # Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τ]/2)
         end
     end
 
@@ -896,7 +895,6 @@ function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::Hybr
             n′       = get_index(τm1,i,Lτ)
             n        = get_index(τ,i,Lτ)
             dΛdx[n] += vₗ[n′] * (-Δτ*λᵢ/2)*Λ[n′] * vᵣ[n′]
-            # dΛdx[n] += vₗ[n] * (-Δτ*λᵢ/2)*Λ[n] * vᵣ[n]
         end
     end
 
