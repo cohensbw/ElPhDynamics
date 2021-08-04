@@ -15,7 +15,7 @@ using ..PhononAction: calc_dSbdx!, calc_Sb
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
 import ..KPMPreconditioners
 
-export HybridMonteCarlo, update!
+export HybridMonteCarlo, update!, refresh_ϕ!, calc_S
 
 mutable struct HybridMonteCarlo{T<:AbstractFloat}
 
@@ -95,49 +95,29 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     ϕ₋::Vector{T}
 
     """
-    M⁻ᵀ⋅ϕ₊.
+    The vector Λ⋅ϕ₊
     """
-    M⁻ᵀϕ₊::Vector{T}
+    Λϕ₊::Vector{T}
 
     """
-    M⁻ᵀ⋅ϕ₊ one time step back.
+    The vector Λ⋅ϕ₋
     """
-    M⁻ᵀϕ₊′::Vector{T}
-
-    """
-    M⁻ᵀ⋅ϕ₋.
-    """
-    M⁻ᵀϕ₋::Vector{T}
-
-    """
-    M⁻ᵀ⋅ϕ₋ one time step back.
-    """
-    M⁻ᵀϕ₋′::Vector{T}
+    Λϕ₋::Vector{T}
 
     """
     O⁻¹⋅ϕ₊ where O=MᵀM
     """
-    O⁻¹ϕ₊::Vector{T}
-
-    """
-    O⁻¹⋅ϕ₊ where O=MᵀM one time step back.
-    """
-    O⁻¹ϕ₊′::Vector{T}
+    O⁻¹Λϕ₊::Vector{T}
 
     """
     O⁻¹⋅ϕ₋ where O=MᵀM
     """
-    O⁻¹ϕ₋::Vector{T}
+    O⁻¹Λϕ₋::Vector{T}
 
     """
-    O⁻¹⋅ϕ₋ where O=MᵀM one time step back.
+    Diagonal Λ matrix. Definition varies for SSH and Holstein models.
     """
-    O⁻¹ϕ₋′::Vector{T}
-
-    """
-    Construct initial guess when solving linear system.
-    """
-    construct_guess::Bool
+    Λ::Vector{T}
 
     """
     Temporary storage vector of length Ndim.
@@ -203,7 +183,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     iters::Int
 
-    function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
+    function HybridMonteCarlo(model::AbstractModel,Δt::T,tr::T,α::T,Nb::Int;
                               log::Bool=false, verbose::Bool=false, logfilename::String="",updates::Int=1) where {T<:AbstractFloat}
 
         # partial momentum refresh parameter
@@ -216,18 +196,14 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         dSdx   = zeros(T,Ndof)
         v      = zeros(T,Ndof)
         v0     = zeros(T,Ndof)
-
+        Λ      = ones(T,Ndim)
         R      = zeros(T,Ndim)
         ϕ₊     = zeros(T,Ndim)
-        M⁻ᵀϕ₊  = zeros(T,Ndim)
-        O⁻¹ϕ₊  = zeros(T,Ndim)
+        Λϕ₊    = zeros(T,Ndim)
+        O⁻¹Λϕ₊ = zeros(T,Ndim)
         ϕ₋     = zeros(T,Ndim)
-        M⁻ᵀϕ₋  = zeros(T,Ndim)
-        O⁻¹ϕ₋  = zeros(T,Ndim)
-        M⁻ᵀϕ₊′ = zeros(T,Ndim)
-        O⁻¹ϕ₊′ = zeros(T,Ndim)
-        M⁻ᵀϕ₋′ = zeros(T,Ndim)
-        O⁻¹ϕ₋′ = zeros(T,Ndim)
+        Λϕ₋    = zeros(T,Ndim)
+        O⁻¹Λϕ₋ = zeros(T,Ndim)
 
         u      = zeros(T,Ndim)
         y      = zeros(T,Ndof)
@@ -261,14 +237,15 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             close(logfile)
         end
 
-        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
-                     log, verbose, logfile, updates, t, accepted, H, S, K, iters)
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R,
+                      ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, Λ,
+                      u, y, log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
 
-    function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int,construct_guess::Bool;
+    function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int;
                               log::Bool=false, verbose::Bool=false, logfilename::String="",updates::Int=1) where {T<:AbstractFloat}
 
-        @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, u, y = hmc
+        @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, Λ, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, u, y = hmc
         Nt  = round(Int,tr/Δt)
         Δt′ = Δt/Nb
 
@@ -289,8 +266,9 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             close(logfile)
         end
     
-        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R, ϕ₊, ϕ₋, M⁻ᵀϕ₊, M⁻ᵀϕ₊′, M⁻ᵀϕ₋, M⁻ᵀϕ₋′, O⁻¹ϕ₊, O⁻¹ϕ₊′, O⁻¹ϕ₋, O⁻¹ϕ₋′, construct_guess, u, y,
-                      log, verbose, logfile, updates, t, accepted, H, S, K, iters)
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R,
+                      ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, Λ,
+                      u, y, log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
 end
 
@@ -377,12 +355,13 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     refresh_ϕ!(hmc,model)
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters = calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+    iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
     # calculate initial energy
     H₀, S, K = calc_H(hmc, model, fa)
 
     # calculate the initial dS/dx value
+    fill!(dSdx,0.0)
     iter_t = calc_dSdx!(hmc, model)
     iters  = iter_t
 
@@ -414,9 +393,10 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         update_model!(model)
 
         # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-        iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
+        iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
 
         # calculate dS/dx(t+Δt) value
+        fill!(dSdx,0.0)
         calc_dSdx!(hmc, model)
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
@@ -429,20 +409,10 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
-
-        # # calculate energy
-        # Hₜ, S, K = calc_H(hmc, model, fa)
-        # ΔHₜ = Hₜ - H₀
-        # if ΔHₜ > 10.0
-        #     @info("Instability has occurred, dH = $(ΔHₜ)\n")
-        #     logger = global_logger()
-        #     flush(logger.stream)
-        #     break
-        # end
     end
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+    iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
     # calculate final energy
     H₁, S, K = calc_H(hmc, model, fa)
@@ -505,12 +475,13 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     refresh_ϕ!(hmc,model)
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters = calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+    iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
     # calculate energy
     H₀, S, K = calc_H(hmc, model, fa)
 
     # calculate the initial dSf/dx value
+    fill!(dSfdx,0.0)
     calc_dSfdx!(hmc, model)
 
     # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
@@ -562,9 +533,10 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
         update_model!(model)
 
         # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-        iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,1.0)
+        iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
 
         # calculate dSf/dx(t+Δt) value
+        fill!(dSfdx,0.0)
         calc_dSfdx!(hmc, model)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
@@ -580,7 +552,7 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     end
 
     # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters += calc_O⁻¹ϕ!(hmc,model,preconditioner,2.0)
+    iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
     # calculate final energy
     H₁, S, K = calc_H(hmc,model,fa)
@@ -638,55 +610,28 @@ end
 
 
 """
-Refresh `ϕ` according to the relationship `ϕ ~ exp(η/2)⋅Mᵀ⋅R` where `R` is a vector of normal random numbers.
+Refresh `ϕ` according to the relationship `ϕ ~ Λ⁻¹⋅Mᵀ⋅R` where `R` is a vector of normal random numbers.
 """
 function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) where {T1,T2}
 
-    R     = hmc.R
-
-    ϕ₊    = hmc.ϕ₊
-    M⁻ᵀϕ₊ = hmc.M⁻ᵀϕ₊
-    O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
-    ϕ₋    = hmc.ϕ₋
-    M⁻ᵀϕ₋ = hmc.M⁻ᵀϕ₋
-    O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
-
-    M⁻ᵀϕ₊′ = hmc.M⁻ᵀϕ₊′
-    O⁻¹ϕ₊′ = hmc.O⁻¹ϕ₊′
-    M⁻ᵀϕ₋′ = hmc.M⁻ᵀϕ₋′
-    O⁻¹ϕ₋′ = hmc.O⁻¹ϕ₋′
-
-    # CALCULATE exp(η/2)
-    η = calc_η(model)
-    expηo2 = exp(η/2)
+    @unpack R, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, Λ = hmc
 
     # REFRESH ϕ₊
 
-    # ϕ₊ = Mᵀ⋅R₊
+    # update Λ
+    update_Λ!(hmc,model)
+
+    # ϕ₊ = Λ⁻¹⋅Mᵀ⋅R₊
     randn!(model.rng,R)
-    mulMᵀ!(ϕ₊,model,R)
-    @. ϕ₊ = expηo2 * ϕ₊
-
-    # intially M⁻ᵀ⋅ϕ₊ = R₊
-    copyto!(M⁻ᵀϕ₊ ,R)
-    copyto!(M⁻ᵀϕ₊′,R)
-
-    fill!(O⁻¹ϕ₊ ,0.0)
-    fill!(O⁻¹ϕ₊′,0.0)
+    mulMᵀ!(Λϕ₊,model,R)
+    @. ϕ₊ = Λϕ₊ / Λ
 
     # REFRESH ϕ₋
 
-    # ϕ₋ = Mᵀ⋅R₋
+    # ϕ₋ = Λ⁻¹⋅Mᵀ⋅R₋
     randn!(model.rng,R)
-    mulMᵀ!(ϕ₋,model,R)
-    @. ϕ₋ = expηo2 * ϕ₋
-
-    # intially M⁻ᵀ⋅ϕ₋ = R₋
-    copyto!(M⁻ᵀϕ₋ ,R)
-    copyto!(M⁻ᵀϕ₋′,R)
-
-    fill!(O⁻¹ϕ₋ ,0.0)
-    fill!(O⁻¹ϕ₋′,0.0)
+    mulMᵀ!(Λϕ₋,model,R)
+    @. ϕ₋ = Λϕ₋ / Λ
 
     return nothing
 end
@@ -745,7 +690,7 @@ Calcualte the action S = Sb + ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅
 function calc_S(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2})::T1 where {T1,T2}
     
     # S = ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋/2
-    hmc.S = calc_Sf(hmc,model)
+    hmc.S  = calc_Sf(hmc,model)
 
     # S = Sb + ϕ₊ᵀ⋅O⁻¹⋅ϕ₊/2 + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋/2
     hmc.S += calc_Sb(model)
@@ -759,10 +704,8 @@ Calculate the derivative of the action dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[M�
 """
 function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
     
-    dSdx = hmc.dSdx
-    
     # dS/dx = -ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    calc_dSfdx!(hmc,model)
+    calc_dSfdx!(hmc, model)
 
     # dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
     calc_dSbdx!(dSdx, model)
@@ -772,86 +715,58 @@ end
 
 
 """
-Calculate the fermionic action S = exp(-η)⋅[ϕ₊ᵀ⋅O⁻¹⋅ϕ₊ + ϕ₋ᵀ⋅O⁻¹⋅ϕ₋]/2 = exp(-η)⋅[ϕ₊ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ₊ + ϕ₋ᵀ⋅[Mᵀ⋅M]⁻¹⋅ϕ₋]/2
+Calculate the fermionic action S = [ϕ₊ᵀ⋅Λ⋅O⁻¹⋅Λ⋅ϕ₊ + ϕ₋ᵀ⋅Λ⋅O⁻¹⋅Λ⋅ϕ₋]/2 = [ϕ₊ᵀ⋅Λ⋅[Mᵀ⋅M]⁻¹⋅Λ⋅ϕ₊ + ϕ₋ᵀ⋅Λ⋅[Mᵀ⋅M]⁻¹⋅Λ⋅ϕ₋]/2
 """
 function calc_Sf(hmc::HybridMonteCarlo{T},model::AbstractModel{T})::T where {T<:AbstractFloat}
 
-    ϕ₊    = hmc.ϕ₊
-    O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
-    ϕ₋    = hmc.ϕ₋
-    O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
+    @unpack Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋ = hmc
 
-    η     = calc_η(model)
-    expnη = exp(-η)
-    Sf    = expnη*dot(ϕ₊,O⁻¹ϕ₊)/2
-    Sf   += expnη*dot(ϕ₋,O⁻¹ϕ₋)/2
+    Sf  = dot(Λϕ₊,O⁻¹Λϕ₊)/2
+    Sf += dot(Λϕ₋,O⁻¹Λϕ₋)/2
 
     return Sf
 end
 
 
 """
-Calculate the derivative of the fermionic action
-`dSf/dx = -exp(-η)⋅ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ - exp(-η)⋅ϕᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ - Sf⋅dη/dx` where `O=MᵀM`.
-More specicially each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
+Calculate the derivative of the fermionic action.
+Each partial derivative `∂S/∂xᵢ(τ)` will be stored to the corresponding element in the array dSdx.
 """
 function calc_dSfdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
     
-    dSdx  = hmc.dSdx
-    dMdx  = hmc.y
-    dηdx  = hmc.y
-    MO⁻¹ϕ = hmc.u
-    
-    O⁻¹ϕ₊ = hmc.O⁻¹ϕ₊
-    O⁻¹ϕ₋ = hmc.O⁻¹ϕ₋
+    @unpack O⁻¹Λϕ₊, O⁻¹Λϕ₋, Λϕ₊, Λϕ₋, ϕ₊, ϕ₋ = hmc
+    dSfdx   = hmc.dSdx
+    dMdx    = hmc.y
+    MO⁻¹Λϕ  = hmc.u
 
-    # calcualte η
-    η = calc_η(model)
-    expnη = exp(-η)
+    # dSf/dx += -[M⋅O⁻¹⋅Λ⋅ϕ₊]ᵀ⋅dM/dx⋅[O⁻¹⋅Λ⋅ϕ₊]
+    mulM!(MO⁻¹Λϕ,model,O⁻¹Λϕ₊)
+    muldMdx!(dMdx,MO⁻¹Λϕ,model,O⁻¹Λϕ₊)
+    @. dSfdx += -dMdx
 
-    # calculate M⋅O⁻¹⋅ϕ₊
-    mulM!(MO⁻¹ϕ,model,O⁻¹ϕ₊)
+    # dSf/dx += -[M⋅O⁻¹⋅Λ⋅ϕ₋]ᵀ⋅dM/dx⋅[O⁻¹⋅Λ⋅ϕ₋]
+    mulM!(MO⁻¹Λϕ,model,O⁻¹Λϕ₋)
+    muldMdx!(dMdx,MO⁻¹Λϕ,model,O⁻¹Λϕ₋)
+    @. dSfdx += -dMdx
 
-    # calculate -ϕ₊ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₊ = -[M⋅O⁻¹⋅ϕ₊]ᵀ⋅dM/dx⋅[O⁻¹⋅ϕ₊]
-    muldMdx!(dMdx,MO⁻¹ϕ,model,O⁻¹ϕ₊)
-    @. dSdx = -expnη*dMdx
+    # dSf/dx += [ϕ₊]ᵀ⋅dΛ/dx⋅[O⁻¹⋅Λ⋅ϕ₊]
+    muldΛdx!(dSfdx,ϕ₊,O⁻¹Λϕ₊,hmc,model)
 
-    # calculate M⋅O⁻¹⋅ϕ₋
-    mulM!(MO⁻¹ϕ,model,O⁻¹ϕ₋)
-
-    # calculate -ϕ₋ᵀ⋅O⁻ᵀ⋅[Mᵀ⋅dM/dx]⋅O⁻¹⋅ϕ₋ = -[M⋅O⁻¹⋅ϕ₋]ᵀ⋅dM/dx⋅[O⁻¹⋅ϕ₋]
-    muldMdx!(dMdx,MO⁻¹ϕ,model,O⁻¹ϕ₋)
-    @. dSdx = dSdx - expnη*dMdx
-
-    # calculate -Sf⋅dη/dx
-    Sf = calc_Sf(hmc,model)
-    calc_dηdx!(dηdx,model)
-    @. dSdx = dSdx - Sf * dηdx
+    # dSf/dx += [ϕ₋]ᵀ⋅dΛ/dx⋅[O⁻¹⋅Λ⋅ϕ₋]
+    muldΛdx!(dSfdx,ϕ₋,O⁻¹Λϕ₋,hmc,model)
 
     return nothing
 end
 
 
 """
-Solve `O⋅x=ϕ₊ ==> x=O⁻¹⋅ϕ₊` and `O⋅x=ϕ₋ ==> x=O⁻¹⋅ϕ₋` where `O = Mᵀ⋅M`.
+Solve `O⋅x=Λ⋅ϕ₊ ==> x=O⁻¹⋅Λ⋅ϕ₊` and `O⋅x=Λ⋅ϕ₋ ==> x=O⁻¹⋅Λ⋅ϕ₋` where `O = Mᵀ⋅M`.
 """
-function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I, power::T1=1.0)::Int where {T1,T2}
+function calc_O⁻¹Λϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I, power::T1=1.0)::Int where {T1,T2}
 
-    ϕ₊     = hmc.ϕ₊
-    M⁻ᵀϕ₊  = hmc.M⁻ᵀϕ₊
-    O⁻¹ϕ₊  = hmc.O⁻¹ϕ₊
-    ϕ₋     = hmc.ϕ₋
-    M⁻ᵀϕ₋  = hmc.M⁻ᵀϕ₋
-    O⁻¹ϕ₋  = hmc.O⁻¹ϕ₋
-    M⁻ᵀϕ₊′ = hmc.M⁻ᵀϕ₊′
-    O⁻¹ϕ₊′ = hmc.O⁻¹ϕ₊′
-    M⁻ᵀϕ₋′ = hmc.M⁻ᵀϕ₋′
-    O⁻¹ϕ₋′ = hmc.O⁻¹ϕ₋′
-    u      = hmc.u
-
-    #######################
-    ## CALCULATE  O⁻¹⋅ϕ₊ ##
-    #######################
+    @unpack Λ, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋ = hmc
+    M⁻ᵀΛϕ₊ = hmc.u
+    M⁻ᵀΛϕ₋ = hmc.u
 
     # udpate tolerance used by solver
     tol = model.solver.tol::T1
@@ -863,101 +778,65 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
     # setup the precontioer
     KPMPreconditioners.setup!(preconditioner)
 
+    #############################
+    ## CALCULATE Λ⋅ϕ₊ AND Λ⋅ϕ₋ ##
+    #############################
+
+    update_Λ!(hmc,model)
+    @. Λϕ₊ = Λ * ϕ₊
+    @. Λϕ₋ = Λ * ϕ₋
+
+    #########################
+    ## CALCULATE  O⁻¹⋅Λ⋅ϕ₊ ##
+    #########################
+
     if !model.mul_by_M # if using Conjugate Gradient
 
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,O⁻¹ϕ₊)
-            @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
-            copyto!(O⁻¹ϕ₊′,u)
-        else
-            fill!(O⁻¹ϕ₊,0.0)
-        end
-
         # solve linear system
+        fill!(O⁻¹Λϕ₊,0.0)
         model.transposed=false
-        iters, err = ldiv!(O⁻¹ϕ₊,model,ϕ₊,preconditioner)
+        iters, err = ldiv!(O⁻¹Λϕ₊,model,Λϕ₊,preconditioner)
         hmc.iters += iters
 
     else # if using GMRES
 
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,M⁻ᵀϕ₊)
-            @. M⁻ᵀϕ₊ = 2*M⁻ᵀϕ₊ - M⁻ᵀϕ₊′
-            copyto!(M⁻ᵀϕ₊′,u)
-        else
-            fill!(M⁻ᵀϕ₊,0.0)
-        end
-
         # solve linear system
+        fill!(M⁻ᵀΛϕ₊,0.0)
         model.transposed=true
-        iters, err = ldiv!(M⁻ᵀϕ₊,model,ϕ₊,preconditioner)
+        iters, err = ldiv!(M⁻ᵀΛϕ₊,model,Λϕ₊,preconditioner)
         hmc.iters += iters
 
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,O⁻¹ϕ₊)
-            @. O⁻¹ϕ₊ = 2*O⁻¹ϕ₊ - O⁻¹ϕ₊′
-            copyto!(O⁻¹ϕ₊′,u)
-        else
-            fill!(O⁻¹ϕ₊,0.0)
-        end
-
         # solve linear system
+        fill!(O⁻¹Λϕ₊,0.0)
         model.transposed=false
-        iters, err = ldiv!(O⁻¹ϕ₊,model,M⁻ᵀϕ₊,preconditioner)
+        iters, err = ldiv!(O⁻¹Λϕ₊,model,M⁻ᵀΛϕ₊,preconditioner)
         hmc.iters += iters
     end
 
-    #######################
-    ## CALCULATE  O⁻¹⋅ϕ₋ ##
-    #######################
+    #########################
+    ## CALCULATE  O⁻¹⋅Λ⋅ϕ₋ ##
+    #########################
 
     if !model.mul_by_M
 
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,O⁻¹ϕ₋)
-            @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
-            copyto!(O⁻¹ϕ₋′,u)
-        else
-            fill!(O⁻¹ϕ₋,0.0)
-        end
-
         # solve linear system
+        fill!(O⁻¹Λϕ₋,0.0)
         model.transposed=false
-        iters, err = ldiv!(O⁻¹ϕ₋,model,ϕ₋,preconditioner)
+        iters, err = ldiv!(O⁻¹Λϕ₋,model,Λϕ₋,preconditioner)
         hmc.iters += iters
         
     else
-        
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,M⁻ᵀϕ₋)
-            @. M⁻ᵀϕ₋ = 2*M⁻ᵀϕ₋ - M⁻ᵀϕ₋′
-            copyto!(M⁻ᵀϕ₋′,u)
-        else
-            fill!(M⁻ᵀϕ₋,0.0)
-        end
 
         # solve linear system
+        fill!(M⁻ᵀΛϕ₋,0.0)
         model.transposed = true
-        iters, err       = ldiv!(M⁻ᵀϕ₋,model,ϕ₋,preconditioner)
-        hmc.iters        += iters
-
-        if hmc.construct_guess
-            # construct initial guess for solution to linear system
-            copyto!(u,O⁻¹ϕ₋)
-            @. O⁻¹ϕ₋ = 2*O⁻¹ϕ₋ - O⁻¹ϕ₋′
-            copyto!(O⁻¹ϕ₋′,u)
-        else
-            fill!(O⁻¹ϕ₋,0.0)
-        end
+        iters, err       = ldiv!(M⁻ᵀΛϕ₋,model,Λϕ₋,preconditioner)
+        hmc.iters       += iters
 
         # solve linear system
+        fill!(O⁻¹Λϕ₋,0.0)
         model.transposed = false
-        iters, err       = ldiv!(O⁻¹ϕ₋,model,M⁻ᵀϕ₋,preconditioner)
+        iters, err       = ldiv!(O⁻¹Λϕ₋,model,M⁻ᵀΛϕ₋,preconditioner)
         hmc.iters       += iters
     end
 
@@ -971,50 +850,60 @@ function calc_O⁻¹ϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, 
     return hmc.iters
 end
 
-"""
-Calculate `η(x)` factor.
-"""
-function calc_η(model::HolsteinModel{T1,T2})::T1 where {T1,T2}
 
-    @unpack λ, Nph, Lτ, Δτ = model
-    x = reshaped(model.x,Lτ,Nph)
+"""
+Construct the Λ matrix.
+"""
+function update_Λ!(hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) where {T1,T2}
 
-    η = 0.0
+    @unpack λ, Δτ, Lτ, Nph = model
+    x = reshaped(model.x, Lτ, Nph)
+    Λ = reshaped(hmc.Λ,   Lτ, Nph)
+
     @fastmath @inbounds for i in 1:Nph
+
         xᵢ = @view x[:,i]
-        x̄ᵢ = mean(xᵢ)
-        η += λ[i] * x̄ᵢ
-    end
-    η = (Δτ/Nph) * η
+        Λᵢ = @view Λ[:,i]
+        λᵢ = λ[i]
 
-    return η
-end
-
-function calc_η(model::AbstractModel{T1,T2})::T1 where {T1,T2}
-
-    return 0.0
-end
-
-"""
-Calculate `dη/dx` factor.
-"""
-function calc_dηdx!(dηdx::AbstractVector{T1},model::HolsteinModel{T1,T2}) where {T1,T2}
-
-    @unpack λ, Nph, Lτ, Δτ = model
-    x     = reshaped(model.x,Lτ,Nph)
-    dηdx′ = reshaped(dηdx,Lτ,Nph)
-
-    @fastmath @inbounds for i in 1:Nph
-        dηdxᵢ    = @view dηdx′[:,i]
-        @. dηdxᵢ = Δτ*λ[i]/(Nph*Lτ)
+        for τ in 1:Lτ
+            τp1   = mod1(τ+1,Lτ)
+            Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τp1]/2)
+            # Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τ]/2)
+        end
     end
 
     return nothing
 end
 
-function calc_dηdx!(dηdx::AbstractVector{T1},model::AbstractModel{T1,T2}) where {T1,T2}
+function update_Λ!(hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2}) where {T1,T2}
 
-    fill!(dηdx,0.0)
+    return nothing
+end
+
+"""
+Calculate ⟨vₗ|∂Λ/∂x(τ)|vᵣ⟩ for all τ, adding each result to the corresponding element in the vector dΛdx.
+"""
+function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) where {T1,T2}
+
+    @unpack x, λ, Δτ, Lτ, Nph = model
+    @unpack Λ = hmc
+
+    @fastmath @inbounds for i in 1:Nph
+        λᵢ = λ[i]
+        for τ in 1:Lτ
+            τm1      = mod1(τ-1,Lτ)
+            n′       = get_index(τm1,i,Lτ)
+            n        = get_index(τ,i,Lτ)
+            dΛdx[n] += vₗ[n′] * (-Δτ*λᵢ/2)*Λ[n′] * vᵣ[n′]
+            # dΛdx[n] += vₗ[n] * (-Δτ*λᵢ/2)*Λ[n] * vᵣ[n]
+        end
+    end
+
+    return nothing
+end
+
+function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2}) where {T1,T2}
 
     return nothing
 end

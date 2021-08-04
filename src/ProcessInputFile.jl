@@ -21,6 +21,7 @@ using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
+using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 using ..SimulationSummary: initialize_simulation_summary!
@@ -91,6 +92,12 @@ function process_input_file(filename::String,input::Dict)
 
     burnin_dynamics, simulation_dynamics = initialize_dynamics(input,model)
 
+    ###########################
+    ## DEFINE SPECIAL UDPATE ##
+    ###########################
+
+    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
+
     #########################
     ## DEFINE MEASUREMENTS ##
     #########################
@@ -112,14 +119,17 @@ function process_input_file(filename::String,input::Dict)
     
     burnin_start     = 1
     sim_start        = 1
-    simulation_time  = 0.0
-    measurement_time = 0.0
-    write_time       = 0.0
-    iters            = 0.0
-    accepted_updates = 0
+
+    #################################
+    ## INITIALIZE SIMULATION STATS ##
+    #################################
+
+    sim_stats = initialize_sim_stats()
+
     
-    return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fa, preconditioner, container,
-            burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)
+    return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
+            burnin_specal_update, sim_special_update, fa, preconditioner,
+            container, burnin_start, sim_start, sim_stats)
 end
 
 function process_checkpoint(input::Dict)
@@ -134,8 +144,7 @@ function process_checkpoint(input::Dict)
     ## UNPACK CHECKPOINT ##
     #######################
 
-    @unpack model, μ_tuner, container, burnin_start, sim_start,
-            simulation_time, measurement_time, write_time, iters, accepted_updates = chkpnt
+    @unpack model, μ_tuner, container, burnin_start, sim_start, sim_stats = chkpnt
 
     ######################################
     ## INITIALIZE SIMULATION PARAMETERS ##
@@ -148,6 +157,12 @@ function process_checkpoint(input::Dict)
     #########################
 
     burnin_dynamics, simulation_dynamics = initialize_dynamics(input,model,burnin_start,sim_start)
+
+    ###########################
+    ## DEFINE SPECIAL UDPATE ##
+    ###########################
+
+    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
 
     ###############################
     ## INITIALIZE PRECONDITIONER ##
@@ -167,8 +182,9 @@ function process_checkpoint(input::Dict)
 
     fa = initialize_fourieraccelerator(input, model)
 
-    return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fa, preconditioner, container,
-            burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)
+    return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
+            burnin_specal_update, sim_special_update, fa, preconditioner,
+            container, burnin_start, sim_start, sim_stats)
 end
 
 ###########################################################
@@ -638,7 +654,6 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
 
         Δt              = input["hmc"]["dt"]
         tr              = input["hmc"]["trajectory_time"]
-        construct_guess = input["hmc"]["construct_guess"]
         α               = input["hmc"]["momentum_conservation_fraction"]
         Nb              = input["hmc"]["num_multitimesteps"]
 
@@ -657,7 +672,7 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
         hmc_burnin_logfile     = joinpath(input["simulation"]["datafolder"],"hmc_burnin_log.out")
 
         @assert 0.0 <= α < 1.0
-        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, α, Nb, construct_guess, log=log, verbose=verbose,
+        simulation_dynamics = HybridMonteCarlo(model, Δt, tr, α, Nb, log=log, verbose=verbose,
                                                logfilename=hmc_simulation_logfile,updates=sim_start)
 
         # defining burnin dynamics
@@ -668,9 +683,6 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
             if haskey(input["hmc"]["burnin"],"trajectory_time")
                 tr = input["hmc"]["burnin"]["trajectory_time"]
             end
-            if haskey(input["hmc"]["burnin"],"construct_guess")
-                construct_guess = input["hmc"]["burnin"]["construct_guess"]
-            end
             if haskey(input["hmc"]["burnin"],"momentum_conservation_fraction")
                 α = input["hmc"]["burnin"]["momentum_conservation_fraction"]
             end
@@ -679,7 +691,7 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
             end
             @assert 0.0 <= α < 1.0
         end
-        burnin_dynamics = HybridMonteCarlo(simulation_dynamics, Δt, tr, α, Nb, construct_guess, log=log, verbose=verbose,
+        burnin_dynamics = HybridMonteCarlo(simulation_dynamics, Δt, tr, α, Nb, log=log, verbose=verbose,
                                            logfilename=hmc_burnin_logfile, updates=burnin_start)
 
     elseif input["langevin"]["update_method"]==1
@@ -703,6 +715,50 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
     end
 
     return burnin_dynamics, simulation_dynamics
+end
+
+"""
+Initialize Special Update.
+"""
+function initialize_special_update(input::Dict,model::AbstractModel,burnin_dynaimcs,simulation_dynamics)
+
+    # define special update for simulation updates
+    if haskey(input,"langevin")
+        sim_special_update = NullUpdate()
+    else
+        if haskey(input,"holstein") && haskey(input["hmc"],"reflection_update")
+            freq   = input["hmc"]["reflection_update"]["freq"]
+            nsites = input["hmc"]["reflection_update"]["nsites"]
+            sim_special_update = ReflectionUpdate(model,freq,nsites)
+        else
+            sim_special_update = NullUpdate()
+        end
+    end
+
+    # define special update for burnin updates
+    burnin_special_update = sim_special_update
+    if haskey(input,"hmc") && haskey(input,"holstein")
+        if haskey(input["hmc"],"burnin")
+            if haskey(input["hmc"]["burnin"],"reflection_update")
+                freq   = input["hmc"]["reflection_update"]["freq"]
+                nsites = input["hmc"]["reflection_update"]["nsites"]
+                burnin_special_update = ReflectionUpdate(model,freq,nsites)
+            end
+        end
+    end
+
+    return burnin_special_update, sim_special_update
+end
+
+"""
+Initialize Simulation Stats Dictionary.
+"""
+function initialize_sim_stats()::Dict
+
+    sim_stats = Dict("simulation_time" => 0.0, "measurement_time" => 0.0, "write_time" => 0.0,
+                     "iters" => 0.0, "acceptance_rate" => 0.0, "special_acceptance_rate" => 0.0)
+
+    return sim_stats
 end
 
 end

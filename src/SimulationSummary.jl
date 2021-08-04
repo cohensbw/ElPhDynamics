@@ -50,9 +50,8 @@ end
 Write results of simulation to simulation summary file.
 """
 function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::SimulationParameters,
-                                   μ_tuner::MuTuner{T1}, container::NamedTuple, input::Dict,
-                                   simulation_time::T1, measurement_time::T1, write_time::T1,
-                                   iters::T1, acceptance_rate::T1,Nbins::Int=10) where {T1,T2,T3}
+                                   μ_tuner::MuTuner{T1}, container::NamedTuple, input::Dict, sim_stats::Dict,
+                                   Nbins::Int=10) where {T1,T2,T3}
 
     # data folder (including path)
     datafolder = sim_params.datafolder
@@ -81,13 +80,14 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "## SIMULATION INFO ##","\n")
         write(fout, "#####################","\n","\n")
 
-        total_time = simulation_time + measurement_time + write_time
-        write(fout, "Total Time (min) = ",       @sprintf("%.4f",total_time), "\n")
-        write(fout, "Simulation Time (min) = ",  @sprintf("%.4f",simulation_time), "\n")
-        write(fout, "Measurement Time (min) = ", @sprintf("%.4f",measurement_time), "\n")
-        write(fout, "Write Time (min) = ",       @sprintf("%.4f",write_time), "\n")
-        write(fout, "Iterative Solver Steps = ", @sprintf("%.4f",iters), "\n")
-        write(fout, "Acceptance Rate = ",        @sprintf("%.4f",acceptance_rate), "\n")
+        total_time = sim_stats["simulation_time"] + sim_stats["measurement_time"] + sim_stats["write_time"]
+        @printf fout "Total Time (min)        = %.4f\n" total_time
+        @printf fout "Simulation Time (min)   = %.4f\n" sim_stats["simulation_time"]
+        @printf fout "Measurement Time (min)  = %.4f\n" sim_stats["measurement_time"]
+        @printf fout "Write Time (min)        = %.4f\n" sim_stats["write_time"]
+        @printf fout "Iterative Solver Steps  = %.4f\n" sim_stats["iters"]
+        @printf fout "Acceptance Rate         = %.4f\n" sim_stats["acceptance_rate"]
+        @printf fout "Special Acceptance Rate = %.4f\n" sim_stats["special_acceptance_rate"]
 
         # write global measurements to file
         write(fout,"\n")
@@ -98,7 +98,7 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write_global_measurements!(fout,model,μ_tuner,container.global_meas,sim_params,Nbins)
 
         # write global measurements to file
-        write(fout,"\n")
+        write(fout, "\n")
         write(fout, "##########################","\n")
         write(fout, "## ON-SITE MEASUREMENTS ##","\n")
         write(fout, "##########################","\n","\n")
@@ -168,10 +168,10 @@ function write_bond_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3
 
     for (id, bond) in enumerate(bonds)
 
-        write(fout,"Bond ID = ", string(id), "\n")
-        write(fout,"name  = ",bond.name, "\n")
-        write(fout,"t_avg = ", string(bond.t),  "\n")
-        write(fout,"t_std = ", string(bond.σt), "\n")
+        write(fout,"Bond ID       = ", string(id), "\n")
+        write(fout,"name          = ",bond.name, "\n")
+        write(fout,"t_avg         = ", string(bond.t),  "\n")
+        write(fout,"t_std         = ", string(bond.σt), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
         write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
         write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")
@@ -190,9 +190,9 @@ function write_bond_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,
 
     for (id, bond) in enumerate(bonds)
 
-        write(fout,"Bond ID = ", string(id), "\n")
-        write(fout,"t_avg = ", string(bond.t),  "\n")
-        write(fout,"t_std = ", string(bond.σt), "\n")
+        write(fout,"Bond ID       = ", string(id), "\n")
+        write(fout,"t_avg         = ", string(bond.t),  "\n")
+        write(fout,"t_std         = ", string(bond.σt), "\n")
         write(fout,"Initial Orbit = ", string(bond.o₁), "\n")
         write(fout,"Final Orbit   = ", string(bond.o₂), "\n")
         write(fout,"Displacement  = ", string(bond.v),  "\n", "\n")

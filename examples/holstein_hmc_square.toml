@@ -138,6 +138,15 @@ log = true
 # or just after a HMC update (false)
 verbose = false
 
+# only applied if a holstein model
+[hmc.reflection_update]
+
+# how frequently to apply the update relative to HMC updates
+freq = 1
+
+# number of sites to apply reflection udpate to each time
+nsites = 4
+
 ###########################
 ## SIMULATION PARAMETERS ##
 ###########################

@@ -34,6 +34,8 @@ include("LangevinDynamics.jl")
 
 include("HMC.jl")
 
+include("SpecialUpdates.jl")
+
 include("GreensFunctions.jl")
 
 include("SimulationParams.jl")
@@ -100,14 +102,16 @@ function simulate(args)
     if isdir(datafolder) # resume previous simulation
 
         # extract state from checkpoint
-        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, container,
-        burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates) = process_checkpoint(input)
+        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
+         burnin_specal_update, sim_special_update, fourier_accelerator, preconditioner,
+         container, burnin_start, sim_start, sim_stats) = process_checkpoint(input)
 
     else # start new simulation
 
         # initialize new simulation
-        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, preconditioner, container,
-        burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)  = process_input_file(config_file,input)
+        (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
+         burnin_specal_update, sim_special_update, fourier_accelerator, preconditioner,
+         container, burnin_start, sim_start, sim_stats) = process_input_file(config_file,input)
     end
 
     ####################
@@ -115,8 +119,9 @@ function simulate(args)
     ####################
 
     if sim_start < sim_params.nsteps
-        simulation_time, measurement_time, write_time, iters, acceptance_rate = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics, fourier_accelerator, container, preconditioner,
-                                                                                                burnin_start, sim_start, simulation_time, measurement_time, write_time, iters, accepted_updates)
+        sim_stats = run_simulation!(model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
+                                    sim_special_update, burnin_specal_update, fourier_accelerator, container,
+                                    preconditioner, sim_stats, burnin_start, sim_start)
     end
 
     #################################
@@ -124,7 +129,7 @@ function simulate(args)
     #################################
 
     if sim_start < sim_params.nsteps
-        write_simulation_summary!(model, sim_params, μ_tuner, container, input, simulation_time, measurement_time, write_time, iters, acceptance_rate, 10)
+        write_simulation_summary!(model, sim_params, μ_tuner, container, input, sim_stats, 10)
     end
 
     return nothing
@@ -137,14 +142,15 @@ with the phonons intialized to the final phonon configuration sampled in the sim
 """
 function load_model(dir::String)
 
-    files = readdir(dir)
+    files  = readdir(dir)
     config = findall(f -> endswith(f, r"\.toml|\.TOML"), files)
     phonon = findall(f -> endswith(f, "_config.out"), files)
     @assert length(config) == length(phonon) == 1
     config_file = joinpath(dir, files[config[1]])
     phonon_file = joinpath(dir, files[phonon[1]])
-    
-    model = initialize_model(config_file)
+    input = TOML.parsefile(config_file)
+    input["simulation"]["datafolder"] = dir
+    model = initialize_model(input)
     read_phonons!(model, phonon_file)
     
     return model

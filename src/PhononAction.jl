@@ -8,7 +8,7 @@ export calc_Sb, calc_dSbdxdx!
 """
 Calculates the pure phonon action Sb such that exp{-Sb}.
 """
-function calc_Sb(holstein::HolsteinModel{T1,T2}) where {T1,T2}
+function calc_Sb(holstein::HolsteinModel{T1,T2}, shifted::Bool=false) where {T1,T2}
 
     x   = holstein.x::Vector{T1}
     N   = holstein.Nsites::Int
@@ -16,6 +16,7 @@ function calc_Sb(holstein::HolsteinModel{T1,T2}) where {T1,T2}
     Δτ  = holstein.Δτ::T1
     ω   = holstein.ω::Vector{T1}
     ω₄  = holstein.ω₄::Vector{T1}
+    λ   = holstein.λ::Vector{T1}
     Sb = 0.0::T1
 
     # iterate over sites in lattice
@@ -23,13 +24,13 @@ function calc_Sb(holstein::HolsteinModel{T1,T2}) where {T1,T2}
         # iterate over time slice in lattice
         for τ in 1:Lτ
             # get τ-1 accounting for periodic boundary conditions
-            τm1 = (τ-2+Lτ)%Lτ+1
+            τm1 = mod1(τ-1,Lτ)
             # xᵢ(τ)
             xᵢτ = x[get_index(τ,i,Lτ)]
             # xᵢ(τ-1)
             xᵢτm1 = x[get_index(τm1,i,Lτ)]
             # calculate potential energy
-            Sb += ω[i]^2*xᵢτ^2/2 + ω₄[i]*xᵢτ^4
+            Sb += ω[i]^2*xᵢτ^2/2 + ω₄[i]*xᵢτ^4 - λ[i]*xᵢτ*shifted
             # calculate kintetic energy
             Sb += (xᵢτ-xᵢτm1)^2/Δτ^2/2
         end
@@ -59,12 +60,12 @@ function calc_Sb(holstein::HolsteinModel{T1,T2}) where {T1,T2}
     end
 
     # necessary scaling factor as defintiion of Sb includes a Δτ out front
-    Sb *= Δτ
+    Sb = Δτ * Sb
     
     return Sb
 end
 
-function calc_Sb(ssh::SSHModel{T1,T2,T3}) where {T1,T2,T3}
+function calc_Sb(ssh::SSHModel{T1,T2,T3}, shifted::Bool=false) where {T1,T2,T3}
 
     x  = ssh.x::Vector{T1}
     N  = ssh.Nph::Int
@@ -110,7 +111,7 @@ end
 Calculates the dervative phonon action with respect to each phonon field and adds that value in place
 to the vector dSbdx.
 """
-function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {T1<:AbstractFloat,T2<:Number}
+function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2}, shifted::Bool=false)  where {T1<:AbstractFloat,T2<:Number}
 
     @assert length(dSbdx)==holstein.Ndof
 
@@ -120,6 +121,7 @@ function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {
     Δτ         = holstein.Δτ::T1
     ω          = holstein.ω::Vector{T1}
     ω₄         = holstein.ω₄::Vector{T1}
+    λ          = holstein.λ::Vector{T1}
 
     #####################################################
     ## Calculating Derivative Phonon Action Associated ##
@@ -128,8 +130,9 @@ function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {
 
     # iterating over site
     @fastmath @inbounds for site in 1:nsites
-        Δτω² = Δτ * ω[site] * ω[site]
+        Δτω²  = Δτ * ω[site] * ω[site]
         Δτ4ω₄ = Δτ * 4 * ω₄[site]
+        Δτλ   = Δτ * λ[site]
         # iterating over time slices
         for τ in 1:Lτ
             # get τ+1 accounting for periodic boundary conditions
@@ -145,8 +148,8 @@ function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {
             # phonon field at current time slice
             xτ = x[indx_τ]
             # updating partial derivative
-            dSbdx[indx_τ] += Δτω² * xτ # derivative of Δτ⋅ω²/2⋅x² term
-            dSbdx[indx_τ] += Δτ4ω₄ * xτ * xτ * xτ # derivative of Δτ⋅ω₄⋅x⁴ term.
+            dSbdx[indx_τ] += Δτω² * xτ - Δτλ * shifted # derivative of Δτ⋅ω²/2⋅x² term
+            dSbdx[indx_τ] += Δτ4ω₄ * xτ * xτ * xτ      # derivative of Δτ⋅ω₄⋅x⁴ term
             dSbdx[indx_τ] -= ( x[indx_τp1] + x[indx_τm1] - 2.0*xτ )/Δτ
         end
     end
@@ -183,7 +186,7 @@ function calc_dSbdx!(dSbdx::Vector{T2}, holstein::HolsteinModel{T1,T2})  where {
     return nothing
 end
 
-function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3})  where {T1,T2,T3}
+function calc_dSbdx!(dSbdx::Vector{T2}, ssh::SSHModel{T1,T2,T3}, shifted::Bool=false)  where {T1,T2,T3}
 
     @assert length(dSbdx)==ssh.Ndof
 

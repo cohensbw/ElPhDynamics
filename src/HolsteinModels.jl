@@ -80,11 +80,11 @@ mutable struct HolsteinModel{T1,T2,T3,T4} <: AbstractModel{T1,T2,T3,T4}
     where `n` is the number of sites in the lattice and `Lτ` is the length of the imaginary time axis."
     x::Vector{T1}
 
-    ##############################################################
-    ## VECTORS REPRESENTING MATRICE NEEDED TO LANGEVIN DYNAMICS ##
-    ##############################################################
+    ############################################
+    ## VECTORS REPRESENTING DIAGONAL MATRICES ##
+    ############################################
 
-    "a vector representing the diagonal matrix exp(-Δτ⋅V[x])"
+    "vector representing the diagonal matrix exp(-Δτ⋅V[x])"
     expnΔτV::Vector{T2}
 
     #############################################################

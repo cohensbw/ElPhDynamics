@@ -228,7 +228,7 @@ end
 """
 Returns the M matrix as a sparse matrix.
 """
-function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-10) where {T1,T2}
+function construct_M(model::AbstractModel{T1,T2}, threshold::T1=1e-14) where {T1,T2}
 
     # to contain M[row,col]=val info for constructing sparse matrix
     rows = Int[]

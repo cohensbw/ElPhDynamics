@@ -13,7 +13,7 @@ using ..FourierAcceleration: FourierAccelerator
 using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
 import ..HMC
-
+using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, special_update!
 using ..Measurements: initialize_measurements_container, initialize_measurement_files!
 using ..Measurements: make_measurements!, process_measurements!, write_measurements!, reset_measurements!
 
@@ -23,10 +23,10 @@ export run_simulation!
 Run Langevin simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
-                         simulation_dynamics::Dynamics, burnin_dynamics::Dynamics, fa::FourierAccelerator,
-                         container::NamedTuple, preconditioner, burnin_start::Int=1, sim_start::Int=1,
-                         simulation_time::AbstractFloat=0.0, measurement_time::AbstractFloat=0.0, write_time::AbstractFloat=0.0,
-                         iters::AbstractFloat=0.0, accepted_updates::Int=0)
+                         simulation_dynamics::Dynamics, burnin_dynamics::Dynamics,
+                         sim_special_update::SpecialUpdate, burnin_special_update::SpecialUpdate, fa::FourierAccelerator,
+                         container::NamedTuple, preconditioner, sim_stats::Dict,
+                         burnin_start::Int=1, sim_start::Int=1,)::Dict
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
@@ -52,19 +52,18 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         t_new = time()
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
-            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=t, sim_start=1,
-                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                      iters=iters, accepted_updates=accepted_updates)
-            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                      burnin_start=t, sim_start=1, sim_stats=sim_stats)
+            sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         # update phonon fields
-        simulation_time += @elapsed iters += evolve!(model, burnin_dynamics, fa, preconditioner)
+        sim_stats["simulation_time"] += @elapsed sim_stats["iters"] += evolve!(model, burnin_dynamics, fa, preconditioner)
 
         # update chemical potential
         if μ_tuner.active && t%μ_update_freq==0
-            simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
+            sim_stats["simulation_time"] += @elapsed update!(Gr,model,preconditioner)
+            sim_stats["simulation_time"] += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -79,24 +78,23 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         t_new = time()
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
-            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=t,
-                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                      iters=iters, accepted_updates=accepted_updates)
-            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                          burnin_start=sim_params.burnin+1, sim_start=t, sim_stats=sim_stats)
+            sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
         # udpate phonon fields
-        simulation_time += @elapsed iters += evolve!(model, simulation_dynamics, fa, preconditioner)
+        sim_stats["simulation_time"] += @elapsed sim_stats["iters"] += evolve!(model, simulation_dynamics, fa, preconditioner)
 
         # if time to make measurements
         if t%sim_params.meas_freq==0
 
             # make measurements
-            measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
+            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
+                sim_stats["simulation_time"] += @elapsed update_μ!(model, μ_tuner, Gr)
             end
 
             # get measurement number
@@ -109,45 +107,44 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 bin = div(nmeas,sim_params.bin_size)
 
                 # process measurements
-                measurement_time += @elapsed process_measurements!(container,sim_params,model)
+                sim_stats["measurement_time"] += @elapsed process_measurements!(container,sim_params,model)
 
                 # write measurements to file
                 write_time += @elapsed write_measurements!(container,sim_params,model,bin)
 
                 # reset measurements container
-                measurement_time += @elapsed reset_measurements!(container,model)
+                sim_stats["measurement_time"] += @elapsed reset_measurements!(container,model)
 
                 # write checkpoint
                 t_new = time()
                 t_prev = t_new
-                chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=t+1,
-                          simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                          iters=iters, accepted_updates=accepted_updates)
-                write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+                chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                          burnin_start=sim_params.burnin+1, sim_start=t+1, sim_stats=sim_stats)
+                sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
             end
         end
     end
 
     # calculating the average number of iterations needed to solve linear system
-    iters /= (sim_params.nsteps+sim_params.burnin)
+    sim_stats["iters"] /= (sim_params.nsteps+sim_params.burnin)
 
     # report timings in units of minutes
-    simulation_time  /= 60.0
-    measurement_time /= 60.0
-    write_time       /= 60.0
-    acceptance_rate   = 1.0
+    sim_stats["simulation_time"]  /= 60.0
+    sim_stats["measurement_time"] /= 60.0
+    sim_stats["write_time"]       /= 60.0
+    sim_stats["acceptance_rate"]   = 1.0
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return sim_stats
 end
 
 """
 Run Hybrid Monte Carlo simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
-                         simulation_hmc::HybridMonteCarlo, burnin_hmc::HybridMonteCarlo, fa::FourierAccelerator,
-                         container::NamedTuple, preconditioner, burnin_start::Int=1, sim_start::Int=1,
-                         simulation_time::AbstractFloat=0.0, measurement_time::AbstractFloat=0.0, write_time::AbstractFloat=0.0,
-                         iters::AbstractFloat=0.0, accepted_updates::Int=0)
+                         simulation_hmc::HybridMonteCarlo, burnin_hmc::HybridMonteCarlo,
+                         sim_special_update::SpecialUpdate, burnin_special_update::SpecialUpdate, fa::FourierAccelerator,
+                         container::NamedTuple, preconditioner, sim_stats::Dict,
+                         burnin_start::Int=1, sim_start::Int=1)::Dict
 
     ###############################################################
     ## PRE-ALLOCATING ARRAYS AND VARIABLES NEEDED FOR SIMULATION ##
@@ -170,20 +167,26 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         t_new = time()
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
-            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=n, sim_start=1,
-                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                      iters=iters, accepted_updates=accepted_updates)
-            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                      burnin_start=n, sim_start=1, sim_stats=sim_stats)
+            sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
-        simulation_time  += @elapsed accepted, niters = HMC.update!(model,burnin_hmc,fa,preconditioner)
-        iters            += niters
-        accepted_updates += accepted
+        # perform hmc update
+        sim_stats["simulation_time"] += @elapsed accepted, niters = HMC.update!(model,burnin_hmc,fa,preconditioner)
+        sim_stats["iters"]           += niters
+        sim_stats["acceptance_rate"] += accepted
+
+        # do special update
+        if burnin_special_update.active && mod(n,burnin_special_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,burnin_special_update,preconditioner)
+            sim_stats["special_acceptance_rate"] += accepted
+        end
 
         # update chemical potential
         if μ_tuner.active
-            simulation_time += @elapsed update!(Gr,model,preconditioner)
-            simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
+            sim_stats["simulation_time"] += @elapsed update!(Gr,model,preconditioner)
+            sim_stats["simulation_time"] += @elapsed update_μ!(model, μ_tuner, Gr)
         end
     end
 
@@ -201,26 +204,31 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         t_new = time()
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
-            chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=n,
-                      simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                      iters=iters, accepted_updates=accepted_updates)
-            write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+            chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                      burnin_start=sim_params.burnin+1, sim_start=n, sim_stats=sim_stats)
+            sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
-        # do hybrid monte carlo update
-        simulation_time  += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
-        iters            += niters
-        accepted_updates += accepted
+        # perform hmc update
+        sim_stats["simulation_time"] += @elapsed accepted, niters = HMC.update!(model,simulation_hmc,fa,preconditioner)
+        sim_stats["iters"]           += niters
+        sim_stats["acceptance_rate"] += accepted
+
+        # do special update
+        if sim_special_update.active && mod(n,sim_special_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,simulation_hmc,sim_special_update,preconditioner)
+            sim_stats["special_acceptance_rate"] += accepted
+        end
 
         # if time to perform measurements (almost always yes)
         if n%sim_params.meas_freq==0
 
             # perform measurements
-            measurement_time += @elapsed make_measurements!(container,model,Gr,preconditioner)
+            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
-                simulation_time += @elapsed update_μ!(model, μ_tuner, Gr)
+                sim_stats["simulation_time"] += @elapsed update_μ!(model, μ_tuner, Gr)
             end
 
             # get measurement number
@@ -233,40 +241,44 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 bin = div(nmeas,sim_params.bin_size)
 
                 # process measurements
-                measurement_time += @elapsed process_measurements!(container,sim_params,model)
+                sim_stats["measurement_time"] += @elapsed process_measurements!(container,sim_params,model)
 
                 # write measurements to file
-                write_time += @elapsed write_measurements!(container,sim_params,model,bin)
+                sim_stats["write_time"] += @elapsed write_measurements!(container,sim_params,model,bin)
 
                 # reset measurements container
-                measurement_time += @elapsed reset_measurements!(container,model)
+                sim_stats["measurement_time"] += @elapsed reset_measurements!(container,model)
 
                 # write checkpoint
                 t_new = time()
                 t_prev = t_new
-                chkpnt = (model=model, μ_tuner=μ_tuner, container=container, burnin_start=sim_params.burnin+1, sim_start=n+1,
-                          simulation_time=simulation_time, measurement_time=measurement_time, write_time=write_time,
-                          iters=iters, accepted_updates=accepted_updates)
-                write_time += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+                chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+                          burnin_start=sim_params.burnin+1, sim_start=n+1, sim_stats=sim_stats)
+                sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
             end
         end
     end
 
     # calculating the average number of iterations needed to solve linear system
-    iters /= (sim_params.nsteps+sim_params.burnin)
+    sim_stats["iters"] /= (sim_params.nsteps+sim_params.burnin)
 
     # calculating the acceptance acceptance rate
-    acceptance_rate = accepted_updates / (sim_params.nsteps+sim_params.burnin)
+    sim_stats["acceptance_rate"] /= (sim_params.nsteps + sim_params.burnin)
+
+    # calculating special acceptance rate
+    burnin_freq = burnin_special_update.freq
+    sim_freq    = sim_special_update.freq
+    sim_stats["special_acceptance_rate"] /= ( div(sim_params.nsteps,sim_freq) + div(sim_params.burnin,burnin_freq) )
 
     # report timings in units of minutes
-    simulation_time  /= 60.0
-    measurement_time /= 60.0
-    write_time       /= 60.0
+    sim_stats["simulation_time"]  /= 60.0
+    sim_stats["measurement_time"] /= 60.0
+    sim_stats["write_time"]       /= 60.0
 
     # close log files
     close(simulation_hmc.logfile)
 
-    return simulation_time, measurement_time, write_time, iters, acceptance_rate
+    return sim_stats
 end
 
 end

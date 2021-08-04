@@ -338,7 +338,7 @@ function calc_dSdx!(dSdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Abst
     iters = calc_dSfdx!(dSdx, g, M⁻¹g, model, preconditioner)
 
     # ∂S/∂xᵢ(τ) = ∂Sbose/∂xᵢ(τ) - 2gᵀ⋅[∂M/∂xᵢ(τ)]⋅M⁻¹g ==> All Done!
-    calc_dSbdx!( dSdx , model )
+    calc_dSbdx!( dSdx , model , true )
 
     # returning number of iterations in solving for M⁻¹g
     return iters
