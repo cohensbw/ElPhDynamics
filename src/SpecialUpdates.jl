@@ -149,14 +149,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
         # get final action
         S₁ = calc_S(hmc,model)
 
-        # change in action
-        ΔS = S₁ - S₀
-
-        # get probability of accepting update
-        P = min( 1.0 , exp(-ΔS) )
-
         # accept/reject decision
-        if rand(model.rng) < P
+        if rand(model.rng) < exp(-(S₁-S₀))
 
             accepted += 1.0
         else

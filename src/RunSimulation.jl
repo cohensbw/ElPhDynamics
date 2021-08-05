@@ -110,7 +110,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 sim_stats["measurement_time"] += @elapsed process_measurements!(container,sim_params,model)
 
                 # write measurements to file
-                write_time += @elapsed write_measurements!(container,sim_params,model,bin)
+                sim_stats["write_time"] += @elapsed write_measurements!(container,sim_params,model,bin)
 
                 # reset measurements container
                 sim_stats["measurement_time"] += @elapsed reset_measurements!(container,model)
