@@ -705,20 +705,20 @@ function muldMdx!(dMdx::AbstractVector{T2},u::AbstractVector{T2},holstein::Holst
     # Notes:
     # • Consider y = ∂M/∂xᵢ(τ)⋅v ==>
     #
-    # • ⟨∂M/∂xᵢ(τ)⟩ = -∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
-    # • ⟨∂M/∂xᵢ(1)⟩ = +∂B/∂xᵢ(1)⋅vᵢ(L)   for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = uᵢ(τ)⋅-∂B/∂xᵢ(τ)⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = uᵢ(1)⋅+∂B/∂xᵢ(1)⋅vᵢ(L)   for τ = 1
     #
     # • B(τ) = exp{-Δτ⋅K}⋅exp{-Δτ⋅V[x(τ)]}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅exp{-Δτ⋅K}⋅dV/dxᵢ(τ)⋅exp{-Δτ⋅V[x(τ)]}
     # • ∂B/∂xᵢ(τ) = -Δτ⋅exp{-Δτ⋅K}⋅   λᵢ    ⋅exp{-Δτ⋅V[x(τ)]}
     #
     # • Therefore the final expression is:
-    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅vᵢ(τ-1) for τ > 1
-    # • ⟨∂M/∂xᵢ(1)⟩ = -Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅vᵢ(L)   for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = uᵢ(τ)⋅+Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(τ)]}⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = uᵢ(1)⋅-Δτ⋅exp{-Δτ⋅K}⋅λᵢ⋅exp{-Δτ⋅V[x(1)]}⋅vᵢ(L)   for τ = 1
     #
     # • Simplifying a little bit:
-    # • ⟨∂M/∂xᵢ(τ)⟩ = +Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
-    # • ⟨∂M/∂xᵢ(1)⟩ = -Δτ⋅λᵢ⋅B(1)⋅vᵢ(L)   for τ = 1
+    # • ⟨∂M/∂xᵢ(τ)⟩ = uᵢ(τ)⋅+Δτ⋅λᵢ⋅B(τ)⋅vᵢ(τ-1) for τ > 1
+    # • ⟨∂M/∂xᵢ(1)⟩ = uᵢ(1)⋅-Δτ⋅λᵢ⋅B(1)⋅vᵢ(L)   for τ = 1
 
     @unpack Nsites, Lτ, Δτ, cosht, sinht, neighbor_table, expnΔτV, λ, λ₂, x = holstein
 
