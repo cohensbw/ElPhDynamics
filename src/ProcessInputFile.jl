@@ -21,7 +21,7 @@ using ..GreensFunctions: EstimateGreensFunction, update!
 using ..InitializePhonons: init_phonons_half_filled!
 using ..LangevinDynamics: EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
-using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate
+using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 using ..SimulationSummary: initialize_simulation_summary!
@@ -92,11 +92,12 @@ function process_input_file(filename::String,input::Dict)
 
     burnin_dynamics, simulation_dynamics = initialize_dynamics(input,model)
 
-    ###########################
-    ## DEFINE SPECIAL UDPATE ##
-    ###########################
+    ############################
+    ## DEFINE SPECIAL UDPATES ##
+    ############################
 
-    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_reflect_update, sim_reflect_update = initialize_reflect_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_swap_update,    sim_swap_update    = initialize_swap_update(input,model,burnin_dynamics,simulation_dynamics)
 
     #########################
     ## DEFINE MEASUREMENTS ##
@@ -128,8 +129,9 @@ function process_input_file(filename::String,input::Dict)
 
     
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
-            burnin_specal_update, sim_special_update, fa, preconditioner,
-            container, burnin_start, sim_start, sim_stats)
+            burnin_reflect_update, sim_reflect_update,
+            burnin_swap_update, sim_swap_update,
+            fa, preconditioner, container, burnin_start, sim_start, sim_stats)
 end
 
 function process_checkpoint(input::Dict)
@@ -162,7 +164,8 @@ function process_checkpoint(input::Dict)
     ## DEFINE SPECIAL UDPATE ##
     ###########################
 
-    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_special_update, sim_reflect_update = initialize_reflect_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_swap_update,    sim_swap_update    = initialize_swap_update(input,model,burnin_dynamics,simulation_dynamics)
 
     ###############################
     ## INITIALIZE PRECONDITIONER ##
@@ -183,8 +186,9 @@ function process_checkpoint(input::Dict)
     fa = initialize_fourieraccelerator(input, model)
 
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
-            burnin_specal_update, sim_special_update, fa, preconditioner,
-            container, burnin_start, sim_start, sim_stats)
+            burnin_reflect_update, sim_reflect_update,
+            burnin_swap_update, sim_swap_update,
+            fa, preconditioner, container, burnin_start, sim_start, sim_stats)
 end
 
 ###########################################################
@@ -718,36 +722,69 @@ function initialize_dynamics(input::Dict,model::AbstractModel,burnin_start::Int=
 end
 
 """
-Initialize Special Update.
+Initialize Reflection Update.
 """
-function initialize_special_update(input::Dict,model::AbstractModel,burnin_dynaimcs,simulation_dynamics)
+function initialize_reflect_update(input::Dict,model::AbstractModel,burnin_dynaimcs,simulation_dynamics)
 
     # define special update for simulation updates
     if haskey(input,"langevin")
-        sim_special_update = NullUpdate()
+        sim_reflect_update = NullUpdate()
     else
         if haskey(input,"holstein") && haskey(input["hmc"],"reflection_update")
             freq   = input["hmc"]["reflection_update"]["freq"]
             nsites = input["hmc"]["reflection_update"]["nsites"]
-            sim_special_update = ReflectionUpdate(model,freq,nsites)
+            sim_reflect_update = ReflectionUpdate(model,freq,nsites)
         else
-            sim_special_update = NullUpdate()
+            sim_reflect_update = NullUpdate()
         end
     end
 
     # define special update for burnin updates
-    burnin_special_update = sim_special_update
+    burnin_reflect_update = sim_reflect_update
     if haskey(input,"hmc") && haskey(input,"holstein")
         if haskey(input["hmc"],"burnin")
             if haskey(input["hmc"]["burnin"],"reflection_update")
                 freq   = input["hmc"]["reflection_update"]["freq"]
                 nsites = input["hmc"]["reflection_update"]["nsites"]
-                burnin_special_update = ReflectionUpdate(model,freq,nsites)
+                burnin_reflect_update = ReflectionUpdate(model,freq,nsites)
             end
         end
     end
 
-    return burnin_special_update, sim_special_update
+    return burnin_reflect_update, sim_reflect_update
+end
+
+"""
+Initialize Swap Update.
+"""
+function initialize_swap_update(input::Dict,model::AbstractModel,burnin_dynaimcs,simulation_dynamics)
+
+    # define special update for simulation updates
+    if haskey(input,"langevin")
+        sim_swap_update = NullUpdate()
+    else
+        if haskey(input,"holstein") && haskey(input["hmc"],"swap_update")
+            freq   = input["hmc"]["swap_update"]["freq"]
+            nsites = input["hmc"]["swap_update"]["nsites"]
+            sim_swap_update = SwapUpdate(model,freq,nsites)
+        else
+            sim_swap_update = NullUpdate()
+        end
+    end
+
+    # define special update for burnin updates
+    burnin_swap_update = sim_swap_update
+    if haskey(input,"hmc") && haskey(input,"holstein")
+        if haskey(input["hmc"],"burnin")
+            if haskey(input["hmc"]["burnin"],"swap_update")
+                freq   = input["hmc"]["swap_update"]["freq"]
+                nsites = input["hmc"]["swap_update"]["nsites"]
+                burnin_swap_update = SwapUpdate(model,freq,nsites)
+            end
+        end
+    end
+
+    return burnin_swap_update, sim_swap_update
 end
 
 """
@@ -756,7 +793,8 @@ Initialize Simulation Stats Dictionary.
 function initialize_sim_stats()::Dict
 
     sim_stats = Dict("simulation_time" => 0.0, "measurement_time" => 0.0, "write_time" => 0.0,
-                     "iters" => 0.0, "acceptance_rate" => 0.0, "special_acceptance_rate" => 0.0)
+                     "iters" => 0.0, "acceptance_rate" => 0.0, "reflect_acceptance_rate" => 0.0,
+                     "swap_acceptance_rate" => 0.0)
 
     return sim_stats
 end
