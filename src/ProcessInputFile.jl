@@ -96,7 +96,7 @@ function process_input_file(filename::String,input::Dict)
     ## DEFINE SPECIAL UDPATE ##
     ###########################
 
-    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_special_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
 
     #########################
     ## DEFINE MEASUREMENTS ##
@@ -128,7 +128,7 @@ function process_input_file(filename::String,input::Dict)
 
     
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
-            burnin_specal_update, sim_special_update, fa, preconditioner,
+            burnin_special_update, sim_special_update, fa, preconditioner,
             container, burnin_start, sim_start, sim_stats)
 end
 
@@ -162,7 +162,7 @@ function process_checkpoint(input::Dict)
     ## DEFINE SPECIAL UDPATE ##
     ###########################
 
-    burnin_specal_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_special_update, sim_special_update = initialize_special_update(input,model,burnin_dynamics,simulation_dynamics)
 
     ###############################
     ## INITIALIZE PRECONDITIONER ##
@@ -183,7 +183,7 @@ function process_checkpoint(input::Dict)
     fa = initialize_fourieraccelerator(input, model)
 
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
-            burnin_specal_update, sim_special_update, fa, preconditioner,
+            burnin_special_update, sim_special_update, fa, preconditioner,
             container, burnin_start, sim_start, sim_stats)
 end
 

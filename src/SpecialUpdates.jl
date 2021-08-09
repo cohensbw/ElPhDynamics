@@ -78,16 +78,15 @@ mutable struct ReflectionUpdate{T<:AbstractFloat} <: SpecialUpdate
     """
     sites::Vector{Int}
 
-    """
-    Average phonon position.
-    """
-    x̄::Vector{T}
-
     function ReflectionUpdate(x::AbstractVector{T},Nph::Int,active::Bool,freq::Int,nsites::Int) where {T<:AbstractFloat}
 
-        sites = zeros(Int,nsites)
-        x̄     = zeros(T,Nph)
-        return new{T}(active,freq,nsites,sites,x̄)
+        if nsites <= 0 || freq <= 0
+            active = false
+            sites  = zeros(Int,0)
+        else
+            sites = zeros(Int,nsites)
+        end
+        return new{T}(active,freq,nsites,sites)
     end
 end
 
@@ -108,7 +107,7 @@ Apply reflection updates to Holstein model.
 function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::ReflectionUpdate{T},preconditioner)::T where {T<:AbstractFloat}
 
     @unpack Nph, Lτ = model
-    @unpack x̄, nsites, sites = ru
+    @unpack nsites, sites = ru
 
     # get all phonon fields
     x = reshaped(model.x,Lτ,Nph)
