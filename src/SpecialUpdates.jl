@@ -247,9 +247,6 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
         # randomly sample sites
         sample!(model.rng,1:Nsites,sites,replace=false)
 
-        # update exp{-Δτ⋅V[x]}
-        update_model!(model)
-
         # iterate over sites to apply reflection operation to
         for i in sites
 
@@ -263,10 +260,6 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                 xᵢ = @view x[:,i]
                 xⱼ = @view x[:,j]
 
-                # calculate mean position of each phonon
-                x̄ᵢ = mean(xᵢ)
-                x̄ⱼ = mean(xⱼ)
-
                 # resample ϕ
                 refresh_ϕ!(hmc,model)
 
@@ -276,9 +269,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                 # get initial action
                 S₀ = calc_S(hmc,model)
 
-                # swap mean positions of phonon fields
-                @. xᵢ = xᵢ - x̄ᵢ + x̄ⱼ
-                @. xⱼ = xⱼ - x̄ⱼ + x̄ᵢ
+                # swap phonon fields
+                swap!(xᵢ,xⱼ)
 
                 # update exp{-Δτ⋅V[x]}
                 update_model!(model)
@@ -295,9 +287,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                     accepted += 1.0
                 else
 
-                    # swap mean field positions back
-                    @. xᵢ = xᵢ - x̄ⱼ + x̄ᵢ
-                    @. xⱼ = xⱼ - x̄ᵢ + x̄ⱼ
+                    # swap phonon fields
+                    swap!(xᵢ,xⱼ)
 
                     # update exp{-Δτ⋅V[x]}
                     update_model!(model)
