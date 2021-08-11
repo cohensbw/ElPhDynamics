@@ -81,13 +81,14 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "#####################","\n","\n")
 
         total_time = sim_stats["simulation_time"] + sim_stats["measurement_time"] + sim_stats["write_time"]
-        @printf fout "Total Time (min)        = %.4f\n" total_time
-        @printf fout "Simulation Time (min)   = %.4f\n" sim_stats["simulation_time"]
-        @printf fout "Measurement Time (min)  = %.4f\n" sim_stats["measurement_time"]
-        @printf fout "Write Time (min)        = %.4f\n" sim_stats["write_time"]
-        @printf fout "Iterative Solver Steps  = %.4f\n" sim_stats["iters"]
-        @printf fout "Acceptance Rate         = %.4f\n" sim_stats["acceptance_rate"]
-        @printf fout "Special Acceptance Rate = %.4f\n" sim_stats["special_acceptance_rate"]
+        @printf fout "Total Time (min)        = %.6f\n" total_time
+        @printf fout "Simulation Time (min)   = %.6f\n" sim_stats["simulation_time"]
+        @printf fout "Measurement Time (min)  = %.6f\n" sim_stats["measurement_time"]
+        @printf fout "Write Time (min)        = %.6f\n" sim_stats["write_time"]
+        @printf fout "Iterative Solver Steps  = %.6f\n" sim_stats["iters"]
+        @printf fout "Acceptance Rate         = %.6f\n" sim_stats["acceptance_rate"]
+        @printf fout "Reflect Acceptance Rate = %.6f\n" sim_stats["reflect_acceptance_rate"]
+        @printf fout "Swap Acceptance Rate    = %.6f\n" sim_stats["swap_acceptance_rate"]
 
         # write global measurements to file
         write(fout,"\n")

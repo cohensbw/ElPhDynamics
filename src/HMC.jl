@@ -624,14 +624,14 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) wher
     # ϕ₊ = Λ⁻¹⋅Mᵀ⋅R₊
     randn!(model.rng,R)
     mulMᵀ!(Λϕ₊,model,R)
-    @. ϕ₊ = Λϕ₊ / Λ
+    mulΛ⁻¹!(ϕ₊,Λϕ₊,hmc,model)
 
     # REFRESH ϕ₋
 
     # ϕ₋ = Λ⁻¹⋅Mᵀ⋅R₋
     randn!(model.rng,R)
     mulMᵀ!(Λϕ₋,model,R)
-    @. ϕ₋ = Λϕ₋ / Λ
+    mulΛ⁻¹!(ϕ₋,Λϕ₋,hmc,model)
 
     return nothing
 end
@@ -783,8 +783,8 @@ function calc_O⁻¹Λϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}
     #############################
 
     update_Λ!(hmc,model)
-    @. Λϕ₊ = Λ * ϕ₊
-    @. Λϕ₋ = Λ * ϕ₋
+    mulΛ!(Λϕ₊,ϕ₊,hmc,model)
+    mulΛ!(Λϕ₋,ϕ₋,hmc,model)
 
     #########################
     ## CALCULATE  O⁻¹⋅Λ⋅ϕ₊ ##
@@ -867,8 +867,7 @@ function update_Λ!(hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) wher
         λᵢ = λ[i]
 
         for τ in 1:Lτ
-            τp1   = mod1(τ+1,Lτ)
-            Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τp1]/2)
+            Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τ]/2)
         end
     end
 
@@ -881,27 +880,84 @@ function update_Λ!(hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2}) where {T1
 end
 
 """
+Calculate v′=Λ⋅v.
+"""
+function mulΛ!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridMonteCarlo{T}, model::HolsteinModel{T}) where {T}
+
+    @unpack x, λ, Δτ, Lτ, Nph, Nsites = model
+
+    u  = reshaped(v ,Lτ,Nsites)
+    u′ = reshaped(v′,Lτ,Nsites)
+    Λ  = reshaped(hmc.Λ,Lτ,Nsites)
+
+    @fastmath @inbounds for i in 1:Nsites
+        u1i = u[1,i]
+        for τ in 1:Lτ-1
+            u′[τ,i] = -Λ[τ+1,i] * u[τ+1,i]
+        end
+        u′[Lτ,i] = Λ[1,i] * u1i
+    end
+
+    return nothing
+end
+
+function mulΛ!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridMonteCarlo{T}, model::AbstractModel{T}) where {T}
+
+    return nothing
+end
+
+"""
+Calculate v′=Λ⋅v.
+"""
+function mulΛ⁻¹!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridMonteCarlo{T}, model::HolsteinModel{T}) where {T}
+
+    @unpack x, λ, Δτ, Lτ, Nph, Nsites = model
+
+    u  = reshaped(v ,Lτ,Nsites)
+    u′ = reshaped(v′,Lτ,Nsites)
+    Λ  = reshaped(hmc.Λ,Lτ,Nsites)
+
+    @fastmath @inbounds for i in 1:Nsites
+        uLi = u[Lτ,i]
+        for τ in 2:Lτ
+            u′[τ,i] = -inv(Λ[τ,i]) * u[τ-1,i]
+        end
+        u′[1,i] = inv(Λ[1,i]) * uLi
+    end
+
+    return nothing
+end
+
+function mulΛ⁻¹!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridMonteCarlo{T}, model::AbstractModel{T}) where {T}
+
+    return nothing
+end
+
+"""
 Calculate ⟨vₗ|∂Λ/∂x(τ)|vᵣ⟩ for all τ, adding each result to the corresponding element in the vector dΛdx.
 """
-function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) where {T1,T2}
+function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1},model::HolsteinModel{T1,T2}) where {T1,T2}
 
     @unpack x, λ, Δτ, Lτ, Nph = model
     @unpack Λ = hmc
 
     @fastmath @inbounds for i in 1:Nph
-        λᵢ = λ[i]
-        for τ in 1:Lτ
+        λᵢ       = λ[i]
+        n′       = get_index(Lτ,i,Lτ)
+        n        = get_index(1,i,Lτ)
+        dΛdx[n] += vₗ[n] * (-Δτ*λᵢ/2)*Λ[n] * vᵣ[n′]
+        for τ in 2:Lτ
             τm1      = mod1(τ-1,Lτ)
             n′       = get_index(τm1,i,Lτ)
             n        = get_index(τ,i,Lτ)
-            dΛdx[n] += vₗ[n′] * (-Δτ*λᵢ/2)*Λ[n′] * vᵣ[n′]
+            dΛdx[n] += vₗ[n] * (Δτ*λᵢ/2)*Λ[n] * vᵣ[n′]
         end
     end
 
     return nothing
 end
 
-function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1}, model::SSHModel{T1,T2}) where {T1,T2}
+function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) where {T1,T2}
 
     return nothing
 end

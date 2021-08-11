@@ -13,7 +13,7 @@ using ..FourierAcceleration: FourierAccelerator
 using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, HeunsDynamics
 using ..HMC: HybridMonteCarlo
 import ..HMC
-using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, special_update!
+using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate, special_update!
 using ..Measurements: initialize_measurements_container, initialize_measurement_files!
 using ..Measurements: make_measurements!, process_measurements!, write_measurements!, reset_measurements!
 
@@ -24,8 +24,9 @@ Run Langevin simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_dynamics::Dynamics, burnin_dynamics::Dynamics,
-                         sim_special_update::SpecialUpdate, burnin_special_update::SpecialUpdate, fa::FourierAccelerator,
-                         container::NamedTuple, preconditioner, sim_stats::Dict,
+                         sim_reflect_update::SpecialUpdate, burnin_reflect_update::SpecialUpdate,
+                         sim_swap_update::SpecialUpdate, burnin_swap_update::SpecialUpdate,
+                         fa::FourierAccelerator, container::NamedTuple, preconditioner, sim_stats::Dict,
                          burnin_start::Int=1, sim_start::Int=1,)::Dict
 
     ###############################################################
@@ -142,8 +143,9 @@ Run Hybrid Monte Carlo simulation.
 """
 function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tuner::MuTuner, sim_params::SimulationParameters,
                          simulation_hmc::HybridMonteCarlo, burnin_hmc::HybridMonteCarlo,
-                         sim_special_update::SpecialUpdate, burnin_special_update::SpecialUpdate, fa::FourierAccelerator,
-                         container::NamedTuple, preconditioner, sim_stats::Dict,
+                         sim_reflect_update::SpecialUpdate, burnin_reflect_update::SpecialUpdate,
+                         sim_swap_update::SpecialUpdate, burnin_swap_update::SpecialUpdate,
+                         fa::FourierAccelerator, container::NamedTuple, preconditioner, sim_stats::Dict,
                          burnin_start::Int=1, sim_start::Int=1)::Dict
 
     ###############################################################
@@ -177,10 +179,16 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         sim_stats["iters"]           += niters
         sim_stats["acceptance_rate"] += accepted
 
-        # do special update
-        if burnin_special_update.active && mod(n,burnin_special_update.freq)==0
-            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,burnin_special_update,preconditioner)
-            sim_stats["special_acceptance_rate"] += accepted
+        # do reflection update
+        if burnin_reflect_update.active && mod(n,burnin_reflect_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,burnin_reflect_update,preconditioner)
+            sim_stats["reflect_acceptance_rate"] += accepted
+        end
+
+        # do swap update
+        if burnin_swap_update.active && mod(n,burnin_swap_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,burnin_swap_update,preconditioner)
+            sim_stats["swap_acceptance_rate"] += accepted
         end
 
         # update chemical potential
@@ -214,10 +222,16 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         sim_stats["iters"]           += niters
         sim_stats["acceptance_rate"] += accepted
 
-        # do special update
-        if sim_special_update.active && mod(n,sim_special_update.freq)==0
-            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,simulation_hmc,sim_special_update,preconditioner)
-            sim_stats["special_acceptance_rate"] += accepted
+        # do reflection update
+        if burnin_reflect_update.active && mod(n,sim_reflect_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,sim_reflect_update,preconditioner)
+            sim_stats["reflect_acceptance_rate"] += accepted
+        end
+
+        # do swap update
+        if burnin_swap_update.active && mod(n,sim_swap_update.freq)==0
+            sim_stats["simulation_time"] += @elapsed accepted = special_update!(model,burnin_hmc,sim_swap_update,preconditioner)
+            sim_stats["swap_acceptance_rate"] += accepted
         end
 
         # if time to perform measurements (almost always yes)
@@ -266,9 +280,14 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["acceptance_rate"] /= (sim_params.nsteps + sim_params.burnin)
 
     # calculating special acceptance rate
-    burnin_freq = burnin_special_update.freq
-    sim_freq    = sim_special_update.freq
-    sim_stats["special_acceptance_rate"] /= ( div(sim_params.nsteps,sim_freq) + div(sim_params.burnin,burnin_freq) )
+    burnin_freq = burnin_reflect_update.freq
+    sim_freq    = sim_reflect_update.freq
+    sim_stats["reflect_acceptance_rate"] /= ( div(sim_params.nsteps,sim_freq) + div(sim_params.burnin,burnin_freq) )
+
+    # calculating special acceptance rate
+    burnin_freq = burnin_swap_update.freq
+    sim_freq    = sim_swap_update.freq
+    sim_stats["swap_acceptance_rate"] /= ( div(sim_params.nsteps,sim_freq) + div(sim_params.burnin,burnin_freq) )
 
     # report timings in units of minutes
     sim_stats["simulation_time"]  /= 60.0

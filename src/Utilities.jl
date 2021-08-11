@@ -75,6 +75,20 @@ function simpson(f::AbstractVector{T1},dx::T2)::T1 where {T1<:Number,T2<:Number}
     return F
 end
 
+"""
+Swap values between arrays.
+"""
+function swap!(v::AbstractArray{T},u::AbstractArray{T}) where {T<:Number}
+
+    @fastmath @inbounds for i in eachindex(u)
+        tmp  = u[i]
+        u[i] = v[i]
+        v[i] = tmp
+    end
+
+    return nothing
+end
+
 ####################
 ## MATH FUNCTIONS ##
 ####################
