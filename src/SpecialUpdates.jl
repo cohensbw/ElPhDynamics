@@ -181,50 +181,35 @@ mutable struct SwapUpdate <: SpecialUpdate
     freq::Int
 
     """
-    Number of pairs of sites to apply swap to.
+    Number bonds to swap phonon position across.
     """
-    nsites::Int
+    nbonds::Int
 
     """
     The sites to apply the swap updates to.
     """
-    sites::Vector{Int}
-
-    """
-    Neighbors of each site.
-    """
-    neighbors::Vector{Vector{Int}}
+    bonds::Vector{Int}
 end
 
-function SwapUpdate(model::HolsteinModel,freq::Int,nsites::Int)
+function SwapUpdate(model::HolsteinModel,freq::Int,nbonds::Int)
 
     @unpack Nsites, Nbonds, neighbor_table = model
 
-    if Nbonds > 0
-        # get neighbors associated with each site in the lattice
-        active    = true
-        neighbors = [Vector{Int}(undef,0) for n in 1:Nsites]
-        for b in 1:Nbonds
-            i = neighbor_table[1, b]
-            j = neighbor_table[2, b]
-            append!(neighbors[i],j)
-            append!(neighbors[j],i)
-        end
+    if Nbonds==0
+        active = false
     else
-        active    = false
-        neighbors = Vector{Vector{Int}}(undef,Int)
+        active = true
     end
-
-    nsites = min(model.Nph,nsites)
-    sites  = zeros(Int,nsites)
-    return SwapUpdate(active,freq,nsites,sites,neighbors)
+    nbonds = min(model.Nbonds,nbonds)
+    bonds  = zeros(Int,nbonds)
+    return SwapUpdate(active,freq,nbonds,bonds)
 end
 
-function SwapUpdate(model::AbstractModel,freq::Int,nsites::Int)
+function SwapUpdate(model::AbstractModel,freq::Int,nbonds::Int)
 
-    neighbors = Vector{Vector{Int}}(undef,Int)
-    sites     = Vector{Int}(undef,0)
-    return SwapUpdate(false,freq,0,sites,neighbors)
+    nbonds    = 0
+    bonds     = Vector{Int}(undef,nbonds)
+    return SwapUpdate(active,freq,nbonds,bonds)
 end
 
 """
@@ -232,8 +217,8 @@ Apply swap updates to Holstein model.
 """
 function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::SwapUpdate,preconditioner)::T where {T<:AbstractFloat}
 
-    @unpack Nsites, Lτ = model
-    @unpack nsites, sites, neighbors = su
+    @unpack Nbonds, Nsites, Lτ, neighbor_table = model
+    @unpack nbonds, bonds = su
 
     # counts number of accepted reflections
     accepted = 0.0
@@ -245,59 +230,65 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
         x = reshaped(model.x,Lτ,Nsites)
 
         # randomly sample sites
-        sample!(model.rng,1:Nsites,sites,replace=false)
+        sample!(model.rng,1:Nbonds,bonds,replace=false)
+
+        # update exp{-Δτ⋅V[x]}
+        update_model!(model)
 
         # iterate over sites to apply reflection operation to
-        for i in sites
+        for b in bonds
 
-            # site has more than zero neighbors
-            if length(neighbors[i]) > 0
+            # get a randomly selected neighbor table
+            i = neighbor_table[1,b]
+            j = neighbor_table[2,b]
 
-                # get a randomly selected neighbor sie
-                j = sample(model.rng,neighbors[i])
+            # get phonon fields associated with each sites
+            xᵢ = @view x[:,i]
+            xⱼ = @view x[:,j]
 
-                # get phonon fields associated with each sites
-                xᵢ = @view x[:,i]
-                xⱼ = @view x[:,j]
+            # get mean phonon position on each site
+            x̄ᵢ = mean(xᵢ)
+            x̄ⱼ = mean(xⱼ)
 
-                # resample ϕ
-                refresh_ϕ!(hmc,model)
+            # resample ϕ
+            refresh_ϕ!(hmc,model)
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
-                # get initial action
-                S₀ = calc_S(hmc,model)
+            # get initial action
+            S₀ = calc_S(hmc,model)
 
-                # swap phonon fields
-                swap!(xᵢ,xⱼ)
+            # swap mean phonon positions
+            @. xᵢ = xᵢ - x̄ᵢ + x̄ⱼ
+            @. xⱼ = xⱼ - x̄ⱼ + x̄ᵢ
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+
+            # get final action
+            S₁ = calc_S(hmc,model)
+
+            # accept/reject decision
+            if rand(model.rng) < exp(-(S₁-S₀))
+
+                accepted += 1.0
+            else
+
+                # swap mean phonon positions
+                @. xᵢ = xᵢ - x̄ⱼ + x̄ᵢ
+                @. xⱼ = xⱼ - x̄ᵢ + x̄ⱼ
 
                 # update exp{-Δτ⋅V[x]}
                 update_model!(model)
-
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-                # get final action
-                S₁ = calc_S(hmc,model)
-
-                # accept/reject decision
-                if rand(model.rng) < exp(-(S₁-S₀))
-
-                    accepted += 1.0
-                else
-
-                    # swap phonon fields
-                    swap!(xᵢ,xⱼ)
-
-                    # update exp{-Δτ⋅V[x]}
-                    update_model!(model)
-                end
             end
         end
     end
 
-    return accepted/nsites
+    return accepted/nbonds
 end
 
 function special_update!(model::AbstractModel{T},hmc::HybridMonteCarlo{T},ru::SwapUpdate,preconditioner)::T where {T<:AbstractFloat}

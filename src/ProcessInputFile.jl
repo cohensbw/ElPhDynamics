@@ -765,8 +765,8 @@ function initialize_swap_update(input::Dict,model::AbstractModel,burnin_dynaimcs
     else
         if haskey(input,"holstein") && haskey(input["hmc"],"swap_update")
             freq   = input["hmc"]["swap_update"]["freq"]
-            nsites = input["hmc"]["swap_update"]["nsites"]
-            sim_swap_update = SwapUpdate(model,freq,nsites)
+            nbonds = input["hmc"]["swap_update"]["nbonds"]
+            sim_swap_update = SwapUpdate(model,freq,nbonds)
         else
             sim_swap_update = NullUpdate()
         end
@@ -778,8 +778,8 @@ function initialize_swap_update(input::Dict,model::AbstractModel,burnin_dynaimcs
         if haskey(input["hmc"],"burnin")
             if haskey(input["hmc"]["burnin"],"swap_update")
                 freq   = input["hmc"]["swap_update"]["freq"]
-                nsites = input["hmc"]["swap_update"]["nsites"]
-                burnin_swap_update = SwapUpdate(model,freq,nsites)
+                nbonds = input["hmc"]["swap_update"]["nbonds"]
+                burnin_swap_update = SwapUpdate(model,freq,nbonds)
             end
         end
     end

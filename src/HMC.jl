@@ -890,7 +890,7 @@ function mulΛ!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridMonteC
     u′ = reshaped(v′,Lτ,Nsites)
     Λ  = reshaped(hmc.Λ,Lτ,Nsites)
 
-    for i in 1:Nsites
+    @fastmath @inbounds for i in 1:Nsites
         u1i = u[1,i]
         for τ in 1:Lτ-1
             u′[τ,i] = -Λ[τ+1,i] * u[τ+1,i]
@@ -917,7 +917,7 @@ function mulΛ⁻¹!(v′::AbstractVector{T}, v::AbstractVector{T}, hmc::HybridM
     u′ = reshaped(v′,Lτ,Nsites)
     Λ  = reshaped(hmc.Λ,Lτ,Nsites)
 
-    for i in 1:Nsites
+    @fastmath @inbounds for i in 1:Nsites
         uLi = u[Lτ,i]
         for τ in 2:Lτ
             u′[τ,i] = -inv(Λ[τ,i]) * u[τ-1,i]
