@@ -216,13 +216,13 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
         if model.mul_by_M
             model.transposed = false
             # solve M⋅x=r₁ ==> x=M⁻¹⋅r₁
-            iters, err = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
+            iters, err, flag = ldiv!(M⁻¹r₁, model, r₁, preconditioner)
         else
             model.transposed = false
             # solve MᵀM⋅x=Mᵀr₁ ==> x=[MᵀM]⁻¹⋅Mᵀr₁=M⁻¹r₁
             Mᵀr₁ = model.v″
             mulMᵀ!(Mᵀr₁, model, r₁)
-            iters, err = ldiv!(M⁻¹r₁, model, Mᵀr₁, preconditioner)
+            iters, err, flag = ldiv!(M⁻¹r₁, model, Mᵀr₁, preconditioner)
         end
 
         # store result

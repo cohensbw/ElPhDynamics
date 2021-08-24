@@ -71,49 +71,110 @@ include("SSHModels.jl")
 """
 Iteratively solve the linear system M⋅x=b ==> x=M⁻¹⋅b or MᵀM⋅x=b ==> x=[MᵀM]⁻¹⋅b.
 """
-function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector, P)::Tuple{Int,T1} where {T1,T2,T3}
-    
-    iters = solve!(x, model, b, model.solver, P)
+function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector, P;
+               maxiter::Int=0)::Tuple{Int,T1,Int} where {T1,T2,T3}
 
-    # calculate residual error
-    v    = model.v‴
-    mul!(v,model,x)
-    @. v = v - b
-    residual_error = norm(v)/norm(b)
-
-    # if large residual error then attempt solve without preconditioner
-    if residual_error > sqrt(model.solver.tol)
-
-        @info("Large Residual Error = $residual_error, Iterations = $iters")
-        logger = global_logger()
-        flush(logger.stream)
-        fill!(x,0)
-
-        return ldiv!(x,model,b)
-    else # if small residual error return result
-
-        return (iters,residual_error)
+    # set default maxiter
+    if maxiter == 0
+        maxiter = model.solver.maxiter
     end
+
+    # rever to solving linear system w/o preconditioner is preconditioner is the identity operator
+    if P == I
+
+        # solve linear system
+        iters, residual_error, flag = ldiv!(x, model, b, maxiter=maxiter)
+
+    else
+    
+        # solve linear system
+        iters = solve!(x, model, b, model.solver, P, maxiter=maxiter)
+
+        # calculate residual error
+        v    = model.v‴
+        mul!(v,model,x)
+        @. v = v - b
+        residual_error = norm(v)/norm(b)
+
+        # maxed out iterations
+        if iters == maxiter
+
+            flag = 1
+            @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
+            logger = global_logger()
+            flush(logger.stream)
+            fill!(x,0)
+        
+        # detect large residual error
+        elseif residual_error > sqrt(model.solver.tol)
+
+            flag = 2
+            @info("Large Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
+            logger = global_logger()
+            flush(logger.stream)
+            fill!(x,0)
+
+        # converged normally
+        else
+
+            flag = 0
+
+        end
+
+        # if failed to converge attempt without preconditioner
+        if flag > 0
+
+            # solve linear system
+            iters, residual_error, flag = ldiv!(x, model, b, maxiter=5*maxiter)
+        end
+    end
+
+    return iters, residual_error, flag
 end
 
-function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector)::Tuple{Int,T1} where {T1,T2,T3}
+function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVector;
+               maxiter::Int=0)::Tuple{Int,T1,Int} where {T1,T2,T3}
 
-    iters = solve!(x, model, b, model.solver)
+    # set default maxiter
+    if maxiter == 0
+        maxiter = model.solver.maxiter
+    end
+
+    # solve linear system
+    iters = solve!(x, model, b, model.solver, maxiter=maxiter)
 
     # calculate residual error
     v    = model.v‴
     mul!(v,model,x)
     @. v = v - b
     residual_error  = norm(v)/norm(b)
-    
-    if residual_error > sqrt(model.solver.tol)
 
-        write_phonons!(model, joinpath(model.datafolder, "failing_phonons.out"))
-        write_M_matrix!(model, joinpath(model.datafolder, "failing_matrix.out"))
-        error("Large Residual Error = $residual_error, Iterations = $iters")
+    # maxed out iterations
+    if iters == model.solver.maxiter
+
+        flag = 1
+        @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
+        logger = global_logger()
+        flush(logger.stream)
+        fill!(x,0)
+
+    # detect large residual error
+    elseif residual_error > sqrt(model.solver.tol) # detect large residual error
+
+        flag = 2
+        @info("Large Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
+        logger = global_logger()
+        flush(logger.stream)
+        fill!(x,0)
+
+    # converged normally
+    else 
+
+        flag = 0
+
     end
 
-    return (iters,residual_error)
+    return iters, residual_error, flag
 end
 
 

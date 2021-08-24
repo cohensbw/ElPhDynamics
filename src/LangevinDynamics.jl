@@ -366,12 +366,12 @@ function calc_dSfdx!(dSfdx::AbstractVector{T2},g::AbstractVector{T2},M⁻¹g::Ab
     if model.mul_by_M
         # solve M⋅x=g ==> x=M⁻¹⋅g
         model.transposed = false
-        iters, err = ldiv!(M⁻¹g,model,g,preconditioner)
+        iters, err, flag = ldiv!(M⁻¹g,model,g,preconditioner)
     else
         model.transposed=false
         # solve MᵀM⋅x=Mᵀg ==> x=[MᵀM]⁻¹⋅Mᵀg=M⁻¹⋅g
         mulMᵀ!(model.v″,model,g)
-        iters, err = ldiv!(M⁻¹g,model,model.v″,preconditioner)
+        iters, err, flag = ldiv!(M⁻¹g,model,model.v″,preconditioner)
     end
 
     # ⟨∂M/∂xᵢ(τ)⟩=gᵀ⋅∂M/∂xᵢ(τ)⋅M⁻¹g

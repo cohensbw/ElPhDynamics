@@ -103,7 +103,7 @@ end
 
 @inline function δ(i::T)::T where {T<:Number}
 
-    return i==T(0)
+    return iszero(i)
 end
 
 """

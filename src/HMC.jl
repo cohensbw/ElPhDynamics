@@ -9,7 +9,7 @@ using Printf
 using Statistics
 using Logging
 
-using ..Utilities: get_index, reshaped
+using ..Utilities: get_index, reshaped, δ
 using ..Models: AbstractModel, HolsteinModel, SSHModel, update_model!, mulM!, muldMdx!, mulMᵀ!
 using ..PhononAction: calc_dSbdx!, calc_Sb
 using ..FourierAcceleration: FourierAccelerator, fourier_accelerate!
@@ -82,7 +82,12 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     """
     Random gaussian vector.
     """
-    R::Vector{T}
+    R₊::Vector{T}
+
+    """
+    Random gaussian vector.
+    """
+    R₋::Vector{T}
 
     """
     Auxiliary fields for spin up electrons.
@@ -197,7 +202,8 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
         v      = zeros(T,Ndof)
         v0     = zeros(T,Ndof)
         Λ      = ones(T,Ndim)
-        R      = zeros(T,Ndim)
+        R₊     = zeros(T,Ndim)
+        R₋     = zeros(T,Ndim)
         ϕ₊     = zeros(T,Ndim)
         Λϕ₊    = zeros(T,Ndim)
         O⁻¹Λϕ₊ = zeros(T,Ndim)
@@ -237,7 +243,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             close(logfile)
         end
 
-        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R,
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R₊, R₋,
                       ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, Λ,
                       u, y, log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
@@ -245,7 +251,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
     function HybridMonteCarlo(hmc::HybridMonteCarlo{T},Δt::T,tr::T,α::T,Nb::Int;
                               log::Bool=false, verbose::Bool=false, logfilename::String="",updates::Int=1) where {T<:AbstractFloat}
 
-        @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R, Λ, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, u, y = hmc
+        @unpack Ndof, Ndim, x0, H, dSdx, v, v0, R₊, R₋, Λ, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, u, y = hmc
         Nt  = round(Int,tr/Δt)
         Δt′ = Δt/Nb
 
@@ -266,7 +272,7 @@ mutable struct HybridMonteCarlo{T<:AbstractFloat}
             close(logfile)
         end
     
-        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R,
+        return new{T}(Ndof, Ndim, x0, tr, Δt, Nt, Δt′, Nb, α, dSdx, v, v0, R₊, R₋,
                       ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋, Λ,
                       u, y, log, verbose, logfile, updates, t, accepted, H, S, K, iters)
     end
@@ -345,86 +351,107 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
     Nt    = hmc.Nt
     Δt    = hmc.Δt
 
+    # keep track for linear solve flag
+    flag = 0
+
+    # keep track of iterations
+    iters = 0
+
     # update exp{-Δτ⋅V[x]}
     update_model!(model)
 
     # refresh the velocity v
     refresh_v!(hmc,model,fa)
 
-    # refresh ϕ
-    refresh_ϕ!(hmc,model)
-
-    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-    # calculate initial energy
-    H₀, S, K = calc_H(hmc, model, fa)
-
-    # calculate the initial dS/dx value
-    fill!(dSdx,0.0)
-    iter_t = calc_dSdx!(hmc, model)
-    iters  = iter_t
-
-    # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
-    fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
-
     # record intial state
     copyto!(x0,x)
     copyto!(v0,v)
 
-    # log HMC state
-    if hmc.log && hmc.verbose
-        update_log(hmc,model,fa)
-    end
+    # refresh ϕ
+    refresh_ϕ!(hmc,model)
 
-    # keep track of iterations
-    iters = 0
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
-    # iterate over time steps, doing leapfrog updates to the phonon fields
-    for hmc.t in 1:Nt
+    if iszero(flag)
 
-        # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dS/dx(t)
-        @. v = v - Δt/2*QdSdx
+        # calculate initial energy
+        H₀, S, K = calc_H(hmc, model, fa)
 
-        # x(t+Δt) = x(t) + Δt⋅v(t+Δt/2)
-        @. x = x + Δt*v
-
-        # update exp{-Δτ⋅V[x]}
-        update_model!(model)
-
-        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-        iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
-
-        # calculate dS/dx(t+Δt) value
+        # calculate the initial dS/dx value
         fill!(dSdx,0.0)
-        calc_dSdx!(hmc, model)
+        iter_t = calc_dSdx!(hmc, model)
+        iters  = iter_t
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
         fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
-
-        # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
-        @. v = v - Δt/2*QdSdx
 
         # log HMC state
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
+
+        # iterate over time steps, doing leapfrog updates to the phonon fields
+        for hmc.t in 1:Nt
+
+            # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dS/dx(t)
+            @. v = v - Δt/2*QdSdx
+
+            # x(t+Δt) = x(t) + Δt⋅v(t+Δt/2)
+            @. x = x + Δt*v
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+            itrs, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
+            iters += itrs
+
+            # kill trajectory if error flag
+            if flag > 0
+                break
+            end
+
+            # calculate dS/dx(t+Δt) value
+            fill!(dSdx,0.0)
+            calc_dSdx!(hmc, model)
+
+            # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
+            fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
+
+            # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dS/dx(t+Δt)
+            @. v = v - Δt/2*QdSdx
+
+            # log HMC state
+            if hmc.log && hmc.verbose
+                update_log(hmc,model,fa)
+            end
+        end
     end
 
-    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+    # calcualte acceptance probability
+    P = 0.0
+    if iszero(flag)
+        
+        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+        itrs, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+        iters += itrs
 
-    # calculate final energy
-    H₁, S, K = calc_H(hmc, model, fa)
+        if iszero(flag)
 
-    # calculate change in energy
-    ΔH = H₁ - H₀
+            # calculate final energy
+            H₁, S, K = calc_H(hmc, model, fa)
 
-    # calculate probability of acceptance
-    P = min(1.0, exp(-ΔH))
+            # calculate change in energy
+            ΔH = H₁ - H₀
+
+            # calculate probability of acceptance
+            P = min(1.0, exp(-ΔH))
+        end
+    end
 
     # Metropolis-Hasting Accept/Reject Step
-    if rand(model.rng) < P # if accepted
+    if rand(model.rng) < P && iszero(flag) # if accepted
 
         hmc.accepted = true
         return hmc.accepted, T1(cld(iters,Nt+2))
@@ -465,106 +492,131 @@ function multitimestep_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarl
     Nb     = hmc.Nb
     Δt′    = hmc.Δt′
 
+    # keep track for linear solve flag
+    flag = 0
+
+    # keep track of iterations
+    iters = 0
+
     # update exp{-Δτ⋅V[x]}
     update_model!(model)
 
     # refresh the velocity v
     refresh_v!(hmc,model,fa)
 
-    # refresh ϕ
-    refresh_ϕ!(hmc,model)
-
-    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-    # calculate energy
-    H₀, S, K = calc_H(hmc, model, fa)
-
-    # calculate the initial dSf/dx value
-    fill!(dSfdx,0.0)
-    calc_dSfdx!(hmc, model)
-
-    # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
-    fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
-
     # record intial phonon configuration
     copyto!(x0,x)
     copyto!(v0,v)
 
-    # log HMC state
-    if hmc.log && hmc.verbose
-        update_log(hmc,model,fa)
-    end
+    # refresh ϕ
+    refresh_ϕ!(hmc,model)
 
-    # iterate over timesteps
-    for hmc.t in 1:Nt
+    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+    itrs, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+    iters     += iters
 
-        # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
-        @. v = v - Δt/2*QdSfdx
+    if iszero(flag)
 
-        # calculate the initial dSb/dx value
-        fill!(dSbdx,0.0)
-        calc_dSbdx!(dSbdx,model)
+        # calculate energy
+        H₀, S, K = calc_H(hmc, model, fa)
 
-        # dSb/dx(t+Δt) ==> Q⋅dSb/dx(t+Δt)
-        fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
-
-        # evolve Sb using Nb smaller timesteps of size Δt′=Δt/Nb
-        for t′ in 1:Nb
-
-            # v(t+Δt/2) = v(t) - Δt′/2⋅Q⋅dSb/dx(t)
-            @. v = v - Δt′/2*QdSbdx
-
-            # x(t+Δt) = x(t) + Δt⋅v(t+Δt/2)
-            @. x = x + Δt′*v
-
-            # calculate dSb/dx(t+Δt) value
-            fill!(dSbdx,0.0)
-            calc_dSbdx!(dSbdx,model)
-
-            # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
-            fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
-
-            # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dSb/dx(t+Δt)
-            @. v = v - Δt′/2*QdSbdx
-        end
-
-        # update exp{-Δτ⋅V[x]}
-        update_model!(model)
-
-        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-        iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
-
-        # calculate dSf/dx(t+Δt) value
+        # calculate the initial dSf/dx value
         fill!(dSfdx,0.0)
         calc_dSfdx!(hmc, model)
 
         # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
         fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
 
-        # v(t+Δt) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
-        @. v = v - Δt/2*QdSfdx
-
         # log HMC state
         if hmc.log && hmc.verbose
             update_log(hmc,model,fa)
         end
+
+        # iterate over timesteps
+        for hmc.t in 1:Nt
+
+            # v(t+Δt/2) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
+            @. v = v - Δt/2*QdSfdx
+
+            # calculate the initial dSb/dx value
+            fill!(dSbdx,0.0)
+            calc_dSbdx!(dSbdx,model)
+
+            # dSb/dx(t+Δt) ==> Q⋅dSb/dx(t+Δt)
+            fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
+
+            # evolve Sb using Nb smaller timesteps of size Δt′=Δt/Nb
+            for t′ in 1:Nb
+
+                # v(t+Δt/2) = v(t) - Δt′/2⋅Q⋅dSb/dx(t)
+                @. v = v - Δt′/2*QdSbdx
+
+                # x(t+Δt) = x(t) + Δt⋅v(t+Δt/2)
+                @. x = x + Δt′*v
+
+                # calculate dSb/dx(t+Δt) value
+                fill!(dSbdx,0.0)
+                calc_dSbdx!(dSbdx,model)
+
+                # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
+                fourier_accelerate!(QdSbdx,fa,dSbdx,-1.0,use_mass=true)
+
+                # v(t+Δt) = v(t+Δt/2) - Δt/2⋅Q⋅dSb/dx(t+Δt)
+                @. v = v - Δt′/2*QdSbdx
+            end
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+            itrs, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,1.0)
+            iters += itrs
+
+            # kill trajectory if error occurred
+            if flag > 0
+                break
+            end
+
+            # calculate dSf/dx(t+Δt) value
+            fill!(dSfdx,0.0)
+            calc_dSfdx!(hmc, model)
+
+            # dSf/dx(t+Δt) ==> Q⋅dSf/dx(t+Δt)
+            fourier_accelerate!(QdSfdx,fa,dSfdx,-1.0,use_mass=true)
+
+            # v(t+Δt) = v(t) - Δt/2⋅Q⋅dSf/dx(t)
+            @. v = v - Δt/2*QdSfdx
+
+            # log HMC state
+            if hmc.log && hmc.verbose
+                update_log(hmc,model,fa)
+            end
+        end
     end
 
-    # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
-    iters += calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+    # calcualte acceptance probability
+    P = 0.0
+    if iszero(flag)
 
-    # calculate final energy
-    H₁, S, K = calc_H(hmc,model,fa)
+        # calculate O⁻¹⋅ϕ₊ and O⁻¹⋅ϕ₋
+        itrs, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+        iters += itrs
 
-    # calculate change in energy
-    ΔH = H₁ - H₀
+        if iszero(flag)
 
-    # calculate probability of acceptance
-    P = min(1.0, exp(-ΔH))
+            # calculate final energy
+            H₁, S, K = calc_H(hmc,model,fa)
+
+            # calculate change in energy
+            ΔH = H₁ - H₀
+
+            # calculate probability of acceptance
+            P = min(1.0, exp(-ΔH))
+        end
+    end
 
     # Metropolis-Hasting Accept/Reject Step
-    if rand(model.rng) < P # if accepted
+    if rand(model.rng) < P && iszero(flag) # if accepted
 
         hmc.accepted = true
         return hmc.accepted, T1(cld(iters,Nt+2))
@@ -612,25 +664,25 @@ end
 """
 Refresh `ϕ` according to the relationship `ϕ ~ Λ⁻¹⋅Mᵀ⋅R` where `R` is a vector of normal random numbers.
 """
-function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2}) where {T1,T2}
+function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2};sample_R::Bool=true) where {T1,T2}
 
-    @unpack R, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, Λ = hmc
-
-    # REFRESH ϕ₊
+    @unpack R₊, R₋, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, Λ = hmc
 
     # update Λ
     update_Λ!(hmc,model)
 
+    # sample new random vectors
+    if sample_R
+        randn!(model.rng,R₊)
+        randn!(model.rng,R₋)
+    end
+
     # ϕ₊ = Λ⁻¹⋅Mᵀ⋅R₊
-    randn!(model.rng,R)
-    mulMᵀ!(Λϕ₊,model,R)
+    mulMᵀ!(Λϕ₊,model,R₊)
     mulΛ⁻¹!(ϕ₊,Λϕ₊,hmc,model)
 
-    # REFRESH ϕ₋
-
     # ϕ₋ = Λ⁻¹⋅Mᵀ⋅R₋
-    randn!(model.rng,R)
-    mulMᵀ!(Λϕ₋,model,R)
+    mulMᵀ!(Λϕ₋,model,R₋)
     mulΛ⁻¹!(ϕ₋,Λϕ₋,hmc,model)
 
     return nothing
@@ -762,7 +814,7 @@ end
 """
 Solve `O⋅x=Λ⋅ϕ₊ ==> x=O⁻¹⋅Λ⋅ϕ₊` and `O⋅x=Λ⋅ϕ₋ ==> x=O⁻¹⋅Λ⋅ϕ₋` where `O = Mᵀ⋅M`.
 """
-function calc_O⁻¹Λϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I, power::T1=1.0)::Int where {T1,T2}
+function calc_O⁻¹Λϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}, preconditioner=I, power::T1=1.0)::Tuple{Int,Int} where {T1,T2}
 
     @unpack Λ, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, O⁻¹Λϕ₊, O⁻¹Λϕ₋ = hmc
     M⁻ᵀΛϕ₊ = hmc.u
@@ -790,64 +842,73 @@ function calc_O⁻¹Λϕ!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}
     ## CALCULATE  O⁻¹⋅Λ⋅ϕ₊ ##
     #########################
 
+    # linear solve status flag
+    flag = 0
+
     if !model.mul_by_M # if using Conjugate Gradient
 
         # solve linear system
         fill!(O⁻¹Λϕ₊,0.0)
-        model.transposed=false
-        iters, err = ldiv!(O⁻¹Λϕ₊,model,Λϕ₊,preconditioner)
+        model.transposed = false
+        iters, err, flag = ldiv!(O⁻¹Λϕ₊,model,Λϕ₊,preconditioner)
         hmc.iters += iters
 
     else # if using GMRES
 
         # solve linear system
         fill!(M⁻ᵀΛϕ₊,0.0)
-        model.transposed=true
-        iters, err = ldiv!(M⁻ᵀΛϕ₊,model,Λϕ₊,preconditioner)
-        hmc.iters += iters
+        model.transposed  = true
+        iters, err, flag1 = ldiv!(M⁻ᵀΛϕ₊,model,Λϕ₊,preconditioner)
+        hmc.iters        += iters
+        flag              = max(flag,flag1)
 
         # solve linear system
         fill!(O⁻¹Λϕ₊,0.0)
-        model.transposed=false
-        iters, err = ldiv!(O⁻¹Λϕ₊,model,M⁻ᵀΛϕ₊,preconditioner)
-        hmc.iters += iters
+        model.transposed  = false
+        iters, err, flag2 = ldiv!(O⁻¹Λϕ₊,model,M⁻ᵀΛϕ₊,preconditioner)
+        hmc.iters        += iters
+        flag              = max(flag,flag2)
     end
 
     #########################
     ## CALCULATE  O⁻¹⋅Λ⋅ϕ₋ ##
     #########################
 
-    if !model.mul_by_M
+    if !model.mul_by_M && iszero(flag)
 
         # solve linear system
         fill!(O⁻¹Λϕ₋,0.0)
-        model.transposed=false
-        iters, err = ldiv!(O⁻¹Λϕ₋,model,Λϕ₋,preconditioner)
+        model.transposed =false
+        iters, err, flag = ldiv!(O⁻¹Λϕ₋,model,Λϕ₋,preconditioner)
         hmc.iters += iters
         
-    else
+    elseif iszero(flag)
 
         # solve linear system
         fill!(M⁻ᵀΛϕ₋,0.0)
-        model.transposed = true
-        iters, err       = ldiv!(M⁻ᵀΛϕ₋,model,Λϕ₋,preconditioner)
-        hmc.iters       += iters
+        model.transposed  = true
+        iters, err, flag1 = ldiv!(M⁻ᵀΛϕ₋,model,Λϕ₋,preconditioner)
+        hmc.iters        += iters
+        flag              = max(flag,flag1)
 
         # solve linear system
         fill!(O⁻¹Λϕ₋,0.0)
-        model.transposed = false
-        iters, err       = ldiv!(O⁻¹Λϕ₋,model,M⁻ᵀΛϕ₋,preconditioner)
-        hmc.iters       += iters
+        model.transposed  = false
+        iters, err, flag2 = ldiv!(O⁻¹Λϕ₋,model,M⁻ᵀΛϕ₋,preconditioner)
+        hmc.iters        += iters
+        flag              = max(flag,flag2)
     end
 
     # accounting for the fact that there is a spin up and spin down
     # linear system that needs to be solved
-    hmc.iters = cld(hmc.iters,2)
+    if iszero(flag)
+        hmc.iters = cld(hmc.iters,2)
+    end
 
     # revert solvers tolerance to original value
     model.solver.tol = tol
 
-    return hmc.iters
+    return hmc.iters, flag
 end
 
 

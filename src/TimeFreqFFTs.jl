@@ -29,19 +29,25 @@ struct TimeFreqFFT{T<:AbstractFloat,Tfft<:AbstractFFTs.Plan,Tifft<:AbstractFFTs.
     "Temporary storage vector."
     utemp::Vector{Complex{T}}
 
-    function TimeFreqFFT(lattice::Lattice{T},L::Int) where {T<:AbstractFloat}
+    function TimeFreqFFT(T::DataType,N::Int,L::Int)
 
-        N        = lattice.nsites
+        @assert T <: AbstractFloat
         vtemp    = zeros(Complex{T},L,N)
         utemp    = zeros(Complex{T},N*L)
         Θ        = [exp(-π*im*(τ-1)/L) for τ = 1:L]
         fftplan  = plan_fft(vtemp, (1,), flags=FFTW.PATIENT)
         ifftplan = plan_ifft(vtemp, (1,), flags=FFTW.PATIENT)
+        Tfft     = typeof(fftplan)
+        Tifft    = typeof(ifftplan)
 
-        return new{T,typeof(fftplan),typeof(ifftplan)}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
+        return new{T,Tfft,Tifft}(N,L,Θ,fftplan,ifftplan,vtemp,utemp)
     end
 end
 
+function TimeFreqFFT(lattice::Lattice{T},L::Int) where {T<:AbstractFloat}
+
+    return TimeFreqFFT(T,lattice.nsites,L)
+end
 
 """
 Apply the transformation ν=[F⋅Θ]⋅v from imaginary time τ to frequency ω space.

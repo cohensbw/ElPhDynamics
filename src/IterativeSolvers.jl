@@ -59,11 +59,22 @@ end
 Solve `A⋅x=b` using the Conjugate Gradient method with a split preconditioner
 such that `[L⁻¹⋅A⋅L⁻ᵀ]⋅u=L⁻¹⋅b` where `u=L⁻ᵀ⋅x`.
 """
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},L,Lt)::Int where {Ttol,Tdata}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},L,Lt;
+                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
     z = cg.z
+
+    # set to default maxiter
+    if iszero(maxiter)
+        maxiter = cg.maxiter
+    end
+
+    # set to default tolerance
+    if iszero(tol)
+        tol = cg.tol
+    end
     
     # r₀ = b - A⋅x₀
     mul!(r,A,x)
@@ -83,7 +94,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     # r₀⋅r₀
     rdotr = dot(r,r)
     
-    @fastmath @inbounds for j in 1:cg.maxiter
+    @fastmath @inbounds for j in 1:maxiter
         
         # αⱼ = (rⱼ⋅rⱼ)/(pⱼ⋅A⋅pⱼ)
         mul!(z,A,p)
@@ -109,7 +120,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         δ = norm(p)/normL⁻ᵀL⁻¹b
         
         # check stop criteria
-        if δ<cg.tol
+        if δ<tol
             return j
         end
     end
@@ -122,7 +133,8 @@ end
 Solve `A⋅x=b` using the Conjugate Gradient method with a preconditioner `P`.
 Based on pseudocode from: https://www-users.cs.umn.edu/~saad/Calais/PREC.pdf
 """
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},P)::Int where {Ttol,Tdata}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},P;
+                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -143,8 +155,18 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
 
     # r₀⋅z₀
     rdotz = dot(r,z)
+
+    # set to default maxiter
+    if iszero(maxiter)
+        maxiter = cg.maxiter
+    end
+
+    # set to default tolerance
+    if iszero(tol)
+        tol = cg.tol
+    end
     
-    @fastmath @inbounds for j in 1:cg.maxiter
+    @fastmath @inbounds for j in 1:maxiter
         
         # αⱼ = (rⱼ⋅zⱼ)/(pⱼ⋅A⋅pⱼ)
         mul!(z,A,p)
@@ -160,7 +182,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         δ = norm(r)/normb
         
         # check stop criteria
-        if δ<cg.tol
+        if δ<tol
             return j
         end
         
@@ -182,7 +204,8 @@ end
 """
 Solve `A⋅x=b` using the Conjugate Gradient method with no preconditioning.
 """
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata})::Int where {Ttol,Tdata}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata};
+                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -200,8 +223,18 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
 
     # r₀⋅r₀
     rdotr = dot(r,r)
+
+    # set to default maxiter
+    if iszero(maxiter)
+        maxiter = cg.maxiter
+    end
+
+    # set to default tol
+    if iszero(tol)
+        tol = cg.tol
+    end
     
-    @fastmath @inbounds for j in 1:cg.maxiter
+    @fastmath @inbounds for j in 1:maxiter
         
         # αⱼ = (rⱼ⋅rⱼ)/(pⱼ⋅A⋅pⱼ)
         mul!(z,A,p)
@@ -217,7 +250,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         δ = norm(r)/normb
         
         # check stop criteria
-        if δ<cg.tol
+        if δ<tol
             return j
         end
         
@@ -271,9 +304,10 @@ end
 """
 Solve linear system using preconditioned BiCGStab.
 """
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::BiCGStab{Ttol,Tdata},P=I)::Int where {Ttol,Tdata}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::BiCGStab{Ttol,Tdata},P=I;
+                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
 
-    @unpack tol, maxiter, r, r̃, p, p̂, s, ŝ, v, t = bicgstab
+    @unpack r, r̃, p, p̂, s, ŝ, v, t = bicgstab
 
     # r = b - A⋅x
     mul!(r,A,x)
@@ -291,6 +325,14 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::Bi
     ρᵢ₋₁ = 1.0
     ρᵢ₋₂ = 1.0
     ω    = 1.0
+
+    if iszero(maxiter)
+        maxiter = bicgstab.maxiter
+    end
+
+    if iszero(tol)
+        tol = bicgstab.tol
+    end
 
     # iterate to convergence
     @fastmath @inbounds for i in 1:maxiter
@@ -372,7 +414,8 @@ mutable struct GMRES{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
 end
 
 
-function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES{Ttol,Tdata},M=I)::Int where {Ttol,Tdata}
+function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES{Ttol,Tdata},M=I;
+                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
     
     H  = gmres.H
     V  = gmres.V
@@ -382,6 +425,14 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
     y  = gmres.y
     sn = gmres.sn
     cs = gmres.cs
+
+    if iszero(maxiter)
+        maxiter = gmres.maxiter
+    end
+
+    if iszero(tol)
+        tol = gmres.tol
+    end
     
     # calculating norm of b
     copyto!(r,b)
@@ -402,11 +453,11 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
     
     # initialize error
     Δ = β/normb
-    if Δ<gmres.tol
+    if Δ < tol
         return iter
     end
     
-    @fastmath @inbounds while iter < gmres.maxiter        
+    @fastmath @inbounds while iter < maxiter        
         @. V[:,1] = r/β
         fill!(s,0.0)
         s[1]  = β
@@ -429,7 +480,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
             H[i,i], H[i+1,i] = apply_plane_rotation(H[i,i], H[i+1,i], cs[i], sn[i])
             s[i], s[i+1]     = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
             Δ                = abs(s[i+1])/normb
-            if Δ < gmres.tol
+            if Δ < tol
                 update!(x,i,H,s,y,V)
                 return iter
             end
@@ -443,7 +494,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
         ldiv!(M,r)   # r = M \ (b - A⋅x) = M⁻¹⋅(b - A⋅x)
         β    = norm(r)
         Δ    = β/normb
-        if Δ<gmres.tol
+        if Δ < tol
             return iter
         end
     end
