@@ -125,7 +125,7 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
         if flag > 0
 
             # solve linear system
-            iters, residual_error, flag = ldiv!(x, model, b, maxiter=5*maxiter)
+            iters, residual_error, flag = ldiv!(x, model, b, maxiter=10*maxiter)
         end
     end
 

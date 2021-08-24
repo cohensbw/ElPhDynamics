@@ -2,6 +2,7 @@ module IterativeSolvers
 
 using LinearAlgebra
 using Parameters
+using Printf
 
 import LinearAlgebra: ldiv!
 
@@ -36,12 +37,13 @@ mutable struct ConjugateGradient{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
     
     tol::Ttol
     maxiter::Int
+    κmax::Ttol
     N::Int
     r::Vector{Tdata}
     p::Vector{Tdata}
     z::Vector{Tdata}
     
-    function ConjugateGradient(z::AbstractVector{Tdata};tol::Ttol=1e-4,maxiter::Int=0) where {Ttol<:AbstractFloat,Tdata<:Continuous}
+    function ConjugateGradient(z::AbstractVector{Tdata};tol::Ttol=1e-4,maxiter::Int=0,κmax::Ttol=1e14) where {Ttol<:AbstractFloat,Tdata<:Continuous}
         
         N = length(z)
         if maxiter<1
@@ -50,7 +52,7 @@ mutable struct ConjugateGradient{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
         r = zeros(Tdata,N)
         p = zeros(Tdata,N)
         z = zeros(Tdata,N)
-        return new{Ttol,Tdata}(tol,maxiter,N,r,p,z)
+        return new{Ttol,Tdata}(tol,maxiter,κmax,N,r,p,z)
     end
 end
 
@@ -60,7 +62,7 @@ Solve `A⋅x=b` using the Conjugate Gradient method with a split preconditioner
 such that `[L⁻¹⋅A⋅L⁻ᵀ]⋅u=L⁻¹⋅b` where `u=L⁻ᵀ⋅x`.
 """
 function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},L,Lt;
-                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
+                maxiter::Int=0,tol::Ttol=0.0,κmax::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
@@ -74,6 +76,11 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     # set to default tolerance
     if iszero(tol)
         tol = cg.tol
+    end
+
+    # set default max condition number
+    if iszero(κmax)
+        κmax = cg.κmax
     end
     
     # r₀ = b - A⋅x₀
@@ -90,6 +97,13 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     ldiv!(z,L,b)
     ldiv!(Lt,z)
     normL⁻ᵀL⁻¹b = norm(z)
+
+    # calcualte initial tolerance
+    ϵ₀ = norm(p)/normL⁻ᵀL⁻¹b
+    ϵ  = ϵ₀
+
+    # initial lower bound for condition number
+    κmin  = 0.0
 
     # r₀⋅r₀
     rdotr = dot(r,r)
@@ -116,16 +130,21 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         ldiv!(z,Lt,r)
         axpby!(1.0,z,β,p)
         
-        # δ = |pⱼ₊₁|/|L⁻ᵀ⋅L⋅b| = |L⁻ᵀ⋅L⋅(A⋅xⱼ₊₁-b)|/|L⁻ᵀ⋅L⋅b| 
-        δ = norm(p)/normL⁻ᵀL⁻¹b
+        # ϵ = |pⱼ₊₁|/|L⁻ᵀ⋅L⋅b| = |L⁻ᵀ⋅L⋅(A⋅xⱼ₊₁-b)|/|L⁻ᵀ⋅L⋅b| 
+        ϵ = norm(p)/normL⁻ᵀL⁻¹b
+
+        # approximate lower bound for condition numbers
+        κmin = max( κmin , (2*j/log(2*ϵ₀/ϵ))^2 )
         
         # check stop criteria
-        if δ<tol
+        if ϵ < tol  || κmin > κmax
+            @printf "%d, %.2e, %.2e\n" j ϵ κmin
             return j
         end
     end
     
-    return cg.maxiter
+    @printf "%d,  %.3e,  %.3e,  W/ Preconditioner\n" maxiter ϵ κmin
+    return maxiter
     
 end
 
@@ -134,11 +153,26 @@ Solve `A⋅x=b` using the Conjugate Gradient method with a preconditioner `P`.
 Based on pseudocode from: https://www-users.cs.umn.edu/~saad/Calais/PREC.pdf
 """
 function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata},P;
-                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
+                maxiter::Int=0,tol::Ttol=0.0,κmax::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
     z = cg.z
+
+    # set to default maxiter
+    if iszero(maxiter)
+        maxiter = cg.maxiter
+    end
+
+    # set to default tolerance
+    if iszero(tol)
+        tol = cg.tol
+    end
+
+    # set default max condition number
+    if iszero(κmax)
+        κmax = cg.κmax
+    end
     
     # |b|
     normb = norm(b)
@@ -156,15 +190,12 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     # r₀⋅z₀
     rdotz = dot(r,z)
 
-    # set to default maxiter
-    if iszero(maxiter)
-        maxiter = cg.maxiter
-    end
+    # calcualte initial tolerance
+    ϵ₀ = norm(r)/normb
+    ϵ  = ϵ₀
 
-    # set to default tolerance
-    if iszero(tol)
-        tol = cg.tol
-    end
+    # initial lower bound for condition number
+    κmin  = 0.0
     
     @fastmath @inbounds for j in 1:maxiter
         
@@ -178,11 +209,15 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         # rⱼ₊₁ = rⱼ - αⱼ⋅A⋅pⱼ
         axpy!(-α,z,r)
 
-        # δ = |rⱼ₊₁|/|b|
-        δ = norm(r)/normb
+        # ϵ = |rⱼ₊₁|/|b|
+        ϵ = norm(r)/normb
+
+        # approximate lower bound for condition numbers
+        κmin = max( κmin , (2*j/log(2*ϵ₀/ϵ))^2 )
         
         # check stop criteria
-        if δ<tol
+        if ϵ < tol  || κmin > κmax
+            @printf "%d, %.2e, %.2e\n" j ϵ κmin
             return j
         end
         
@@ -198,18 +233,33 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         axpby!(1.0,z,β,p)
     end
     
-    return cg.maxiter
+    return maxiter
 end
 
 """
 Solve `A⋅x=b` using the Conjugate Gradient method with no preconditioning.
 """
 function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::ConjugateGradient{Ttol,Tdata};
-                maxiter::Int=0,tol::Ttol=0.0)::Int where {Ttol,Tdata}
+                maxiter::Int=0,tol::Ttol=0.0,κmax::Ttol=0.0)::Int where {Ttol,Tdata}
     
     r = cg.r
     p = cg.p
     z = cg.z
+
+    # set to default maxiter
+    if iszero(maxiter)
+        maxiter = cg.maxiter
+    end
+
+    # set to default tol
+    if iszero(tol) || κmin > κmax
+        tol = cg.tol
+    end
+
+    # set default max condition number
+    if iszero(κmax)
+        κmax = cg.κmax
+    end
     
     # |b|
     normb = norm(b)
@@ -224,15 +274,12 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
     # r₀⋅r₀
     rdotr = dot(r,r)
 
-    # set to default maxiter
-    if iszero(maxiter)
-        maxiter = cg.maxiter
-    end
+    # calcualte initial tolerance
+    ϵ₀ = norm(r)/normb
+    ϵ  = ϵ₀
 
-    # set to default tol
-    if iszero(tol)
-        tol = cg.tol
-    end
+    # initial lower bound for condition number
+    κmin = 0.0
     
     @fastmath @inbounds for j in 1:maxiter
         
@@ -246,11 +293,15 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         # rⱼ₊₁ = rⱼ - αⱼ⋅A⋅pⱼ
         axpy!(-α,z,r)
 
-        # δ = |rⱼ₊₁|/|b| = |b-A⋅xⱼ₊₁|/|b|
-        δ = norm(r)/normb
+        # ϵ = |rⱼ₊₁|/|b| = |b-A⋅xⱼ₊₁|/|b|
+        ϵ = norm(r)/normb
+
+        # approximate lower bound for condition numbers
+        κmin = max( κmin , (2*j/log(2*ϵ₀/ϵ))^2 )
         
         # check stop criteria
-        if δ<tol
+        if ϵ < tol || κmin > κmax
+            @printf "%d, %.2e, %.2e\n" j ϵ κmin
             return j
         end
         
@@ -263,7 +314,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         axpby!(1.0,r,β,p)
     end
     
-    return cg.maxiter
+    return maxiter
 end
 
 #############################
@@ -347,8 +398,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::Bi
         mul!(v,A,p̂)
         α    = ρᵢ₋₁/dot(r̃,v)
         @. s = r - α*v
-        δ    = norm(s)/b̄
-        if δ<tol
+        ϵ    = norm(s)/b̄
+        if ϵ<tol
             @. x += α*p̂
             return i
         end
@@ -357,8 +408,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},bicgstab::Bi
         ω     = dot(t,s)/dot(t,t)
         @. x += α*p̂ + ω*ŝ
         @. r  = s - ω*t
-        δ     = norm(r)/b̄
-        if δ<tol
+        ϵ     = norm(r)/b̄
+        if ϵ<tol
             return i
         end
         if ω==0.0
@@ -452,8 +503,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
     iter = 0
     
     # initialize error
-    Δ = β/normb
-    if Δ < tol
+    ϵ = β/normb
+    if ϵ < tol
         return iter
     end
     
@@ -479,8 +530,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
             cs[i], sn[i]     = generate_plane_rotation(H[i,i], H[i+1,i])
             H[i,i], H[i+1,i] = apply_plane_rotation(H[i,i], H[i+1,i], cs[i], sn[i])
             s[i], s[i+1]     = apply_plane_rotation(s[i], s[i+1], cs[i], sn[i])
-            Δ                = abs(s[i+1])/normb
-            if Δ < tol
+            ϵ                = abs(s[i+1])/normb
+            if ϵ < tol
                 update!(x,i,H,s,y,V)
                 return iter
             end
@@ -493,8 +544,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},gmres::GMRES
         @. r = b - r # r = b - A⋅x
         ldiv!(M,r)   # r = M \ (b - A⋅x) = M⁻¹⋅(b - A⋅x)
         β    = norm(r)
-        Δ    = β/normb
-        if Δ < tol
+        ϵ    = β/normb
+        if ϵ < tol
             return iter
         end
     end
