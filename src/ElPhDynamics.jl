@@ -104,7 +104,7 @@ function simulate(args)
         # extract state from checkpoint
         (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
          burnin_reflect_update, sim_reflect_update, burnin_swap_update, sim_swap_update,
-         fourier_accelerator, preconditioner, container, burnin_start, sim_start, sim_stats) = process_input_file(input)
+         fourier_accelerator, preconditioner, container, burnin_start, sim_start, sim_stats) = process_checkpoint(input)
 
     else # start new simulation
 
