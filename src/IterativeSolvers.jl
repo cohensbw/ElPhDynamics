@@ -218,7 +218,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         # check stop criteria
         if ϵ < tol  || κmin > κmax
             # @printf "%d, %.2e, %.2e\n" j ϵ κmin
-            return
+            return j
         end
         
         # zⱼ₊₁ = P⁻¹⋅rⱼ₊₁
