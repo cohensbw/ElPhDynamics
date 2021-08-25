@@ -138,12 +138,12 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         
         # check stop criteria
         if ϵ < tol  || κmin > κmax
-            @printf "%d, %.2e, %.2e\n" j ϵ κmin
+            # @printf "%d, %.2e, %.2e\n" j ϵ κmin
             return j
         end
     end
     
-    @printf "%d,  %.3e,  %.3e,  W/ Preconditioner\n" maxiter ϵ κmin
+    # @printf "%d,  %.3e,  %.3e,  W/ Preconditioner\n" maxiter ϵ κmin
     return maxiter
     
 end
@@ -217,8 +217,8 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         
         # check stop criteria
         if ϵ < tol  || κmin > κmax
-            @printf "%d, %.2e, %.2e\n" j ϵ κmin
-            return j
+            # @printf "%d, %.2e, %.2e\n" j ϵ κmin
+            return
         end
         
         # zⱼ₊₁ = P⁻¹⋅rⱼ₊₁
@@ -301,7 +301,7 @@ function solve!(x::AbstractVector{Tdata},A,b::AbstractVector{Tdata},cg::Conjugat
         
         # check stop criteria
         if ϵ < tol || κmin > κmax
-            @printf "%d, %.2e, %.2e\n" j ϵ κmin
+            # @printf "%d, %.2e, %.2e\n" j ϵ κmin
             return j
         end
         
