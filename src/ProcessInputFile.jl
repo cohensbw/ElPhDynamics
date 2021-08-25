@@ -164,7 +164,7 @@ function process_checkpoint(input::Dict)
     ## DEFINE SPECIAL UDPATE ##
     ###########################
 
-    burnin_special_update, sim_reflect_update = initialize_reflect_update(input,model,burnin_dynamics,simulation_dynamics)
+    burnin_reflect_update, sim_reflect_update = initialize_reflect_update(input,model,burnin_dynamics,simulation_dynamics)
     burnin_swap_update,    sim_swap_update    = initialize_swap_update(input,model,burnin_dynamics,simulation_dynamics)
 
     ###############################
