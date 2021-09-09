@@ -476,11 +476,13 @@ function checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::
     # getting the total number of neighbor pairs
     nneighbors = size(neighbor_table,2)
     # intially all neighbors are unassigned to a group
-    groups .= 0
+    fill!(groups,0)
     # keeps track of which group is being constructed
     group = 0
+    # keep track of number of bonds assigned to group
+    nassigned = 0
     # while any bond is not assigned to a group
-    while any(i->i==0,groups)
+    while nassigned < nneighbors
         # increment to next group
         group += 1
         # iterate over neighbor_table in lattice
@@ -489,6 +491,7 @@ function checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::
             if groups[neighbor]==0
                 # assign it to current group
                 groups[neighbor] = group
+                nassigned       += 1
                 # iterate over previous neighbors
                 for prev_neighbor in 1:neighbor-1
                     # if previous neighbor is a group member
@@ -500,6 +503,7 @@ function checkerboard_groups!(groups::Vector{Int},neighbor_table::Matrix{Int})::
                              neighbor_table[2,neighbor]==neighbor_table[1,prev_neighbor] )
                             # remove current neighbor from group
                             groups[neighbor] = 0
+                            nassigned       -= 1
                             break
                         end
                     end

@@ -95,24 +95,28 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
         mul!(v,model,x)
         @. v = v - b
         residual_error = norm(v)/norm(b)
-
-        # maxed out iterations
-        if iters == maxiter
-
-            flag = 1
-            @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
-            logger = global_logger()
-            flush(logger.stream)
-            fill!(x,0)
         
         # detect large residual error
-        elseif residual_error > sqrt(model.solver.tol)
+        if residual_error > sqrt(model.solver.tol)
 
-            flag = 2
-            @info("Large Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
-            logger = global_logger()
-            flush(logger.stream)
-            fill!(x,0)
+            # maxed out iterations
+            if iters == maxiter
+
+                flag = 1
+                @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
+                logger = global_logger()
+                flush(logger.stream)
+                fill!(x,0)
+            
+            # false convergence
+            else
+
+                flag = 2
+                @info("Large Residual Error = $residual_error, Iterations = $iters, W/ Preconditioner")
+                logger = global_logger()
+                flush(logger.stream)
+                fill!(x,0)
+            end
 
         # converged normally
         else
@@ -149,23 +153,27 @@ function ldiv!(x::AbstractVector, model::AbstractModel{T1,T2,T3}, b::AbstractVec
     @. v = v - b
     residual_error  = norm(v)/norm(b)
 
-    # maxed out iterations
-    if iters == model.solver.maxiter
-
-        flag = 1
-        @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
-        logger = global_logger()
-        flush(logger.stream)
-        fill!(x,0)
-
     # detect large residual error
-    elseif residual_error > sqrt(model.solver.tol) # detect large residual error
+    if residual_error > sqrt(model.solver.tol) # detect large residual error
 
-        flag = 2
-        @info("Large Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
-        logger = global_logger()
-        flush(logger.stream)
-        fill!(x,0)
+        # maxed out iterations
+        if iters == model.solver.maxiter
+
+            flag = 1
+            @info("Hit Max Iters, Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
+            logger = global_logger()
+            flush(logger.stream)
+            fill!(x,0)
+
+        # false convergence
+        else
+
+            flag = 2
+            @info("Large Residual Error = $residual_error, Iterations = $iters, W/O Preconditioner")
+            logger = global_logger()
+            flush(logger.stream)
+            fill!(x,0)
+        end
 
     # converged normally
     else 

@@ -4,6 +4,7 @@ using LinearAlgebra
 using Random
 using FFTW
 using Logging
+using Printf
 
 import LinearAlgebra: ldiv!, mul!, transpose
 
@@ -267,54 +268,43 @@ Update the preconditioner.
 """
 function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
-    try
-        # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
-        update_A!(op)
+    # update exp{-Δτ⋅V̄} and exp{-Δτ⋅K̄}
+    update_A!(op)
 
-        # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
-        e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4, op.model.rng)
+    # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
+    e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4, op.model.rng)
 
-        # compute λ_lo and λ_hi
-        λ_lo = max(0.0 , (1-2*op.buf)*e_min)
-        λ_hi = (1+2*op.buf)*e_max
+    # compute λ_lo and λ_hi
+    λ_lo = max(0.0 , (1-2*op.buf)*e_min)
+    λ_hi = (1+2*op.buf)*e_max
 
-        # if λ_lo or λ_hi has changed by a factor of more than op.buf,
-        # recompute expansion coefficients
-        if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
+    # if λ_lo or λ_hi has changed by a factor of more than op.buf,
+    # recompute expansion coefficients
+    if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
 
-            op.λ_lo  = λ_lo
-            op.λ_hi  = λ_hi
-            op.λ_avg = (op.λ_hi+op.λ_lo)/2
-            op.λ_mag = (op.λ_hi-op.λ_lo)/2
+        op.λ_lo  = λ_lo
+        op.λ_hi  = λ_hi
+        op.λ_avg = (op.λ_hi+op.λ_lo)/2
+        op.λ_mag = (op.λ_hi-op.λ_lo)/2
 
-            # update expansions
-            for ω in 1:length(op.ϕs)
-                # calculate order of expansion
-                coeff       = op.coeff[ω]
-                ϕ           = op.ϕs[ω]
-                # order       = round(Int, op.c1/ϕ + op.c2)
-                order       = round(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
-                order       = max(1,order)
-                op.order[ω] = order
-                # resize vector containing expansion coefficients
-                resize!(coeff,order)
-                # calculate expansion coefficients
-                kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
-            end
+        # update expansions
+        for ω in 1:length(op.ϕs)
+            # calculate order of expansion
+            coeff       = op.coeff[ω]
+            ϕ           = op.ϕs[ω]
+            # order       = round(Int, op.c1/ϕ + op.c2)
+            order       = round(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
+            order       = max(1,order)
+            op.order[ω] = order
+            # resize vector containing expansion coefficients
+            resize!(coeff,order)
+            # calculate expansion coefficients
+            kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
         end
-
-        # set preconditioner to being active
-        op.active = true
-        
-    catch
-        # disable preconditioner
-        op.active = false
-
-        # log a warning
-        @info("Preconditioner Disabled")
-        logger = global_logger()
-        flush(logger.stream)
     end
+
+    # set preconditioner to being active
+    op.active = true
 
     return nothing
 end
@@ -841,7 +831,7 @@ end
 Computes a basis of the (n + 1)-Krylov subspace of A: the space spanned by {b, Ab, ..., A^n b}.
 Then use this to approximate the min and max eigenvalues of A.
 """
-function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}, rng::AbstractRNG) where {T1<:Continuous,T2<:Continuous}
+function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{T1}, b::AbstractVector{T2}, v::AbstractVector{T2}, rng::AbstractRNG) where {T1<:AbstractFloat,T2<:Continuous}
 
     # dimension of Krylov subspace, must be >= 1
     n = size(h,2)
@@ -853,17 +843,17 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
     ## Arnoldi for Max Eigenvalue ##
     ################################
 
-    # randomize input vector
+    # randomize input vector using for loop because
+    # b vector be of complex valued data type
     for i in 1:m
         b[i] = randn(rng,T1)
     end
 
     # normalize input vector
-    @. b /= norm(b)
+    normalize!(b)
 
     # Use it as the first Krylov vector
-    Q1 = @view Q[:,1]
-    @. Q1 = real(b)
+    @. Q[:,1] = real(b)
 
     l = n
     for k in 1:n
@@ -876,9 +866,8 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         h[k+1, k] = norm(v)
         # Add the produced vector to the list, unless the zero vector is produced
         if h[k+1, k] > 1e-12
-            @. b    = v / h[k + 1, k]
-            Qkp1    = @view Q[:, k+1]
-            @. Qkp1 = real(b)
+            @. b = v / h[k + 1, k]
+            @. Q[:,k+1] = real(b)
         else  # If that happens, stop iterating.
             l = k
             break
@@ -900,7 +889,7 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
     end
 
     # normalize input vector
-    @. b /= norm(b)
+    normalize!(b)
 
     # Use it as the first Krylov vector
     Q1 = @view Q[:,1]
@@ -917,9 +906,8 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
         h[k+1, k] = norm(v)
         # Add the produced vector to the list, unless the zero vector is produced
         if h[k+1, k] > 1e-12
-            @. b    = v / h[k + 1, k]
-            Qkp1    = @view Q[:, k+1]
-            @. Qkp1 = real(b)
+            @. b = v / h[k + 1, k]
+            @. Q[:,k+1] = real(b)
         else  # If that happens, stop iterating.
             l = k
             break
@@ -927,13 +915,11 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
     end
 
     # calulcate min and max eigenvalues
-    h′       = @view h[1:l,1:l]
-    eigvs    = eigvals!(h′)
-    e_min    = 1/maximum(real, eigvs)
+    h′     = @view h[1:l,1:l]
+    eigvs  = eigvals!(h′)
+    e_min = 1/maximum(real, eigvs)
 
-    # println("$e_min $e_max")
-
-    return e_min, e_max
+    return e_min′, e_max
 end
 
 """

@@ -43,7 +43,7 @@ mutable struct ConjugateGradient{Ttol,Tdata} <: IterativeSolver{Ttol,Tdata}
     p::Vector{Tdata}
     z::Vector{Tdata}
     
-    function ConjugateGradient(z::AbstractVector{Tdata};tol::Ttol=1e-4,maxiter::Int=0,κmax::Ttol=1e14) where {Ttol<:AbstractFloat,Tdata<:Continuous}
+    function ConjugateGradient(z::AbstractVector{Tdata};tol::Ttol=1e-4,maxiter::Int=0,κmax::Ttol=1e12) where {Ttol<:AbstractFloat,Tdata<:Continuous}
         
         N = length(z)
         if maxiter<1
