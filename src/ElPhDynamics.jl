@@ -128,9 +128,9 @@ function simulate(args)
     ## SUMARIZE SIMULATION RESULTS ##
     #################################
 
-    if sim_start < sim_params.nsteps
-        write_simulation_summary!(model, sim_params, μ_tuner, container, input, sim_stats, 10)
-    end
+    # if sim_start < sim_params.nsteps
+    #     write_simulation_summary!(datafolder, 10)
+    # end
 
     return nothing
 end

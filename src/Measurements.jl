@@ -335,77 +335,75 @@ end
 """
 Initialize Measurement Files.
 """
-function initialize_measurement_files!(container::NamedTuple,sim_params::SimulationParameters)
+function initialize_measurement_folder!(container::NamedTuple,sim_params::SimulationParameters)
 
-    ###########################################
-    ## Initialize Snapshot Measurement Files ##
-    ###########################################
+    # data folder name
+    datafolder = sim_params.datafolder
 
+    #############################################
+    ## Initialize Snapshot Measurement Folders ##
+    #############################################
+
+    # create folder of snapshot measurements
     for k in keys(container.snapshots)
-        # measurement name
-        measurement = string(k)
-        # initialize file of snapshot measurement
-        open(joinpath(sim_params.datafolder,"$(measurement)_snapshots.out"), "a") do file
-            # write header
-            write(file,"snapshot,index,$(measurement)\n")
-        end
+        mkdir(joinpath(datafolder,"$(k)_snapshots_f"))
     end
     
-    #############################################
-    ## Initialize File For Global Measurements ##
-    #############################################
+    ###############################################
+    ## Initialize Folder For Global Measurements ##
+    ###############################################
 
-    open(joinpath(sim_params.datafolder,"global_measurements.out"), "w") do file
-        write( file, "bin")
-        for key in keys(container.global_meas)
-            write(file, ",", string(key))
-        end
-        write(file,"\n")
-    end
+    mkdir(joinpath(datafolder,"global_measurements_f"))
 
-    ##############################################
-    ## Initialize File For On-Site Measurements ##
-    ##############################################
+    ################################################
+    ## Initialize Folder For On-Site Measurements ##
+    ################################################
 
-    open(joinpath(sim_params.datafolder,"onsite_measurements.out"), "w") do file
-        write(file, "bin,orbit")
-        for key in keys(container.onsite_meas)
-            measurement = string(key)
-            write(file, ",", measurement)
-        end
-        write(file, "\n")
-    end
+    mkdir(joinpath(datafolder,"onsite_measurements_f"))
+
+    ###################################################
+    ## Initialize Folder For Inter-Site Measurements ##
+    ###################################################
+
+    mkdir(joinpath(datafolder,"intersite_measurements_f"))
 
     #################################################
-    ## Initialize File For Inter-Site Measurements ##
+    ## Initialize Folders For On-Site Correlations ##
     #################################################
-
-    open(joinpath(sim_params.datafolder,"intersite_measurements.out"), "w") do file
-        write(file, "bin,vector")
-        for key in keys(container.intersite_meas)
-            measurement = string(key)
-            write(file, ",", measurement)
-        end
-        write(file, "\n")
-    end
-
-    ###############################################
-    ## Initialize Files For On-Site Correlations ##
-    ###############################################
 
     # iterate over on-site correlation functions
     for k in keys(container.onsite_corr)
-        # measurement name
-        measurement = string(k)
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+
+        # make directory of position space measurements
+        pos_corr_folder = joinpath(datafolder,"$(k)_position_f")
+        mkdir(pos_corr_folder)
+
+        # write position correlation key file
+        pos_corr_key = joinpath(pos_corr_key,"$(k)_position_key.out")
+        open(pos_corr_key,"w") do file
+            write(file, "index orbit1 orbit2 r3 r2 r1 tau\n")
+            for (i,c) in enumerate(CartesianIndices(container.onsite_corr.position))
+                p  = c[5]
+                o₁ = container.onsite_corr.pairs[1,p]
+                o₂ = container.onsite_corr.pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i, o₁, o₂, c[4], c[3], c[2], c[1]
+            end
         end
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+
+        # make directory of momentum space measurements
+        mom_corr_folder = joinpath(datafolder,"$(k)_momentum_f")
+        mkdir(mom_corr_folder)
+
+        # write momentum correlation key file
+        mom_corr_key = joinpath(pos_corr_key,"$(k)_momentum_key.out")
+        open(mom_corr_key,"w") do file
+            write(file, "index orbit1 orbit2 r3 r2 r1 tau\n")
+            for (i,c) in enumerate(CartesianIndices(container.onsite_corr.momentum))
+                p  = c[5]
+                o₁ = container.onsite_corr.pairs[1,p]
+                o₂ = container.onsite_corr.pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i, o₁, o₂, c[4], c[3], c[2], c[1]
+            end
         end
     end
 
@@ -413,7 +411,7 @@ function initialize_measurement_files!(container::NamedTuple,sim_params::Simulat
     ## Initialize Files For Inter-Site Correlations ##
     ##################################################
 
-    # iterate over on-site correlation functions
+    # iterate over inter-site correlation functions
     for k in keys(container.intersite_corr)
         # measurement name
         measurement = string(k)

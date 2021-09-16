@@ -1,7 +1,7 @@
 name = "ElPhDynamics"
 uuid = "d56e79bc-9d16-11e9-1337-85b17f59915c"
 authors = ["benwcs <benwcs@gmail.com>"]
-version = "0.1.0"
+version = "1.0.0"
 
 [deps]
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"

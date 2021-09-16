@@ -80,7 +80,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
-                          burnin_start=sim_params.burnin+1, sim_start=t, sim_stats=sim_stats)
+                      burnin_start=sim_params.burnin+1, sim_start=t, sim_stats=sim_stats)
             sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
@@ -293,6 +293,11 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["simulation_time"]  /= 60.0
     sim_stats["measurement_time"] /= 60.0
     sim_stats["write_time"]       /= 60.0
+
+    # final checkpoint
+    chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
+              burnin_start=sim_params.burnin+1, sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
+    serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
 
     # close log files
     close(simulation_hmc.logfile)
