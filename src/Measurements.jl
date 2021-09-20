@@ -14,7 +14,7 @@ using ..GreensFunctions: EstimateGreensFunction, update!, estimate
 using ..GreensFunctions: update!, setup!, measure_GΔ0, measure_GΔ0_GΔ0, measure_GΔΔ_G00, measure_GΔ0_G0Δ
 
 export initialize_measurements_container
-export initialize_measurement_files!
+export initialize_measurement_folders!
 export make_measurements!
 export process_measurements!
 export write_measurements!
@@ -24,7 +24,7 @@ export reset_measurements!
 Construct a container to hold the measurements. The input `info` is a dictionary containing the information
 from the `measurements` table in the config file.
 """
-function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},info::Dict) where {T1,T2,T3}
+function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},info::Dict,datafolder::String) where {T1,T2,T3}
 
     Lₜ = holstein.Lτ
     L₁ = holstein.lattice.L1
@@ -57,25 +57,21 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     # see if any snapshots have been declared
     if haskey(info,"Snapshots")
 
+        container["snapshots"] = Vector{Symbol}()
+
         # density snapshots
         if haskey(info["Snapshots"],"density")
-            if info["Snapshots"]["density"]
-                container["snapshots"]["density"] = zeros(Complex{T1},holstein.Nsites)
-            end
+            push!(container["snapshots"],:density)
         end
 
         # double occupancy snapshots
         if haskey(info["Snapshots"],"double_occupancy")
-            if info["Snapshots"]["double_occupancy"]
-                container["snapshots"]["double_occupancy"] = zeros(Complex{T1},holstein.Nsites)
-            end
+            push!(container["snapshots"],:double_occupancy)
         end
 
         # phonon position snapshots
         if haskey(info["Snapshots"],"phonon_position")
-            if info["Snapshots"]["phonon_position"]
-                container["snapshots"]["phonon_position"] = zeros(Complex{T1},holstein.Nph)
-            end
+            push!(container["snapshots"],:phonon_position)
         end
     end
     
@@ -163,19 +159,19 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
     ##########################################
 
+    container["datafolder"]     = datafolder
     container["onsite_meas"]    = (;(Symbol(k)=>container["onsite_meas"][k] for k in keys(container["onsite_meas"]))...)
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
     container["onsite_susc"]    = (;(Symbol(k)=>container["onsite_susc"][k] for k in keys(container["onsite_susc"]))...)
     container["intersite_susc"] = (;(Symbol(k)=>container["intersite_susc"][k] for k in keys(container["intersite_susc"]))...)
-    container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
 end
 
-function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) where {T1,T2,T3}
+function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict,datafolder::String) where {T1,T2,T3}
 
     Lₜ = ssh.Lτ
     L₁ = ssh.lattice.L1
@@ -198,7 +194,7 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     container["intersite_corr"] = Dict()
     container["onsite_susc"]    = Dict()
     container["intersite_susc"] = Dict()
-    container["snapshots"]      = Dict()
+    container["snapshots"]      = Vector{Symbol}()
     container["n_rand_vecs"]    = num_random_vectors
 
     ###########################
@@ -210,23 +206,17 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
 
         # density snapshots
         if haskey(info["Snapshots"],"density")
-            if info["Snapshots"]["density"]
-                container["snapshots"]["density"] = zeros(Complex{T1},ssh.Nsites)
-            end
+            push!(container["snapshots"],:density)
         end
 
         # double occupancy snapshots
         if haskey(info["Snapshots"],"double_occupancy")
-            if info["Snapshots"]["double_occupancy"]
-                container["snapshots"]["double_occupancy"] = zeros(Complex{T1},ssh.Nsites)
-            end
+            push!(container["snapshots"],:double_occupancy)
         end
 
         # phonon position snapshots
         if haskey(info["Snapshots"],"phonon_position")
-            if info["Snapshots"]["phonon_position"]
-                container["snapshots"]["phonon_position"] = zeros(Complex{T1},ssh.Nph)
-            end
+            push!(container["snapshots"],:phonon_position)
         end
     end
 
@@ -320,13 +310,13 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict) w
     ## CONVERTING FROM DICTS TO NAMEDTUPLES ##
     ##########################################
 
+    container["datafolder"]     = datafolder
     container["onsite_meas"]    = (;(Symbol(k)=>container["onsite_meas"][k] for k in keys(container["onsite_meas"]))...)
     container["intersite_meas"] = (;(Symbol(k)=>container["intersite_meas"][k] for k in keys(container["intersite_meas"]))...)
     container["onsite_corr"]    = (;(Symbol(k)=>container["onsite_corr"][k] for k in keys(container["onsite_corr"]))...)
     container["intersite_corr"] = (;(Symbol(k)=>container["intersite_corr"][k] for k in keys(container["intersite_corr"]))...)
     container["onsite_susc"]    = (;(Symbol(k)=>container["onsite_susc"][k] for k in keys(container["onsite_susc"]))...)
     container["intersite_susc"] = (;(Symbol(k)=>container["intersite_susc"][k] for k in keys(container["intersite_susc"]))...)
-    container["snapshots"]      = (;(Symbol(k)=>container["snapshots"][k] for k in keys(container["snapshots"]))...)
     container                   = (;(Symbol(k) => container[k] for k in keys(container))...)
 
     return container
@@ -335,18 +325,22 @@ end
 """
 Initialize Measurement Files.
 """
-function initialize_measurement_folder!(container::NamedTuple,sim_params::SimulationParameters)
+function initialize_measurement_folders!(container::NamedTuple)
 
     # data folder name
-    datafolder = sim_params.datafolder
+    datafolder = container.datafolder
 
     #############################################
-    ## Initialize Snapshot Measurement Folders ##
+    ## Initialize snapshot Measurement Folders ##
     #############################################
 
     # create folder of snapshot measurements
-    for k in keys(container.snapshots)
-        mkdir(joinpath(datafolder,"$(k)_snapshots_f"))
+    for k in container.snapshots
+
+        # declare folder to hold snapshot measurement
+        measurement = "$(k)_snapshots"
+        folder      = joinpath(datafolder,"$(measurement)_f")
+        mkdir(folder)
     end
     
     ###############################################
@@ -379,14 +373,14 @@ function initialize_measurement_folder!(container::NamedTuple,sim_params::Simula
         mkdir(pos_corr_folder)
 
         # write position correlation key file
-        pos_corr_key = joinpath(pos_corr_key,"$(k)_position_key.out")
+        pos_corr_key = joinpath(pos_corr_folder,"$(k)_position_key.out")
         open(pos_corr_key,"w") do file
             write(file, "index orbit1 orbit2 r3 r2 r1 tau\n")
-            for (i,c) in enumerate(CartesianIndices(container.onsite_corr.position))
+            for (i,c) in enumerate(CartesianIndices(container.onsite_corr[k].position))
                 p  = c[5]
-                o₁ = container.onsite_corr.pairs[1,p]
-                o₂ = container.onsite_corr.pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i, o₁, o₂, c[4], c[3], c[2], c[1]
+                o₁ = container.onsite_corr[k].pairs[1,p]
+                o₂ = container.onsite_corr[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
             end
         end
 
@@ -395,14 +389,14 @@ function initialize_measurement_folder!(container::NamedTuple,sim_params::Simula
         mkdir(mom_corr_folder)
 
         # write momentum correlation key file
-        mom_corr_key = joinpath(pos_corr_key,"$(k)_momentum_key.out")
+        mom_corr_key = joinpath(mom_corr_folder,"$(k)_momentum_key.out")
         open(mom_corr_key,"w") do file
-            write(file, "index orbit1 orbit2 r3 r2 r1 tau\n")
-            for (i,c) in enumerate(CartesianIndices(container.onsite_corr.momentum))
+            write(file, "index orbit1 orbit2 k3 k2 k1 tau\n")
+            for (i,c) in enumerate(CartesianIndices(container.onsite_corr[k].momentum))
                 p  = c[5]
-                o₁ = container.onsite_corr.pairs[1,p]
-                o₂ = container.onsite_corr.pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i, o₁, o₂, c[4], c[3], c[2], c[1]
+                o₁ = container.onsite_corr[k].pairs[1,p]
+                o₂ = container.onsite_corr[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
             end
         end
     end
@@ -413,17 +407,37 @@ function initialize_measurement_folder!(container::NamedTuple,sim_params::Simula
 
     # iterate over inter-site correlation functions
     for k in keys(container.intersite_corr)
-        # measurement name
-        measurement = string(k)
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "r3",  ",", "r2",  ",", "r1", ",", "tau", ",", measurement, "\n")
+
+        # make directory of position space measurements
+        pos_corr_folder = joinpath(datafolder,"$(k)_position_f")
+        mkdir(pos_corr_folder)
+
+        # write position correlation key file
+        pos_corr_key = joinpath(pos_corr_folder,"$(k)_position_key.out")
+        open(pos_corr_key,"w") do file
+            write(file, "index bond1 bond2 r3 r2 r1 tau\n")
+            for (i,c) in enumerate(CartesianIndices(container.intersite_corr[k].position))
+                p  = c[5]
+                o₁ = container.intersite_corr[k].pairs[1,p]
+                o₂ = container.intersite_corr[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+            end
         end
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "k3",  ",", "k2",  ",", "k1", ",", "tau", ",", measurement, "\n")
+
+        # make directory of momentum space measurements
+        mom_corr_folder = joinpath(datafolder,"$(k)_momentum_f")
+        mkdir(mom_corr_folder)
+
+        # write momentum correlation key file
+        mom_corr_key = joinpath(mom_corr_folder,"$(k)_momentum_key.out")
+        open(mom_corr_key,"w") do file
+            write(file, "index bond1 bond2 k3 k2 k1 tau\n")
+            for (i,c) in enumerate(CartesianIndices(container.intersite_corr[k].momentum))
+                p  = c[5]
+                o₁ = container.intersite_corr[k].pairs[1,p]
+                o₂ = container.intersite_corr[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+            end
         end
     end
 
@@ -433,17 +447,37 @@ function initialize_measurement_folder!(container::NamedTuple,sim_params::Simula
 
     # iterate over on-site correlation functions
     for k in keys(container.onsite_susc)
-        # measurement name
-        measurement = string(k)
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
+
+        # make directory of position space measurements
+        pos_susc_folder = joinpath(datafolder,"$(k)_position_f")
+        mkdir(pos_susc_folder)
+
+        # write position correlation key file
+        pos_susc_key = joinpath(pos_susc_folder,"$(k)_position_key.out")
+        open(pos_susc_key,"w") do file
+            write(file, "index orbit1 orbit2 r3 r2 r1\n")
+            for (i,c) in enumerate(CartesianIndices(container.onsite_susc[k].position))
+                p  = c[4]
+                o₁ = container.onsite_susc[k].pairs[1,p]
+                o₂ = container.onsite_susc[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+            end
         end
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "orbit1", ",", "orbit2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
+
+        # make directory of momentum space measurements
+        mom_susc_folder = joinpath(datafolder,"$(k)_momentum_f")
+        mkdir(mom_susc_folder)
+
+        # write momentum correlation key file
+        mom_susc_key = joinpath(mom_susc_folder,"$(k)_momentum_key.out")
+        open(mom_susc_key,"w") do file
+            write(file, "index orbit1 orbit2 k3 k2 k1\n")
+            for (i,c) in enumerate(CartesianIndices(container.onsite_susc[k].momentum))
+                p  = c[4]
+                o₁ = container.onsite_susc[k].pairs[1,p]
+                o₂ = container.onsite_susc[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+            end
         end
     end
 
@@ -453,17 +487,37 @@ function initialize_measurement_folder!(container::NamedTuple,sim_params::Simula
 
     # iterate over on-site correlation functions
     for k in keys(container.intersite_susc)
-        # measurement name
-        measurement = string(k)
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_position.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "r3",  ",", "r2",  ",", "r1", ",", measurement, "\n")
+
+        # make directory of position space measurements
+        pos_susc_folder = joinpath(datafolder,"$(k)_position_f")
+        mkdir(pos_susc_folder)
+
+        # write position correlation key file
+        pos_susc_key = joinpath(pos_susc_folder,"$(k)_position_key.out")
+        open(pos_susc_key,"w") do file
+            write(file, "index bond1 bond2 r3 r2 r1\n")
+            for (i,c) in enumerate(CartesianIndices(container.intersite_susc[k].position))
+                p  = c[4]
+                o₁ = container.intersite_susc[k].pairs[1,p]
+                o₂ = container.intersite_susc[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+            end
         end
-        # initialize file for position-space data
-        open(joinpath(sim_params.datafolder,"$(measurement)_momentum.out"), "w") do file
-            # writing file header
-            write(file, "bin", ",", "pair", ",", "bond1", ",", "bond2", ",", "k3",  ",", "k2",  ",", "k1", ",", measurement, "\n")
+
+        # make directory of momentum space measurements
+        mom_susc_folder = joinpath(datafolder,"$(k)_momentum_f")
+        mkdir(mom_susc_folder)
+
+        # write momentum correlation key file
+        mom_susc_key = joinpath(mom_susc_folder,"$(k)_momentum_key.out")
+        open(mom_susc_key,"w") do file
+            write(file, "index bond1 bond2 k3 k2 k1\n")
+            for (i,c) in enumerate(CartesianIndices(container.intersite_susc[k].momentum))
+                p  = c[4]
+                o₁ = container.intersite_susc[k].pairs[1,p]
+                o₂ = container.intersite_susc[k].pairs[2,p]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+            end
         end
     end
 
@@ -473,7 +527,7 @@ end
 """
 Make measurements.
 """
-function make_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction,preconditioner)
+function make_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction,nmeas::Int,preconditioner)
 
     # sample new random vectors and solve corresponding linear systems
     update!(Gr,model,preconditioner)
@@ -487,9 +541,12 @@ function make_measurements!(container::NamedTuple,model::AbstractModel,Gr::Estim
             measure_intersite_correlations!(container,model,Gr)
             make_onsite_measurements!(container,model,Gr)
             make_intersite_measurements!(container,model,Gr)
-            make_snapshot_measurements!(container,model,Gr)
         end
     end
+
+    # make snapshot measurements
+    make_snapshot_measurements!(container,model,Gr,nmeas)
+
     return nothing
 end
 
@@ -556,12 +613,6 @@ function process_measurements!(container::NamedTuple,sim_params::SimulationParam
         intersite_corr[key].momentum ./= V
     end
 
-    # normalize snapshot measurements
-    snapshots = container.snapshots
-    for key in keys(snapshots)
-        snapshots[key] ./= V
-    end
-
     ##############################
     ## MEASURE SUSCEPTIBILITIES ##
     ##############################
@@ -612,16 +663,16 @@ end
 """
 Write measurements to file.
 """
-function write_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2},bin::Int) where {T1,T2}
+function write_measurements!(container::NamedTuple,model::AbstractModel{T1,T2},bin::Int) where {T1,T2}
 
-    write_global_measurements!(    container.global_meas,    sim_params, model, bin)
-    write_onsite_measurements!(    container.onsite_meas,    sim_params, model, bin)
-    write_intersite_measurements!( container.intersite_meas, sim_params, model, bin)
-    write_correlations!(           container.onsite_corr,    sim_params, model, bin)
-    write_correlations!(           container.intersite_corr, sim_params, model, bin)
-    write_susceptibilities!(       container.onsite_susc, sim_params, model, bin)
-    write_susceptibilities!(       container.intersite_susc, sim_params, model, bin)
-    write_snapshots!(              container.snapshots, sim_params, model, bin)
+    datafolder = container.datafolder
+    write_global_measurements!(    container.global_meas,    datafolder, model, bin)
+    write_onsite_measurements!(    container.onsite_meas,    datafolder, model, bin)
+    write_intersite_measurements!( container.intersite_meas, datafolder, model, bin)
+    write_correlations!(           container.onsite_corr,    datafolder, model, bin)
+    write_correlations!(           container.intersite_corr, datafolder, model, bin)
+    write_correlations!(           container.onsite_susc,    datafolder, model, bin)
+    write_correlations!(           container.intersite_susc, datafolder, model, bin)
 
     return nothing
 end
@@ -636,12 +687,6 @@ function reset_measurements!(container::NamedTuple,model::AbstractModel{T1,T2}) 
     global_measurements = container.global_meas
     for key in keys(global_measurements)
         global_measurements[key] = 0.0
-    end
-
-    # reset snapshot measurements
-    snapshots = container.snapshots
-    for key in keys(snapshots)
-        fill!(snapshots[key],0.0)
     end
 
     # reset on-site measurements
@@ -761,17 +806,18 @@ end
 """
 Make snapshot measurements.
 """
-function make_snapshot_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction)
+function make_snapshot_measurements!(container::NamedTuple,model::AbstractModel,Gr::EstimateGreensFunction,nmeas::Int)
 
-    snapshots = container.snapshots
+    snapshots  = container.snapshots
+    datafolder = container.datafolder
 
-    for key in keys(snapshots)
-        if key == :density
-            take_density_snapshot!(snapshots[key],model,Gr)
-        elseif key == :double_occupancy
-            take_double_occupancy_snapshot!(snapshots[key],model,Gr)
-        elseif key == :phonon_position
-            take_phonon_position_snapshot!(snapshots[key],model,Gr)
+    for measurement in snapshots
+        if measurement == :density
+            take_density_snapshot!(model,Gr,nmeas,datafolder)
+        elseif measurement == :double_occupancy
+            take_double_occupancy_snapshot!(model,Gr,nmeas,datafolder)
+        elseif measurement == :phonon_position
+            take_phonon_position_snapshot!(model,Gr,nmeas,datafolder)
         end
     end
 
@@ -1122,44 +1168,17 @@ function fourier_transform_correlations!(container::NamedTuple)
 end
 
 """
-Write snapshot measurements.
-"""
-function write_snapshots!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
-
-    # iterate over snapshot measurements
-    for key in keys(container)
-
-        # construct filename
-        measurement = string(key)
-        filename    = joinpath(sim_params.datafolder,"$(measurement)_snapshots.out")
-
-        # get the snapshot
-        data = container[key]
-
-        # open data file
-        open(filename, "a") do file
-            # iterate over elements of snapshot
-            for i in 1:length(data)
-                @printf file "%d,%d,%.6f\n" bin i data[i]
-            end
-        end
-    end
-
-    return nothing
-end
-
-"""
 Write global measurements to file.
 """
-function write_global_measurements!(container::Dict,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+function write_global_measurements!(container::Dict,datafolder::String,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
-    filename = joinpath(sim_params.datafolder,"global_measurements.out")
+    folder   = joinpath(datafolder,"global_measurements_f")
+    filename = joinpath(folder,"global_measurements_$(bin).out")
 
-    open(filename,"a") do file
-
-        write(file,string(bin),",")
-        line = join((real(container[k]) for k in keys(container)), ",")
-        write(file,line,"\n")
+    open(filename,"w") do file
+        for k in keys(container)
+            @printf file "%s %.8f\n" k real(container[k])
+        end
     end
 
     return nothing
@@ -1168,23 +1187,21 @@ end
 """
 Write on-site measurements to file.
 """
-function write_onsite_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+function write_onsite_measurements!(container::NamedTuple,datafolder::String,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     # number of orbitals per unit cell
     nₒ = model.lattice.unit_cell.norbits::Int
 
     # filename
-    filename = joinpath(sim_params.datafolder,"onsite_measurements.out")
+    folder   = joinpath(datafolder,"onsite_measurements_f")
+    filename = joinpath(folder,"onsite_measurements_$(bin).out")
 
-    open(filename,"a") do file
-        # iterate over orbitals
-        for o in 1:nₒ
-            write(file,string(bin),",")
-            write(file, string(o))
-            for measurement in keys(container)
-                @printf file ",%.6f" real(container[measurement][o])
+    open(filename,"w") do file
+        write(file,"measurement orbit value\n")
+        for k in keys(container)
+            for o in 1:nₒ
+                @printf file "%s %d %.8f\n" k o real(container[k][o])
             end
-            write(file, "\n")
         end
     end
 
@@ -1194,20 +1211,21 @@ end
 """
 Write inter-site measurements to file.
 """
-function write_intersite_measurements!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+function write_intersite_measurements!(container::NamedTuple,datafolder::String,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+
+    # number of orbitals per unit cell
+    nbonds = model.nbonds::Int
 
     # filename
-    filename = joinpath(sim_params.datafolder,"intersite_measurements.out")
+    folder   = joinpath(datafolder,"intersite_measurements_f")
+    filename = joinpath(folder,"intersite_measurements_$(bin).out")
 
-    open(filename,"a") do file
-        # iterate over bonds
-        for bond in 1:model.nbonds
-            write(file,string(bin),",")
-            write(file, string(bond))
-            for measurement in keys(container)
-                @printf file ",%.6f" real(container[measurement][bond])
+    open(filename,"w") do file
+        write(file,"measurement bond value\n")
+        for k in keys(container)
+            for b in 1:nbonds
+                @printf file "%s %d %.8f\n" k b real(container[k][b])
             end
-            write(file, "\n")
         end
     end
 
@@ -1215,95 +1233,41 @@ function write_intersite_measurements!(container::NamedTuple,sim_params::Simulat
 end
 
 """
-Write all different correlation functions to file.
+Write all different correlation functions or susceptibilities to file.
 """
-function write_correlations!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
+function write_correlations!(container::NamedTuple,datafolder::String,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     # iterate over on-site correlation functions
-    for key in keys(container)
+    for corr in keys(container)
 
         # write position space correlations to file
-        filename = joinpath(sim_params.datafolder,string(key)*"_position.out")
-        write_correlation!(filename,container[key].position,container[key].pairs,bin)
-
-        # write momemtum space correlations to file
-        filename = joinpath(sim_params.datafolder,string(key)*"_momentum.out")
-        write_correlation!(filename,container[key].momentum,container[key].pairs,bin)
+        write_correlation!(container[corr].position,corr,:position,datafolder,bin)
+        
+        # write momentum space correlation to file
+        write_correlation!(container[corr].momentum,corr,:momentum,datafolder,bin)
     end
 
     return nothing
 end
 
 """
-Write a correlation function to file.
+Write a correlation function or susceptibility to file.
 """
-function write_correlation!(filename::String,correlations::Array{Complex{T},5},pairs::Matrix{Int},bin::Int) where {T<:AbstractFloat}
+function write_correlation!(correlations::Array{Complex{T}},corr::Symbol,space::Symbol,datafolder::String,bin::Int) where {T<:AbstractFloat}
 
-    open(filename,"a") do file
-        Lₜ = size(correlations,1)
-        L₁ = size(correlations,2)
-        L₂ = size(correlations,3)
-        L₃ = size(correlations,4)
-        nₚ = size(pairs,2)
-        for p in 1:nₚ
-            n₁ = pairs[1,p]
-            n₂ = pairs[2,p]
-            for l₃ in 1:L₃
-                for l₂ in 1:L₂
-                    for l₁ in 1:L₁
-                        for τ in 1:Lₜ
-                            @printf file "%d,%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin p n₁ n₂ l₃-1 l₂-1 l₁-1 τ-1 real(correlations[τ,l₁,l₂,l₃,p])
-                        end
-                    end
-                end
-            end
+    # construct filename
+    measurement = "$(corr)_$(space)"
+    folder      = joinpath(datafolder,"$(measurement)_f")
+    filename    = joinpath(folder,"$(measurement)_$(bin).out")
+
+    # write data to file
+    open(filename,"w") do file
+        @printf file "index %s\n" measurement
+        for i in eachindex(correlations)
+            @printf file "%d %.8f\n" i real(correlations[i])
         end
     end
-    return nothing
-end
 
-"""
-Write all different susceptibilities to file.
-"""
-function write_susceptibilities!(container::NamedTuple,sim_params::SimulationParameters,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
-
-    # iterate over on-site correlation functions
-    for key in keys(container)
-
-        # write position space susceptibility to file
-        filename = joinpath(sim_params.datafolder,string(key)*"_position.out")
-        write_susceptibility!(filename,container[key].position,container[key].pairs,bin)
-
-        # write momemtum space susceptibility to file
-        filename = joinpath(sim_params.datafolder,string(key)*"_momentum.out")
-        write_susceptibility!(filename,container[key].momentum,container[key].pairs,bin)
-    end
-
-    return nothing
-end
-
-"""
-Write a susceptibility to file.
-"""
-function write_susceptibility!(filename::String,susceptibility::Array{Complex{T},4},pairs::Matrix{Int},bin::Int) where {T<:AbstractFloat}
-
-    open(filename,"a") do file
-        L₁ = size(susceptibility,1)
-        L₂ = size(susceptibility,2)
-        L₃ = size(susceptibility,3)
-        nₚ  = size(pairs,2)
-        for p in 1:nₚ
-            n₁ = pairs[1,p]
-            n₂ = pairs[2,p]
-            for l₃ in 1:L₃
-                for l₂ in 1:L₂
-                    for l₁ in 1:L₁
-                        @printf file "%d,%d,%d,%d,%d,%d,%d,%.6f\n" bin p n₁ n₂ l₃-1 l₂-1 l₁-1 real(susceptibility[l₁,l₂,l₃,p])
-                    end
-                end
-            end
-        end
-    end
     return nothing
 end
 
@@ -1384,25 +1348,40 @@ end
 """
 Take density snapshot measurement.
 """
-function take_density_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
-                                estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
+function take_density_snapshot!(model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1},nmeas::Int,
+                                datafolder::String) where {T1,T2,T3}
         
-        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
-        @unpack Nsites, Lτ = model
+    @unpack Nsites, Lτ = model
 
-        R₁    = reshaped(r₁,(Lτ,Nsites))
-        M⁻¹R₁ = reshaped(M⁻¹r₁,(Lτ,Nsites))
-        R₂    = reshaped(r₂,(Lτ,Nsites))
-        M⁻¹R₂ = reshaped(M⁻¹r₂,(Lτ,Nsites))
+    nᵥ   = estimator.nᵥ
+    R    = reshaped( estimator.R    , (Lτ,Nsites,nᵥ) )
+    M⁻¹R = reshaped( estimator.M⁻¹R , (Lτ,Nsites,nᵥ) )
+    V    = nᵥ * Lτ
 
+    filename = joinpath( datafolder , "density_snapshots_f" , "density_snapshot_$(nmeas).out")
+
+    open(filename,"w") do file
+        write(file,"density")
         # iterate over sites in lattice
         for i in 1:Nsites
+            # initialize density measurement
+            val = 0.0
             # iterate over time slices
             for τ in 1:Lτ
-                # measure density
-                container[i] += ((1.0-M⁻¹R₁[τ,i]*R₁[τ,i]) + (1.0-M⁻¹R₂[τ,i]*R₂[τ,i])) / Lτ
+                # iterate over first random vector
+                for n in 1:nᵥ
+                    # measure density
+                    M⁻¹R₁ = M⁻¹R[τ,i,n]
+                    R₁    = R[τ,i,n]
+                    val += 2 * (1-M⁻¹R₁*R₁)
+                end
             end
+            # normalize measurement
+            val = val / V
+            # write measurement to file
+            @printf file "%.8f\n" val
         end
+    end
 
     return nothing
 end
@@ -1410,25 +1389,44 @@ end
 """
 Take double occupancy snapshot measurement.
 """
-function take_double_occupancy_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
-                                         estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
-        
-        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
-        @unpack Nsites, Lτ = model
+function take_double_occupancy_snapshot!(model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1},
+                                         nmeas::Int,datafolder::String) where {T1,T2,T3}
 
-        R₁    = reshaped(r₁,(Lτ,Nsites))
-        M⁻¹R₁ = reshaped(M⁻¹r₁,(Lτ,Nsites))
-        R₂    = reshaped(r₂,(Lτ,Nsites))
-        M⁻¹R₂ = reshaped(M⁻¹r₂,(Lτ,Nsites))
+    @unpack Nsites, Lτ = model
 
+    nᵥ   = estimator.nᵥ
+    R    = reshaped( estimator.R    , (Lτ,Nsites,nᵥ) )
+    M⁻¹R = reshaped( estimator.M⁻¹R , (Lτ,Nsites,nᵥ) )
+    V    = binomial(nᵥ,2) * Lτ
+
+    filename = joinpath( datafolder , "double_occupancy_snapshots_f" , "double_occupancy_snapshot_$(nmeas).out")
+
+    open(filename,"w") do file
+        write(file,"double_occupancy")
         # iterate over sites in lattice
         for i in 1:Nsites
+            # initialize density measurement
+            val = 0.0
             # iterate over time slices
             for τ in 1:Lτ
-                # measure density
-                container[i] += ((1-M⁻¹R₁[τ,i]*R₁[τ,i]) * (1-M⁻¹R₂[τ,i]*R₂[τ,i])) / Lτ
+                # iterate over first random vector
+                for n in 1:nᵥ-1
+                    for m in 2:nᵥ
+                        # measure density
+                        M⁻¹R₁ = M⁻¹R[τ,i,n]
+                        R₁    = R[τ,i,n]
+                        M⁻¹R₂ = M⁻¹R[τ,i,m]
+                        R₂    = R[τ,i,m]
+                        val += (1-M⁻¹R₁*R₁) * (1-M⁻¹R₂*R₂)
+                    end
+                end
             end
+            # normalize measurement
+            val = val / V
+            # write measurement to file
+            @printf file "%.8f\n" val
         end
+    end
 
     return nothing
 end
@@ -1436,23 +1434,24 @@ end
 """
 Take double occupancy snapshot measurement.
 """
-function take_phonon_position_snapshot!(container::Vector{Complex{T1}},model::AbstractModel{T1,T2,T3},
-                                        estimator::EstimateGreensFunction{T1}) where {T1,T2,T3}
-        
-        @unpack r₁, M⁻¹r₁, r₂, M⁻¹r₂ = estimator
-        @unpack Nph, Lτ = model
+function take_phonon_position_snapshot!(model::AbstractModel{T1,T2,T3},estimator::EstimateGreensFunction{T1},
+                                        nmeas::Int,datafolder::String) where {T1,T2,T3}
+    
+    @unpack Nph, Lτ = model
 
-        # get phonon fields
-        x  = reshaped(model.x,(Lτ,Nph))
+    # get phonon fields
+    x = reshaped(model.x,(Lτ,Nph))
 
+    filename = joinpath( datafolder , "phonon_position_snapshots_f" , "phonon_position_snapshot_$(nmeas).out")
+
+    open(filename,"w") do file
+        write(file,"phonon_position\n")
         # iterate over phonons in lattice
         for i in 1:Nph
-            # iterate over time slices
-            for τ in 1:Lτ
-                # measure density
-                container[i] += x[τ,i] / Lτ
-            end
+            xᵢ = @view x[:,i]
+            @printf file "%.8f\n" mean(xᵢ)
         end
+    end
 
     return nothing
 end
@@ -1549,7 +1548,7 @@ function measure_PairGreens(model::AbstractModel,estimator::EstimateGreensFuncti
     return Pᵣτ
 end
 
-# defining functions measure_Greens!, measure_DenDen!, measure_DenDen!, wmeasure_PairGreens!
+# defining functions measure_Greens!, measure_DenDen!, measure_DenDen!, measure_PairGreens!
 for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
 
     # constructing symbol for function name
@@ -1559,6 +1558,7 @@ for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
     measure = Symbol(:measure_,measurement)
 
     @eval begin
+
         function $op(container::Array{Complex{T1},5}, pairs::Matrix{Int}, model::AbstractModel{T1,T2,T3},
                      Gr::EstimateGreensFunction{T1}) where {T1,T2,T3}
 
@@ -1585,6 +1585,7 @@ for measurement in [ :Greens , :DenDen , :SpinSpin , :PairGreens ]
             end
             return nothing
         end
+
     end
 end
 

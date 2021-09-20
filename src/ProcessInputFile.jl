@@ -25,7 +25,7 @@ using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
 using ..SimulationSummary: initialize_simulation_summary!
-using ..Measurements: initialize_measurements_container, initialize_measurement_files!
+using ..Measurements: initialize_measurements_container, initialize_measurement_folders!
 using ..KPMPreconditioners: LeftRightKPMPreconditioner, SymmetricKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
@@ -102,10 +102,10 @@ function process_input_file(filename::String,input::Dict)
     Gr = EstimateGreensFunction(model,input["measurements"]["num_random_vectors"])
 
     # construct measurements container
-    container = initialize_measurements_container(model,input["measurements"])
+    container = initialize_measurements_container(model,input["measurements"],sim_params.datafolder)
 
     # initialize measurement files
-    initialize_measurement_files!(container,sim_params)
+    initialize_measurement_folders!(container)
 
     ########################################
     ## INITIALIZE SIMULATION SUMMARY FILE ##
