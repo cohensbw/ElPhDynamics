@@ -1,8 +1,11 @@
 module SimulationSummary
 
 using Statistics
+using Serialization
 using Printf
+using Parameters
 using TOML
+using CSV
 
 using ..SimulationParams: SimulationParameters
 using ..Models: AbstractBond, SSHBond, Bond
@@ -12,54 +15,27 @@ using ..Measurements: measure_κ
 using ..MuFinder: MuTuner, update_μ!, estimate_μ
 using ..Utilities: reshaped
 
-export initialize_simulation_summary!
 export write_simulation_summary!
-
-"""
-Initialize simulation summary file.
-"""
-function initialize_simulation_summary!(model::AbstractModel{T1,T2,T3},sim_params::SimulationParameters,input::Dict) where {T1,T2,T3}
-
-    # construct filename for summary filen
-    filename = joinpath(sim_params.datafolder, "$(splitpath(sim_params.datafolder)[end])_summary.out")
-
-    # open summary file
-    open(filename,"w") do fout
-        
-        # copy contents of input file to output file
-        write(fout,"#########################\n")
-        write(fout,"## INPUT FILE CONTENTS ##\n")
-        write(fout,"#########################\n\n")
-        TOML.print(fout, input)
-        write(fout,"\n")
-
-        # write bond defintions to summary file
-        write_bond_definitions!(fout,model)
-
-        # write phonon definitions
-        write_phonon_definitions!(fout,model)
-
-        # write chemical potential defintions
-        write_chemical_potential_definitions!(fout,model)
-    end
-
-    return nothing
-end
 
 """
 Write results of simulation to simulation summary file.
 """
-function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::SimulationParameters,
-                                   μ_tuner::MuTuner{T1}, container::NamedTuple, input::Dict, sim_stats::Dict,
-                                   Nbins::Int=10) where {T1,T2,T3}
+function write_simulation_summary!(datafolder::String,Nbins::Int=10)
 
-    # data folder (including path)
-    datafolder = sim_params.datafolder
+    # unpack last checkpoint from simulation
+    chkpnt = deserialize(joinpath(datafolder,"checkpoint.jls"))
+    @unpack model, μ_tuner, sim_stats = chkpnt
 
     # data foldername
-    foldername = sim_params.foldername
+    foldername = splitdir(datafolder)[end]
 
-    # write phonon fields to file
+    # read in config file
+    files    = readdir(datafolder)
+    tomls    = findall(f -> endswith(f, r"\.toml|\.TOML"), files)
+    tomlfile = joinpath(datafolder, files[tomls[1]])
+    input    = TOML.parsefile(tomlfile)
+
+    # write final phonon config to file
     write_phonons!(model,joinpath(datafolder,"$(foldername)_config.out"))
 
     # write M matrix to file
@@ -70,10 +46,39 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
     end
 
     # construct filename for summary file
-    filename = joinpath(sim_params.datafolder, "$(splitpath(sim_params.datafolder)[end])_summary.out")
+    filename = joinpath(datafolder, "$(foldername)_summary.out")
 
     # open summary file
-    open(filename,"a") do fout
+    open(filename,"w") do fout
+
+        # copy contents of input file to output file
+        write(fout,"#########################\n")
+        write(fout,"## INPUT FILE CONTENTS ##\n")
+        write(fout,"#########################\n\n")
+
+        TOML.print(fout, input)
+        write(fout,"\n")
+
+        # write bond defintions to summary file
+        write(fout,"######################\n")
+        write(fout,"## BOND DEFINITIONS ##\n")
+        write(fout,"######################\n\n")
+
+        write_bond_definitions!(fout,model)
+
+        # write phonon definitions
+        write(fout,"########################\n")
+        write(fout,"## PHONON DEFINITIONS ##\n")
+        write(fout,"########################\n\n")
+
+        write_phonon_definitions!(fout,model)
+
+        # write chemical potential defintions
+        write(fout,"#########################\n")
+        write(fout,"## CHEMICAL POTENTIALS ##\n")
+        write(fout,"#########################\n\n")
+
+        write_chemical_potential_definitions!(fout,model)
         
         # write simulation statistics to file
         write(fout, "#####################","\n")
@@ -81,14 +86,14 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "#####################","\n","\n")
 
         total_time = sim_stats["simulation_time"] + sim_stats["measurement_time"] + sim_stats["write_time"]
-        @printf fout "Total Time (min)        = %.6f\n" total_time
-        @printf fout "Simulation Time (min)   = %.6f\n" sim_stats["simulation_time"]
-        @printf fout "Measurement Time (min)  = %.6f\n" sim_stats["measurement_time"]
-        @printf fout "Write Time (min)        = %.6f\n" sim_stats["write_time"]
-        @printf fout "Iterative Solver Steps  = %.6f\n" sim_stats["iters"]
-        @printf fout "Acceptance Rate         = %.6f\n" sim_stats["acceptance_rate"]
-        @printf fout "Reflect Acceptance Rate = %.6f\n" sim_stats["reflect_acceptance_rate"]
-        @printf fout "Swap Acceptance Rate    = %.6f\n" sim_stats["swap_acceptance_rate"]
+        @printf fout "Total Time (min)        = %.8f\n" total_time
+        @printf fout "Simulation Time (min)   = %.8f\n" sim_stats["simulation_time"]
+        @printf fout "Measurement Time (min)  = %.8f\n" sim_stats["measurement_time"]
+        @printf fout "Write Time (min)        = %.8f\n" sim_stats["write_time"]
+        @printf fout "Iterative Solver Steps  = %.8f\n" sim_stats["iters"]
+        @printf fout "Acceptance Rate         = %.8f\n" sim_stats["acceptance_rate"]
+        @printf fout "Reflect Acceptance Rate = %.8f\n" sim_stats["reflect_acceptance_rate"]
+        @printf fout "Swap Acceptance Rate    = %.8f\n" sim_stats["swap_acceptance_rate"]
 
         # write global measurements to file
         write(fout,"\n")
@@ -96,7 +101,7 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "## GLOBAL MEASUREMENTS ##","\n")
         write(fout, "#########################","\n","\n")
 
-        write_global_measurements!(fout,model,μ_tuner,container.global_meas,sim_params,Nbins)
+        write_global_measurements!(fout,model,μ_tuner,datafolder,Nbins)
 
         # write global measurements to file
         write(fout, "\n")
@@ -104,7 +109,7 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "## ON-SITE MEASUREMENTS ##","\n")
         write(fout, "##########################","\n","\n")
 
-        write_onsite_measurements!(fout,model,μ_tuner,container.onsite_meas,sim_params,Nbins)
+        write_onsite_measurements!(fout,model,μ_tuner,datafolder,Nbins)
 
         # write global measurements to file
         write(fout,"\n")
@@ -112,40 +117,23 @@ function write_simulation_summary!(model::AbstractModel{T1,T2,T3}, sim_params::S
         write(fout, "## INTER-SITE MEASUREMENTS ##","\n")
         write(fout, "#############################","\n","\n")
 
-        write_intersite_measurements!(fout,model,container.intersite_meas,sim_params,Nbins)
+        write_intersite_measurements!(fout,model,datafolder,Nbins)
+
+        # write susceptibilities
+        write(fout,"\n")
+        write(fout, "######################","\n")
+        write(fout, "## SUSCEPTIBILITIES ##","\n")
+        write(fout, "######################","\n","\n")
+
+        write_susceptibilities!(fout,model,datafolder,Nbins)
 
         # write on-site correlations
         write(fout,"\n")
-        write(fout, "##########################","\n")
-        write(fout, "## ON-SITE CORRELATIONS ##","\n")
-        write(fout, "##########################","\n","\n")
+        write(fout, "##################","\n")
+        write(fout, "## CORRELATIONS ##","\n")
+        write(fout, "##################","\n","\n")
 
-        write_correlations!(fout,model,container.onsite_corr,sim_params,Nbins)
-
-        # write inter-site correlations
-        write(fout,"\n")
-        write(fout, "#############################","\n")
-        write(fout, "## INTER-SITE CORRELATIONS ##","\n")
-        write(fout, "#############################","\n","\n")
-
-        write_correlations!(fout,model,container.intersite_corr,sim_params,Nbins)
-
-        # write susceptibilities
-        write(fout,"\n")
-        write(fout, "##############################","\n")
-        write(fout, "## ON-SITE SUSCEPTIBILITIES ##","\n")
-        write(fout, "##############################","\n","\n")
-
-        write_susceptibilities!(fout,model,container.onsite_susc,sim_params,Nbins)
-
-        # write susceptibilities
-        write(fout,"\n")
-        write(fout, "#################################","\n")
-        write(fout, "## INTER-SITE SUSCEPTIBILITIES ##","\n")
-        write(fout, "#################################","\n","\n")
-
-        write_susceptibilities!(fout,model,container.intersite_susc,sim_params,Nbins)
-
+        write_correlations!(fout,model,datafolder,Nbins)
     end
 
     return nothing
@@ -162,10 +150,6 @@ Write bond defintions to file.
 function write_bond_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
     bonds = model.bond_definitions
-
-    write(fout,"######################\n")
-    write(fout,"## BOND DEFINITIONS ##\n")
-    write(fout,"######################\n\n")
 
     for (id, bond) in enumerate(bonds)
 
@@ -184,10 +168,6 @@ end
 function write_bond_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,T2,T3}
 
     bonds = model.bond_definitions
-
-    write(fout,"######################\n")
-    write(fout,"## BOND DEFINITIONS ##\n")
-    write(fout,"######################\n\n")
 
     for (id, bond) in enumerate(bonds)
 
@@ -208,10 +188,6 @@ Write Phonon definitions to file.
 function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,T3}
 
     bonds = model.bond_definitions
-
-    write(fout,"############################\n")
-    write(fout,"## SSH PHONON DEFINITIONS ##\n")
-    write(fout,"############################\n\n")
 
     id = 0
     for bond in bonds
@@ -240,10 +216,6 @@ function write_phonon_definitions!(fout,model::SSHModel{T1,T2,T3}) where {T1,T2,
 end
 
 function write_phonon_definitions!(fout,model::HolsteinModel{T1,T2,T3}) where {T1,T2,T3}
-
-    write(fout,"#################################\n")
-    write(fout,"## HOLSTEIN PHONON DEFINITIONS ##\n")
-    write(fout,"#################################\n\n")
 
     L₁ = model.lattice.L1
     L₂ = model.lattice.L2
@@ -310,10 +282,6 @@ function write_chemical_potential_definitions!(fout,model::AbstractModel{T1,T2,T
 
     bonds = model.bond_definitions
 
-    write(fout,"#########################\n")
-    write(fout,"## CHEMICAL POTENTIALS ##\n")
-    write(fout,"#########################\n\n")
-
     L₁ = model.lattice.L1
     L₂ = model.lattice.L2
     L₃ = model.lattice.L3
@@ -341,57 +309,52 @@ end
 """
 Write global measurements to file.
 """
-function write_global_measurements!(fout, model::AbstractModel{T1,T2,T3}, μ_tuner::MuTuner{T1}, container::Dict, sim_params::SimulationParameters, Nbins::Int) where {T1,T2,T3}
-
-    # filename containing global measurements
-    datafn = joinpath(sim_params.datafolder, "global_measurements.out")
+function write_global_measurements!(fout, model::AbstractModel{T1,T2,T3}, μ_tuner::MuTuner{T1}, datafolder::String, Nbins::Int) where {T1,T2,T3}
 
     # file statistics will be written to
-    statsfn = joinpath(sim_params.datafolder, "global_measurements_stats.out")
+    statsfn = joinpath(datafolder, "global_measurements_stats.out")
 
-    # number of measurements in data file
-    Nmeas = sim_params.num_bins
+    # data folder
+    datafolder = joinpath(datafolder,"global_measurements_f")
+
+    # get files in data folder
+    files = readdir(datafolder,join=true)
+
+    # number of data files
+    Nmeas = length(files)
 
     # calculate number of measurements per bin
     Nbins = min(Nmeas,Nbins)
     N     = div(Nmeas,Nbins)
     @assert Nmeas%Nbins==0
 
+    # get measurements
+    measurements = String[]
+    open(files[1],"r") do fin
+        for line in readlines(fin)
+            atoms = split(line)
+            push!( measurements , atoms[1] )
+        end
+    end
+
     # container to hold binned data
-    binned_data = Dict(string(k)=>zeros(T2,Nbins) for k in keys(container))
+    binned_data = Dict(string(k)=>zeros(T1,Nbins) for k in measurements)
 
     # container to contain statistics
-    stats = Dict(string(k)=>zeros(T2,2) for k in keys(container))
+    stats = Dict(string(k)=>zeros(T1,2) for k in measurements)
 
-    # open file with global measurements data
-    open(datafn,"r") do fin
-
-        # read in header
-        header = readline(fin)
-
-        # get column names
-        columns = split(header,",")
-
-        # iterate over lines in file
-        for line in eachline(fin)
-
-            # split line apart
-            atoms = split(line,",")
-
-            # get the measurement number
-            nmeas = parse(Int,atoms[1])
-
-            # get bin
-            bin = div(nmeas-1,N) + 1
-
-            # iterate over measurements/columns
-            for i in 2:length(columns)
-
-                # get measurement
-                measurement = columns[i]
-
+    # iterate over files in data folder
+    for (i,file) in enumerate(files)
+        # open file
+        open(file,"r") do fin
+            # iterate over each line in data file
+            for line in eachline(fin)
+                # split the line at white space
+                atoms = split(line)
+                # get the bin
+                bin   = div(i-1,N)+1
                 # record measurement
-                binned_data[measurement][bin] += parse(T2,atoms[i]) / N
+                binned_data[atoms[1]][bin] += parse(T1,atoms[2]) / N
             end
         end
     end
@@ -437,9 +400,8 @@ function write_global_measurements!(fout, model::AbstractModel{T1,T2,T3}, μ_tun
             err = stats[measurement][2]
 
             # write statistics to file
-            line = measurement * @sprintf(" %.6f %.6f\n",avg,err)
-            write(fout,    line)
-            write(statsout,line)
+            @printf fout     "%s %.8f %.8f\n" measurement avg err
+            @printf statsout "%s %.8f %.8f\n" measurement avg err
         end
     end
 
@@ -449,63 +411,55 @@ end
 """
 Write on-site measreuments to file.
 """
-function write_onsite_measurements!(fout,model::AbstractModel{T1,T2,T3},μ_tuner::MuTuner{T1},container::NamedTuple,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+function write_onsite_measurements!(fout,model::AbstractModel{T1,T2,T3},μ_tuner::MuTuner{T1},datafolder::String,Nbins::Int) where {T1,T2,T3}
 
     # number of site per unit cell
     nₛ = model.lattice.unit_cell.norbits::Int
 
-    # filename containing global measurements
-    datafn = joinpath(sim_params.datafolder, "onsite_measurements.out")
+    # data folder
+    folder = joinpath(datafolder, "onsite_measurements_f")
+
+    # get files containing data
+    files = readdir(folder,join=true)
+
+    # number of data files
+    Nmeas = length(files)
 
     # file statistics will be written to
-    statsfn = joinpath(sim_params.datafolder, "onsite_measurements_stats.out")
-
-    # number of measurements in data file
-    Nmeas = sim_params.num_bins
+    statsfn = joinpath(datafolder, "onsite_measurements_stats.out")
 
     # calculate number of measurements per bin
     Nbins = min(Nmeas,Nbins)
     N     = div(Nmeas,Nbins)
     @assert Nmeas%Nbins==0
 
+    # get measurements
+    measurements = String[]
+    open(files[1],"r") do fin
+        header = readline(fin)
+        for line in readlines(fin)
+            push!( measurements , split(line)[1] )
+        end
+    end
+    measurements = unique(measurements)
+
     # container to hold binned data
-    binned_data = Dict(string(k)=>zeros(T2,Nbins,nₛ) for k in keys(container))
+    binned_data = Dict(string(k)=>zeros(T1,Nbins,nₛ) for k in measurements)
 
     # container to contain statistics
-    stats = Dict(string(k)=>zeros(T2,2,nₛ) for k in keys(container))
+    stats = Dict(string(k)=>zeros(T1,2,nₛ) for k in measurements)
 
-    # open file with on-site measurement data
-    open(datafn,"r") do fin
-
-        # read in header
-        header = readline(fin)
-
-        # get column names
-        columns = split(header,",")
-
-        # iterate over lines of data
-        for line in eachline(fin)
-
-            # split line apart
-            atoms = split(line,",")
-
-            # get the measurement number
-            nmeas = parse(Int,atoms[1])
-
-            # get bin
-            bin = div(nmeas-1,N) + 1
-
-            # get the current orbital/site in unit cell
-            orbit = parse(Int,atoms[2])
-
-            # iterate over remain columns
-            for i in 3:length(columns)
-
-                # get the measurement associated with the column
-                measurement = columns[i]
-
-                # record measurement
-                binned_data[measurement][bin,orbit] += parse(T2,atoms[i]) / N
+    # iterate over data files
+    for (i,file) in enumerate(files)
+        bin = div(i-1,N) + 1
+        open(file,"r") do fin
+            header = readline(fin)
+            for line in eachline(fin)
+                atoms = split(line)
+                meas  = atoms[1]
+                orbit = parse(Int,atoms[2])
+                val   = parse(T1,atoms[3])
+                binned_data[meas][bin,orbit] += val / N
             end
         end
     end
@@ -520,9 +474,10 @@ function write_onsite_measurements!(fout,model::AbstractModel{T1,T2,T3},μ_tuner
             μ′ = μ_tuner.μ_avg
             Δμ = μ_tuner.μ_err
             dμ = μ′-μ″
+            # calculating average and error for on-site energy of each orbital
             for orbit in 1:nₛ
-                μₒ = @view μ[orbit,:]
-                stats[measurement][1,orbit] = mean(μₒ) + dμ
+                μ₀ = @view μ[orbit,:]
+                stats[measurement][1,orbit] = mean(μ₀) + dμ
                 stats[measurement][2,orbit] = Δμ
             end
         else
@@ -555,9 +510,8 @@ function write_onsite_measurements!(fout,model::AbstractModel{T1,T2,T3},μ_tuner
                 # write out measurement
                 avg  = stats[measurement][1,orbit]
                 err  = stats[measurement][2,orbit]
-                line = measurement * @sprintf(" %d %.6f %.6f\n",orbit,avg,err)
-                write(fout,    line)
-                write(statsout,line)
+                @printf fout     "%s %d %.6f %.6f\n" measurement orbit avg err
+                @printf statsout "%s %d %.6f %.6f\n" measurement orbit avg err
             end
         end
     end
@@ -568,63 +522,55 @@ end
 """
 Write on-site measreuments to file.
 """
-function write_intersite_measurements!(fout,model::AbstractModel{T1,T2,T3},container::NamedTuple,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+function write_intersite_measurements!(fout,model::AbstractModel{T1,T2,T3},datafolder::String,Nbins::Int) where {T1,T2,T3}
 
-    # number of site per unit cell
-    nᵥ = model.nbonds::Int
+    # number 
+    nᵥ = model.nbonds
 
-    # filename containing global measurements
-    datafn = joinpath(sim_params.datafolder, "intersite_measurements.out")
+    # data folder
+    folder = joinpath(datafolder, "intersite_measurements_f")
+
+    # get files containing data
+    files = readdir(folder,join=true)
+
+    # number of data files
+    Nmeas = length(files)
 
     # file statistics will be written to
-    statsfn = joinpath(sim_params.datafolder, "intersite_measurements_stats.out")
-
-    # number of measurements in data file
-    Nmeas = sim_params.num_bins
+    statsfn = joinpath(datafolder, "intersite_measurements_stats.out")
 
     # calculate number of measurements per bin
     Nbins = min(Nmeas,Nbins)
     N     = div(Nmeas,Nbins)
     @assert Nmeas%Nbins==0
 
+    # get measurements
+    measurements = String[]
+    open(files[1],"r") do fin
+        header = readline(fin)
+        for line in readlines(fin)
+            push!( measurements , split(line)[1] )
+        end
+    end
+    measurements = unique(measurements)
+
     # container to hold binned data
-    binned_data = Dict(string(k)=>zeros(T2,Nbins,nᵥ) for k in keys(container))
+    binned_data = Dict(string(k)=>zeros(T1,Nbins,nᵥ) for k in measurements)
 
     # container to contain statistics
-    stats = Dict(string(k)=>zeros(T2,2,nᵥ) for k in keys(container))
+    stats = Dict(string(k)=>zeros(T1,2,nᵥ) for k in measurements)
 
-    # open file with on-site measurement data
-    open(datafn,"r") do fin
-
-        # read in header
-        header = readline(fin)
-
-        # get column names
-        columns = split(header,",")
-
-        # iterate over lines of data
-        for line in eachline(fin)
-
-            # split line apart
-            atoms = split(line,",")
-
-            # get the measurement number
-            nmeas = parse(Int,atoms[1])
-
-            # get bin
-            bin = div(nmeas-1,N) + 1
-
-            # get the current orbital/site in unit cell
-            orbit = parse(Int,atoms[2])
-
-            # iterate over remain columns
-            for i in 3:length(columns)
-
-                # get the measurement associated with the column
-                measurement = columns[i]
-
-                # record measurement
-                binned_data[measurement][bin,orbit] += parse(T2,atoms[i]) / N
+    # iterate over data files
+    for (i,file) in enumerate(files)
+        bin = div(i-1,N) + 1
+        open(file,"r") do fin
+            header = readline(fin)
+            for line in eachline(fin)
+                atoms = split(line)
+                meas  = atoms[1]
+                bond  = parse(Int,atoms[2])
+                val   = parse(T1,atoms[3])
+                binned_data[meas][bin,bond] += val / N
             end
         end
     end
@@ -655,14 +601,13 @@ function write_intersite_measurements!(fout,model::AbstractModel{T1,T2,T3},conta
         for measurement in keys(stats)
 
             # iterate over orbits
-            for vector in 1:nᵥ
+            for b in 1:nᵥ
 
                 # write out measurement
-                avg  = stats[measurement][1,vector]
-                err  = stats[measurement][2,vector]
-                line = measurement * @sprintf(" %d %.6f %.6f\n",vector,avg,err)
-                write(fout,    line)
-                write(statsout,line)
+                avg  = stats[measurement][1,b]
+                err  = stats[measurement][2,b]
+                @printf fout     "%s %d %.6f %.6f\n" measurement b avg err
+                @printf statsout "%s %d %.6f %.6f\n" measurement b avg err
             end
         end
     end
@@ -673,16 +618,29 @@ end
 """
 Write correlations to file.
 """
-function write_correlations!(fout,model::AbstractModel{T1,T2,T3},container::NamedTuple,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+function write_correlations!(fout,model::AbstractModel,datafolder::String,Nbins::Int)
 
-    # iterate over correlation functions
-    for key in keys(container)
-        measurement = string(key)
-        position    = container[key].position
-        momentum    = container[key].momentum
-        pairs       = container[key].pairs
-        write_correlation!(fout,measurement,model,position,pairs,sim_params,Nbins,true)
-        write_correlation!(fout,measurement,model,momentum,pairs,sim_params,Nbins,false)
+    # get contents of data folder
+    contents = readdir(datafolder)
+    # iterate of names in data folder
+    for name in contents
+        # if name corresponds to folder
+        if endswith(name,"_f")
+            # if name of directory starts with capital letter
+            if isuppercase(name[1])
+                # split name by underscore
+                atoms = split(name,"_")
+                # if a correlation function
+                if !endswith(atoms[1],"Susc")
+                    # name of measurement
+                    measurement = string(atoms[1])
+                    # position or momentum space correlation function
+                    space = string(atoms[2])
+                    # process data
+                    write_correlation!(fout,model,measurement,space,Nbins,datafolder)
+                end
+            end
+        end
     end
 
     return nothing
@@ -691,73 +649,98 @@ end
 """
 Write a correlation to file.
 """
-function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},5},pairs::Matrix{Int},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
-    
-    # get size of conatiner
-    Lₜ, L₁, L₂, L₃, nₚ = size(container)
+function write_correlation!(fout,model::AbstractModel{T},measurement::String,space::String,Nbins::Int,datafolder::String) where {T<:AbstractFloat}    
 
-    # declare array to contained binned data
-    binned_data = zeros(T1,Nbins,Lₜ,L₁,L₂,L₃,nₚ)
+    # data folder
+    folder = joinpath(datafolder,"$(measurement)_$(space)_f")
+    files  = readdir(folder,join=true)
 
-    # number of measurements in data file
-    Nmeas = sim_params.num_bins
+    # read info in from key file
+    Lₜ      = 1
+    pairs   = Vector{Tuple{Int,Int}}()
+    header  = ""
+    keyfile = joinpath(folder,"$(measurement)_$(space)_key.out")
+    open(keyfile,"r") do fin
+        # construct header for stats file, determining whether to label first two colmns
+        # "orbit1 orbit2" or "bond1 bond2" depending on contents of key file
+        keyheader = readline(fin)
+        atoms     = split(keyheader)
+        if space == "position"
+            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 tau $(measurement) error\n"
+        else
+            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 tau $(measurement) error\n"
+        end
+        # get unique pairs of orbitals/bonds the correlation function was measured for
+        # and determine if measurement was time dependent
+        for line in eachline(fin)
+            atoms = split(line)
+            p     = ( parse(Int,atoms[2]) , parse(Int,atoms[3]) )
+            if !(p in pairs)
+                push!(pairs,p)
+            end
+            τ  = parse(Int,atoms[7])
+            Lₜ = max(τ+1,Lₜ)
+        end
+    end
+
+    # get number of pairs of orbitals/bonds
+    nₚ = length(pairs)
+
+    # get lattice size
+    L₁ = model.lattice.L1::Int
+    L₂ = model.lattice.L2::Int
+    L₃ = model.lattice.L3::Int
+    V  = L₁*L₂*L₃*nₚ*Lₜ
+
+    # number of measurements
+    Nmeas = length(files)-1
 
     # calculate number of measurements per bin
     Nbins = min(Nmeas,Nbins)
     N     = div(Nmeas,Nbins)
-    @assert Nmeas%Nbins==0
+    @assert Nmeas % Nbins == 0
 
-    # if position space data
-    if is_position
+    # file statistics will be written to
+    statsfn = joinpath(datafolder, "$(measurement)_$(space)_stats.out")
 
-        # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, "$(measurement)_position.out")
-
-        # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, "$(measurement)_position_stats.out")
-
-        # header line
-        header = "n1 n2 r3 r2 r1 tau $(measurement) error\n"
+    # declare container for binned data
+    container = zeros(T,Nbins,Lₜ)
     
-    # if momentum space data
-    else
-
-        # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, "$(measurement)_momentum.out")
-
-        # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, "$(measurement)_momentum_stats.out")
-
-        # header line
-        header = "n1 n2 k3 k2 k1 tau $(measurement) error\n"
-    end
-
-    # read in correlation data
-    read_correlation!(binned_data, datafn, N)
-
     # open stats file
     open(statsfn,"w") do statsout
-
-        # write header to file
-        write(fout,header)
-        write(statsout,header)
-
-        # iterate over all measurements
+        # write header
+        write(fout,     header)
+        write(statsout, header)
+        # counter to indicate what chunk of data file to read
+        n = 0
+        # iterate of all position or momentum space variable
         for p in 1:nₚ
-            n₁ = pairs[1,p]
-            n₂ = pairs[2,p]
-            for l₃ in 1:L₃
-                for l₂ in 1:L₂
-                    for l₁ in 1:L₁
-                        for τ in 1:Lₜ
-                            data = @view binned_data[:,τ,l₁,l₂,l₃,p]
-                            # calculate average and error of measurement
-                            avg, err = mean_and_error(data)
-                            # write to file
-                            line = @sprintf("%d %d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,τ-1,avg,err)
-                            write(fout,line)
-                            write(statsout,line)
+            n₁ = pairs[p][1]
+            n₂ = pairs[p][2]
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        # reset container
+                        fill!(container,0)
+                        # iterate over all data files
+                        for m in 1:Nmeas
+                            # get bin
+                            bin = div(m-1,N) + 1
+                            # iterate over relevant rows in datafile
+                            for row in CSV.Rows(files[m], header=1, skipto=n*Lₜ+2, limit=Lₜ, types=[Int,Float64], delim=" ", reusebuffer=true)
+                                # record measurement
+                                container[bin,mod1(row[1],Lₜ)] += row[2] / N
+                            end
                         end
+                        # write averaged stats to file
+                        for τ in 0:Lₜ-1
+                            data     = @view container[:,τ+1]
+                            avg, err = mean_and_error(data)
+                            @printf fout     "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
+                            @printf statsout "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
+                        end
+                        # increment to next chunk of file
+                        n += 1
                     end
                 end
             end
@@ -770,60 +753,31 @@ function write_correlation!(fout,measurement::String,model::AbstractModel{T1,T2,
 end
 
 """
-Read correlation data.
-"""
-function read_correlation!(binned_data::AbstractArray{T,6}, datafn::String, N::Int) where {T}
-
-    # number of pairs
-    Nbins,Lₜ,L₁,L₂,L₃,nₚ = size(binned_data)
-
-    # open data file
-    open(datafn,"r") do fin
-
-        # read in header
-        datafile_header = readline(fin)
-
-        # iterate over lines in data file
-        for (index,line) in enumerate(eachline(fin))
-
-            # split line apart
-            atoms = split(line,",")
-
-            # get the measurement number
-            nmeas = parse(Int,atoms[1])
-
-            # get bin
-            bin = div(nmeas-1,N) + 1
-            
-            # parse the data
-            p  = parse(Int, atoms[2])
-            l₃ = parse(Int, atoms[5]) + 1
-            l₂ = parse(Int, atoms[6]) + 1
-            l₁ = parse(Int, atoms[7]) + 1
-            τ  = parse(Int, atoms[8]) + 1
-            v  = parse(T,   atoms[9])
-
-            # record measurement
-            binned_data[bin,τ,l₁,l₂,l₃,p] += v/N
-        end
-    end
-
-    return nothing
-end
-
-"""
 Write susceptibilities to file.
 """
-function write_susceptibilities!(fout,model::AbstractModel{T1,T2,T3},container::NamedTuple,sim_params::SimulationParameters,Nbins::Int) where {T1,T2,T3}
+function write_susceptibilities!(fout,model::AbstractModel, datafolder::String,Nbins::Int)
 
-    # iterate over correlation functions
-    for key in keys(container)
-        measurement = string(key)
-        position    = container[key].position
-        momentum    = container[key].momentum
-        pairs       = container[key].pairs
-        write_susceptibility!(fout,measurement,model,position,pairs,sim_params,Nbins,true)
-        write_susceptibility!(fout,measurement,model,momentum,pairs,sim_params,Nbins,false)
+    # get contents of data folder
+    contents = readdir(datafolder)
+    # iterate of names in data folder
+    for name in contents
+        # if name corresponds to folder
+        if endswith(name,"_f")
+            # if name of directory starts with capital letter
+            if isuppercase(name[1])
+                # split name by underscore
+                atoms = split(name,"_")
+                # if a correlation function
+                if endswith(atoms[1],"Susc")
+                    # name of measurement
+                    measurement = string(atoms[1])
+                    # position or momentum space correlation function
+                    space = string(atoms[2])
+                    # process data
+                    write_susceptibility!(fout,model,measurement,space,Nbins,datafolder)
+                end
+            end
+        end
     end
 
     return nothing
@@ -832,71 +786,86 @@ end
 """
 Write a susceptibility to file.
 """
-function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,T2,T3},container::Array{Complex{T1},4},pairs::Matrix{Int},sim_params::SimulationParameters,Nbins::Int,is_position::Bool) where {T1,T2,T3}
+function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,space::String,Nbins::Int,datafolder::String) where {T<:AbstractFloat} 
     
-    # get size of conatiner
-    L₁, L₂, L₃, nₚ = size(container)
+    # data folder
+    folder = joinpath(datafolder,"$(measurement)_$(space)_f")
+    files  = readdir(folder,join=true)
 
-    # declare array to contained binned data
-    binned_data = zeros(T1,Nbins,L₁,L₂,L₃,nₚ)
+    # read info in from key file]
+    pairs   = Vector{Tuple{Int,Int}}()
+    header  = ""
+    keyfile = joinpath(folder,"$(measurement)_$(space)_key.out")
+    open(keyfile,"r") do fin
+        # construct header for stats file, determining whether to label first two colmns
+        # "orbit1 orbit2" or "bond1 bond2" depending on contents of key file
+        keyheader = readline(fin)
+        atoms     = split(keyheader)
+        if space == "position"
+            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 $(measurement) error\n"
+        else
+            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 $(measurement) error\n"
+        end
+        # get unique pairs of orbitals/bonds the correlation function was measured for
+        for line in eachline(fin)
+            atoms = split(line)
+            p     = ( parse(Int,atoms[2]) , parse(Int,atoms[3]) )
+            if !(p in pairs)
+                push!(pairs,p)
+            end
+        end
+    end
 
-    # number of measurements in data file
-    Nmeas = sim_params.num_bins
+    # get number of pairs of orbitals/bonds
+    nₚ = length(pairs)
+
+    # get lattice size
+    L₁ = model.lattice.L1::Int
+    L₂ = model.lattice.L2::Int
+    L₃ = model.lattice.L3::Int
+    V  = L₁*L₂*L₃*nₚ
+
+    # number of measurements
+    Nmeas = length(files)-1
 
     # calculate number of measurements per bin
     Nbins = min(Nmeas,Nbins)
     N     = div(Nmeas,Nbins)
-    @assert Nmeas%Nbins==0
+    @assert Nmeas % Nbins == 0
 
-    # if position space data
-    if is_position
+    # file statistics will be written to
+    statsfn = joinpath(datafolder, "$(measurement)_$(space)_stats.out")
 
-        # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, "$(measurement)_position.out")
+    # container to hold binned data
+    container  = zeros(T,Nbins,L₁,L₂,L₃,nₚ)
+    container′ = reshaped(container,Nbins,V)
 
-        # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, "$(measurement)_position_stats.out")
-
-        # header line
-        header = "n1 n2 r3 r2 r1 $(measurement) error\n"
-    
-    # if momentum space data
-    else
-
-        # filename containing global measurements
-        datafn = joinpath(sim_params.datafolder, "$(measurement)_momentum.out")
-
-        # file statistics will be written to
-        statsfn = joinpath(sim_params.datafolder, "$(measurement)_momentum_stats.out")
-
-        # header line
-        header = "n1 n2 k3 k2 k1 $(measurement) error\n"
+    # iterate over files
+    for m in 1:Nmeas
+        # calculate bin
+        bin = div(m-1,N) + 1
+        # iterate over rows of csv file
+        for row in CSV.Rows(files[m], types=[Int,T], reusebuffer=true, delim=' ')
+            index = row[1]
+            val   = row[2]
+            container′[bin,index] += val / N
+        end
     end
 
-    # read in susceptibility data
-    read_susceptibility!(binned_data, datafn, N)
-
-    # open stats file
+    # write avg and error of measurements to file
     open(statsfn,"w") do statsout
-
-        # write header to file
-        write(fout,header)
         write(statsout,header)
-
-        # iterate over all measurements
+        write(fout,    header)
         for p in 1:nₚ
-            n₁ = pairs[1,p]
-            n₂ = pairs[2,p]
-            for l₃ in 1:L₃
-                for l₂ in 1:L₂
-                    for l₁ in 1:L₁
-                        data = @view binned_data[:,l₁,l₂,l₃,p]
-                        # calculate average and error of measurement
-                        avg, err = mean_and_error(data)
-                        # write to file
-                        line = @sprintf("%d %d %d %d %d %.6f %.6f\n",n₁,n₂,l₃-1,l₂-1,l₁-1,avg,err)
-                        write(fout,line)
-                        write(statsout,line)
+            n₁ = pairs[p][1]
+            n₂ = pairs[p][2]
+            for l₃ in 0:L₃-1
+                for l₂ in 0:L₂-1
+                    for l₁ in 0:L₁-1
+                        vals     = @view container[:,l₁+1,l₂+1,l₃+1,p]
+                        avg, err = mean_and_error(vals)
+                        @printf fout     "%d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ avg err
+                        @printf statsout "%d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ avg err
                     end
                 end
             end
@@ -904,50 +873,6 @@ function write_susceptibility!(fout,measurement::String,model::AbstractModel{T1,
     end
 
     write(fout,"\n")
-
-    return nothing
-end
-
-"""
-Read susceptibility data.
-"""
-function read_susceptibility!(binned_data::AbstractArray{T,5}, datafn::String, N::Int) where {T}
-
-    # number of pairs
-    Nbins,L₁,L₂,L₃,nₚ = size(binned_data)
-
-    # number of distinct measurement definitions
-    Ndefs = L₁*L₂*L₃*nₚ
-
-    # open data file
-    open(datafn,"r") do fin
-
-        # read in header
-        datafile_header = readline(fin)
-
-        # iterate over lines in data file
-        for (index,line) in enumerate(eachline(fin))
-
-            # split line apart
-            atoms = split(line,",")
-
-            # get the measurement number
-            nmeas = parse(Int,atoms[1])
-
-            # get bin
-            bin = div(nmeas-1,N) + 1
-            
-            # parse the data
-            p  = parse(Int, atoms[2])
-            l₃ = parse(Int, atoms[5]) + 1
-            l₂ = parse(Int, atoms[6]) + 1
-            l₁ = parse(Int, atoms[7]) + 1
-            v  = parse(T,   atoms[8])
-
-            # record measurement
-            binned_data[bin,l₁,l₂,l₃,p] += v/N
-        end
-    end
 
     return nothing
 end

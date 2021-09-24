@@ -129,7 +129,7 @@ function simulate(args)
     #################################
 
     if sim_start < sim_params.nsteps
-        write_simulation_summary!(model, sim_params, μ_tuner, container, input, sim_stats, 10)
+        write_simulation_summary!(datafolder)
     end
 
     return nothing

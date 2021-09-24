@@ -38,28 +38,28 @@ mutable struct MuTuner{T<:AbstractFloat}
     κ_min       :: T
     μ_avg       :: T
     μ_err       :: T
-    log         :: Bool
     logfile     :: String
 
-    function MuTuner(active::Bool, init_μ::T, target_N::T, N::Int, β::T, Δτ::T, forgetful_c::T, κ_min::T, log::Bool, logfile::String) where{T<:AbstractFloat}
+    function MuTuner(active::Bool, init_μ::T, target_N::T, N::Int, β::T, Δτ::T, forgetful_c::T, κ_min::T, logfile::String) where{T<:AbstractFloat}
 
-        L       = round(Int,β/Δτ)
-        μ_traj  = [init_μ]
-        N_traj  = Vector{T}()
-        N²_traj = Vector{T}()
+        L           = round(Int,β/Δτ)
+        μ_traj      = [init_μ]
+        N_traj      = Vector{T}()
+        N²_traj     = Vector{T}()
         μ_bar_traj  = Vector{T}()
         κ_bar_traj  = Vector{T}()
         N_bar_traj  = Vector{T}()
         N²_bar_traj = Vector{T}()
 
-        if !isfile(logfile)
+        
+        if !isfile(logfile) && active
             open(logfile,"w") do file
                 write(file,"mu_bar kappa_bar n_bar Nsqr_bar mu n Nsqr\n")
             end
         end
 
         return new{T}(active, μ_traj, N_traj, N²_traj, forgetful_c, init_μ, N, β, Δτ, L, target_N, init_μ, 0.0, κ_min, -1.0, 0.0, -1.0,
-                      μ_bar_traj, κ_bar_traj, N_bar_traj, N²_bar_traj, κ_min, init_μ, 0.0, log, logfile)
+                      μ_bar_traj, κ_bar_traj, N_bar_traj, N²_bar_traj, κ_min, init_μ, 0.0, logfile)
     end
 end
 
@@ -155,9 +155,9 @@ function update_μ!(tuner::MuTuner, N::T, N²::T)::T where {T<:AbstractFloat}
     push!(κ_bar_traj,tuner.κ_bar)
 
     # write to log file
-    if tuner.active && tuner.log
+    if tuner.active
         open(tuner.logfile,"a") do file
-            @printf file "%.5f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar (tuner.κ_bar/tuner.N) (tuner.N_bar/tuner.N) tuner.N²_bar tuner.μ (N/tuner.N) N²
+            @printf file "%.8f %.8f %.8f %.8f %.8f %.8f %.8f\n" tuner.μ_bar (tuner.κ_bar/tuner.N) (tuner.N_bar/tuner.N) tuner.N²_bar tuner.μ (N/tuner.N) N²
         end
     end
 
@@ -191,19 +191,6 @@ function estimate_μ(tuner::MuTuner{T}) where {T<:AbstractFloat}
         μ_err         = stdm( μ_traj , median(μ_traj) )
         tuner.μ_avg   = tuner.μ_bar
         tuner.μ_err   = μ_err
-
-        # write trajectories to logfile if not already written
-        if !tuner.log
-            # size in lattice
-            N = tuner.N
-            # open logfile
-            open(tuner.logfile,"w") do file
-                # iterate over trajectory
-                for i in 1:length(tuner.N_traj)
-                    @printf file "%.5f %.5f %.5f %.5f %.5f %.5f %.5f\n" tuner.μ_bar_traj[i] (tuner.κ_bar_traj[i]/N) (tuner.N_bar_traj[i]/N) tuner.N²_bar_traj[i] tuner.μ_traj[i] (tuner.N_traj[i]/N) tuner.N²_traj[i]
-                end
-            end
-        end
 
         return nothing
     else

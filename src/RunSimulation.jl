@@ -14,7 +14,7 @@ using ..LangevinDynamics: evolve!, Dynamics, EulerDynamics, RungeKuttaDynamics, 
 using ..HMC: HybridMonteCarlo
 import ..HMC
 using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate, special_update!
-using ..Measurements: initialize_measurements_container, initialize_measurement_files!
+using ..Measurements: initialize_measurements_container, initialize_measurement_folders!
 using ..Measurements: make_measurements!, process_measurements!, write_measurements!, reset_measurements!
 
 export run_simulation!
@@ -80,7 +80,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         if (t_new-t_prev) > sim_params.chckpnt_freq
             t_prev = t_new
             chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
-                          burnin_start=sim_params.burnin+1, sim_start=t, sim_stats=sim_stats)
+                      burnin_start=sim_params.burnin+1, sim_start=t, sim_stats=sim_stats)
             sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
         end
 
@@ -91,7 +91,8 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         if t%sim_params.meas_freq==0
 
             # make measurements
-            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,preconditioner)
+            nmeas = div(t,sim_params.meas_freq)
+            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,nmeas,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
@@ -111,7 +112,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 sim_stats["measurement_time"] += @elapsed process_measurements!(container,sim_params,model)
 
                 # write measurements to file
-                sim_stats["write_time"] += @elapsed write_measurements!(container,sim_params,model,bin)
+                sim_stats["write_time"] += @elapsed write_measurements!(container,model,bin)
 
                 # reset measurements container
                 sim_stats["measurement_time"] += @elapsed reset_measurements!(container,model)
@@ -134,6 +135,10 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["measurement_time"] /= 60.0
     sim_stats["write_time"]       /= 60.0
     sim_stats["acceptance_rate"]   = 1.0
+
+    chkpnt = (model=model, μ_tuner=μ_tuner, burnin_start=sim_params.burnin+1,
+              sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
+    sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
 
     return sim_stats
 end
@@ -238,7 +243,8 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
         if n%sim_params.meas_freq==0
 
             # perform measurements
-            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,preconditioner)
+            nmeas = div(n,sim_params.meas_freq)
+            sim_stats["measurement_time"] += @elapsed make_measurements!(container,model,Gr,nmeas,preconditioner)
 
             # update chemical potential
             if μ_tuner.active
@@ -258,7 +264,7 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
                 sim_stats["measurement_time"] += @elapsed process_measurements!(container,sim_params,model)
 
                 # write measurements to file
-                sim_stats["write_time"] += @elapsed write_measurements!(container,sim_params,model,bin)
+                sim_stats["write_time"] += @elapsed write_measurements!(container,model,bin)
 
                 # reset measurements container
                 sim_stats["measurement_time"] += @elapsed reset_measurements!(container,model)
@@ -293,6 +299,11 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["simulation_time"]  /= 60.0
     sim_stats["measurement_time"] /= 60.0
     sim_stats["write_time"]       /= 60.0
+
+    # final checkpoint
+    chkpnt = (model=model, μ_tuner=μ_tuner, burnin_start=sim_params.burnin+1,
+              sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
+    serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
 
     # close log files
     close(simulation_hmc.logfile)

@@ -24,8 +24,7 @@ using ..HMC: HybridMonteCarlo
 using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
-using ..SimulationSummary: initialize_simulation_summary!
-using ..Measurements: initialize_measurements_container, initialize_measurement_files!
+using ..Measurements: initialize_measurements_container, initialize_measurement_folders!
 using ..KPMPreconditioners: LeftRightKPMPreconditioner, SymmetricKPMPreconditioner
 
 export process_input_file, initialize_holstein_model
@@ -48,11 +47,6 @@ function process_input_file(filename::String,input::Dict)
 
     # copy input file into data folder
     cp(filename, joinpath(sim_params.datafolder,filename))
-
-    # # write current git commit tag of code to log file
-    # @info( "Commit Hash: "*LibGit2.head(abspath(joinpath(dirname(Base.find_package("ElPhDynamics")), ".."))) )
-    # logger = global_logger()
-    # flush(logger.stream)
 
     ######################
     ## INITIALIZE MODEL ##
@@ -107,31 +101,21 @@ function process_input_file(filename::String,input::Dict)
     Gr = EstimateGreensFunction(model,input["measurements"]["num_random_vectors"])
 
     # construct measurements container
-    container = initialize_measurements_container(model,input["measurements"])
+    container = initialize_measurements_container(model,input["measurements"],sim_params.datafolder)
 
     # initialize measurement files
-    initialize_measurement_files!(container,sim_params)
-
-    ########################################
-    ## INITIALIZE SIMULATION SUMMARY FILE ##
-    ########################################
-
-    initialize_simulation_summary!(model,sim_params,input)
-    
-    burnin_start     = 1
-    sim_start        = 1
+    initialize_measurement_folders!(container)
 
     #################################
     ## INITIALIZE SIMULATION STATS ##
     #################################
 
     sim_stats = initialize_sim_stats()
-
     
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
             burnin_reflect_update, sim_reflect_update,
             burnin_swap_update, sim_swap_update,
-            fa, preconditioner, container, burnin_start, sim_start, sim_stats)
+            fa, preconditioner, container, 1, 1, sim_stats)
 end
 
 function process_checkpoint(input::Dict)
@@ -620,22 +604,14 @@ Initialize MuTuner.
 """
 function initialize_mutuner(input::Dict,model::AbstractModel)
 
-    # filename for μ_tuner log
-    μ_tuner_logfile = joinpath(input["simulation"]["datafolder"],"mu_tuner_log.out")
-
     if haskey(input,"tune_density")
+        logfile        = joinpath(input["simulation"]["datafolder"],"mu_tuner_log.out")
         targed_density = input["tune_density"]["density"]
         memory         = input["tune_density"]["memory"]
         κ_min          = input["tune_density"]["kappa_min"]
-        # whether or not to write the μ_tuner trajectories to a log file
-        if haskey(input["tune_density"],"log")
-            log = input["tune_density"]["log"]
-        else
-            log = false
-        end
-        μ_tuner = MuTuner(true, mean(model.μ), targed_density*model.Nsites, model.Nsites, model.β, model.Δτ, memory, κ_min*model.Nsites, log, μ_tuner_logfile)
+        μ_tuner = MuTuner(true, mean(model.μ), targed_density*model.Nsites, model.Nsites, model.β, model.Δτ, memory, κ_min*model.Nsites, logfile)
     else
-        μ_tuner = MuTuner(false, mean(model.μ), 1.0*model.Nsites, model.Nsites, model.β, model.Δτ, 0.75, 0.1, false, μ_tuner_logfile)
+        μ_tuner = MuTuner(false, mean(model.μ), 1.0*model.Nsites, model.Nsites, model.β, model.Δτ, 0.75, 0.1, "")
     end
 
     return μ_tuner
