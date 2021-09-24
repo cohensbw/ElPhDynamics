@@ -8,6 +8,7 @@ using Logging
 using LibGit2
 using Serialization
 using Parameters
+using Pkg
 
 using ..UnitCells: UnitCell
 using ..Lattices: Lattice
@@ -576,6 +577,11 @@ function initialize_simulation_params(input::Dict)
     logger      = SimpleLogger(logio)
     global_logger(logger)
 
+    # log version info
+    Pkg.status("ElPhDynamics",io=logger.stream)
+    @info("Julia Version: $VERSION")
+    flush(logger.stream)
+
     return sim_params
 end
 
@@ -591,7 +597,7 @@ function initialize_rng(input::Dict)
     seed = input["simulation"]["random_seed"]
     rng  = MersenneTwister(seed)
 
-    # write current git commit tag of code to log file
+    # write random seed to log file
     @info("Random Seed: $seed")
     logger = global_logger()
     flush(logger.stream)
