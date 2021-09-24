@@ -380,7 +380,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[5]
                 o₁ = container.onsite_corr[k].pairs[1,p]
                 o₂ = container.onsite_corr[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4]-1 c[3]-1 c[2]-1 c[1]-1
             end
         end
 
@@ -396,7 +396,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[5]
                 o₁ = container.onsite_corr[k].pairs[1,p]
                 o₂ = container.onsite_corr[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4]-1 c[3]-1 c[2]-1 c[1]-1
             end
         end
     end
@@ -420,7 +420,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[5]
                 o₁ = container.intersite_corr[k].pairs[1,p]
                 o₂ = container.intersite_corr[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4]-1 c[3]-1 c[2]-1 c[1]-1
             end
         end
 
@@ -436,7 +436,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[5]
                 o₁ = container.intersite_corr[k].pairs[1,p]
                 o₂ = container.intersite_corr[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4] c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d %d\n" i o₁ o₂ c[4]-1 c[3]-1 c[2]-1 c[1]-1
             end
         end
     end
@@ -460,7 +460,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[4]
                 o₁ = container.onsite_susc[k].pairs[1,p]
                 o₂ = container.onsite_susc[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3]-1 c[2]-1 c[1]-1
             end
         end
 
@@ -476,7 +476,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[4]
                 o₁ = container.onsite_susc[k].pairs[1,p]
                 o₂ = container.onsite_susc[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3]-1 c[2]-1 c[1]-1
             end
         end
     end
@@ -500,7 +500,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[4]
                 o₁ = container.intersite_susc[k].pairs[1,p]
                 o₂ = container.intersite_susc[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3]-1 c[2]-1 c[1]-1
             end
         end
 
@@ -516,7 +516,7 @@ function initialize_measurement_folders!(container::NamedTuple)
                 p  = c[4]
                 o₁ = container.intersite_susc[k].pairs[1,p]
                 o₂ = container.intersite_susc[k].pairs[2,p]
-                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3] c[2] c[1]
+                @printf file "%d %d %d %d %d %d\n" i o₁ o₂ c[3]-1 c[2]-1 c[1]-1
             end
         end
     end
@@ -1173,7 +1173,7 @@ Write global measurements to file.
 function write_global_measurements!(container::Dict,datafolder::String,model::AbstractModel{T1,T2,T3},bin::Int) where {T1,T2,T3}
 
     folder   = joinpath(datafolder,"global_measurements_f")
-    filename = joinpath(folder,"global_measurements_$(bin).out")
+    filename = joinpath(folder,@sprintf("global_measurements_%.5d.out",bin))
 
     open(filename,"w") do file
         for k in keys(container)
@@ -1194,7 +1194,7 @@ function write_onsite_measurements!(container::NamedTuple,datafolder::String,mod
 
     # filename
     folder   = joinpath(datafolder,"onsite_measurements_f")
-    filename = joinpath(folder,"onsite_measurements_$(bin).out")
+    filename = joinpath(folder,@sprintf("onsite_measurements_%.5d.out",bin))
 
     open(filename,"w") do file
         write(file,"measurement orbit value\n")
@@ -1218,7 +1218,7 @@ function write_intersite_measurements!(container::NamedTuple,datafolder::String,
 
     # filename
     folder   = joinpath(datafolder,"intersite_measurements_f")
-    filename = joinpath(folder,"intersite_measurements_$(bin).out")
+    filename = joinpath(folder,@sprintf("intersite_measurements_%.5d.out",bin))
 
     open(filename,"w") do file
         write(file,"measurement bond value\n")
@@ -1258,7 +1258,7 @@ function write_correlation!(correlations::Array{Complex{T}},corr::Symbol,space::
     # construct filename
     measurement = "$(corr)_$(space)"
     folder      = joinpath(datafolder,"$(measurement)_f")
-    filename    = joinpath(folder,"$(measurement)_$(bin).out")
+    filename    = joinpath(folder,@sprintf("%s_%.5d.out",measurement,bin))
 
     # write data to file
     open(filename,"w") do file
@@ -1358,7 +1358,8 @@ function take_density_snapshot!(model::AbstractModel{T1,T2,T3},estimator::Estima
     M⁻¹R = reshaped( estimator.M⁻¹R , (Lτ,Nsites,nᵥ) )
     V    = nᵥ * Lτ
 
-    filename = joinpath( datafolder , "density_snapshots_f" , "density_snapshot_$(nmeas).out")
+    filename = joinpath( datafolder , "density_snapshots_f" , @sprintf("density_snapshot_%.6d.out",nmeas))
+
 
     open(filename,"w") do file
         write(file,"density")
@@ -1399,7 +1400,7 @@ function take_double_occupancy_snapshot!(model::AbstractModel{T1,T2,T3},estimato
     M⁻¹R = reshaped( estimator.M⁻¹R , (Lτ,Nsites,nᵥ) )
     V    = binomial(nᵥ,2) * Lτ
 
-    filename = joinpath( datafolder , "double_occupancy_snapshots_f" , "double_occupancy_snapshot_$(nmeas).out")
+    filename = joinpath( datafolder , "double_occupancy_snapshots_f" , @sprintf("double_occupancy_snapshot_%.6d.out",nmeas))
 
     open(filename,"w") do file
         write(file,"double_occupancy")
@@ -1442,7 +1443,7 @@ function take_phonon_position_snapshot!(model::AbstractModel{T1,T2,T3},estimator
     # get phonon fields
     x = reshaped(model.x,(Lτ,Nph))
 
-    filename = joinpath( datafolder , "phonon_position_snapshots_f" , "phonon_position_snapshot_$(nmeas).out")
+    filename = joinpath( datafolder , "phonon_position_snapshots_f" , @sprintf("phonon_position_snapshot_%.6d.out",nmeas))
 
     open(filename,"w") do file
         write(file,"phonon_position\n")

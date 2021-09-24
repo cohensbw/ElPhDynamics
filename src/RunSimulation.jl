@@ -136,6 +136,10 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["write_time"]       /= 60.0
     sim_stats["acceptance_rate"]   = 1.0
 
+    chkpnt = (model=model, μ_tuner=μ_tuner, burnin_start=sim_params.burnin+1,
+              sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
+    sim_stats["write_time"] += @elapsed serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
+
     return sim_stats
 end
 
@@ -297,8 +301,8 @@ function run_simulation!(model::AbstractModel, Gr::EstimateGreensFunction, μ_tu
     sim_stats["write_time"]       /= 60.0
 
     # final checkpoint
-    chkpnt = (model=model, μ_tuner=μ_tuner, container=container,
-              burnin_start=sim_params.burnin+1, sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
+    chkpnt = (model=model, μ_tuner=μ_tuner, burnin_start=sim_params.burnin+1,
+              sim_start=sim_params.nsteps+1, sim_stats=sim_stats)
     serialize(joinpath(sim_params.datafolder,"checkpoint.jls"),chkpnt)
 
     # close log files

@@ -24,7 +24,6 @@ using ..HMC: HybridMonteCarlo
 using ..SpecialUpdates: SpecialUpdate, NullUpdate, ReflectionUpdate, SwapUpdate
 using ..FourierAcceleration: FourierAccelerator, update_Q!, update_M!
 using ..SimulationParams: SimulationParameters
-using ..SimulationSummary: initialize_simulation_summary!
 using ..Measurements: initialize_measurements_container, initialize_measurement_folders!
 using ..KPMPreconditioners: LeftRightKPMPreconditioner, SymmetricKPMPreconditioner
 
@@ -107,26 +106,16 @@ function process_input_file(filename::String,input::Dict)
     # initialize measurement files
     initialize_measurement_folders!(container)
 
-    ########################################
-    ## INITIALIZE SIMULATION SUMMARY FILE ##
-    ########################################
-
-    initialize_simulation_summary!(model,sim_params,input)
-    
-    burnin_start     = 1
-    sim_start        = 1
-
     #################################
     ## INITIALIZE SIMULATION STATS ##
     #################################
 
     sim_stats = initialize_sim_stats()
-
     
     return (model, Gr, μ_tuner, sim_params, simulation_dynamics, burnin_dynamics,
             burnin_reflect_update, sim_reflect_update,
             burnin_swap_update, sim_swap_update,
-            fa, preconditioner, container, burnin_start, sim_start, sim_stats)
+            fa, preconditioner, container, 1, 1, sim_stats)
 end
 
 function process_checkpoint(input::Dict)
