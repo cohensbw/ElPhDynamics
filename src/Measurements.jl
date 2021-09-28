@@ -1362,7 +1362,7 @@ function take_density_snapshot!(model::AbstractModel{T1,T2,T3},estimator::Estima
 
 
     open(filename,"w") do file
-        write(file,"density")
+        write(file,"density\n")
         # iterate over sites in lattice
         for i in 1:Nsites
             # initialize density measurement
@@ -1403,7 +1403,7 @@ function take_double_occupancy_snapshot!(model::AbstractModel{T1,T2,T3},estimato
     filename = joinpath( datafolder , "double_occupancy_snapshots_f" , @sprintf("double_occupancy_snapshot_%.6d.out",nmeas))
 
     open(filename,"w") do file
-        write(file,"double_occupancy")
+        write(file,"double_occupancy\n")
         # iterate over sites in lattice
         for i in 1:Nsites
             # initialize density measurement
