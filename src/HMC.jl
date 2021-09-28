@@ -380,8 +380,7 @@ function standard_update!(model::AbstractModel{T1,T2}, hmc::HybridMonteCarlo{T1}
 
         # calculate the initial dS/dx value
         fill!(dSdx,0.0)
-        iter_t = calc_dSdx!(hmc, model)
-        iters  = iter_t
+        calc_dSdx!(hmc, model)
 
         # dS/dx(t+Δt) ==> Q⋅dS/dx(t+Δt)
         fourier_accelerate!(QdSdx,fa,dSdx,-1.0,use_mass=true)
@@ -760,7 +759,7 @@ function calc_dSdx!(hmc::HybridMonteCarlo{T1}, model::AbstractModel{T1,T2}) wher
     calc_dSfdx!(hmc, model)
 
     # dS/dx = dSb/dx - ϕ₊ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₊ - ϕ₋ᵀ⋅O⁻ᵀ⋅[dMᵀ/dx⋅M]⋅O⁻¹⋅ϕ₋
-    calc_dSbdx!(dSdx, model)
+    calc_dSbdx!(hmc.dSdx, model)
 
     return nothing
 end
