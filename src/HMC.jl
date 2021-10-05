@@ -916,18 +916,20 @@ Construct the Λ matrix.
 """
 function update_Λ!(hmc::HybridMonteCarlo{T1}, model::HolsteinModel{T1,T2}) where {T1,T2}
 
-    @unpack λ, Δτ, Lτ, Nph = model
+    @unpack λ, λ₂, Δτ, Lτ, Nph = model
     x = reshaped(model.x, Lτ, Nph)
     Λ = reshaped(hmc.Λ,   Lτ, Nph)
 
     @fastmath @inbounds for i in 1:Nph
 
-        xᵢ = @view x[:,i]
-        Λᵢ = @view Λ[:,i]
-        λᵢ = λ[i]
+        xᵢ  = @view x[:,i]
+        Λᵢ  = @view Λ[:,i]
+        λᵢ  = λ[i]
+        λ₂ᵢ = λ₂[i]
 
         for τ in 1:Lτ
-            Λᵢ[τ] = exp(-Δτ*λᵢ*xᵢ[τ]/2)
+            xᵢτ   = xᵢ[τ]
+            Λᵢ[τ] = exp(-Δτ*(λᵢ*xᵢτ + λ₂ᵢ*xᵢτ^2)/2)
         end
     end
 
@@ -998,19 +1000,20 @@ Calculate ⟨vₗ|∂Λ/∂x(τ)|vᵣ⟩ for all τ, adding each result to the c
 """
 function muldΛdx!(dΛdx::Vector{T1},vₗ::Vector{T1},vᵣ::Vector{T1},hmc::HybridMonteCarlo{T1},model::HolsteinModel{T1,T2}) where {T1,T2}
 
-    @unpack x, λ, Δτ, Lτ, Nph = model
+    @unpack x, λ, λ₂, Δτ, Lτ, Nph = model
     @unpack Λ = hmc
 
     @fastmath @inbounds for i in 1:Nph
         λᵢ       = λ[i]
+        λ₂ᵢ      = λ₂[i]
         n′       = get_index(Lτ,i,Lτ)
         n        = get_index(1,i,Lτ)
-        dΛdx[n] += vₗ[n] * (-Δτ*λᵢ/2)*Λ[n] * vᵣ[n′]
+        dΛdx[n] += vₗ[n] * (-Δτ*(λᵢ/2+λ₂ᵢ*x[n]))*Λ[n] * vᵣ[n′]
         for τ in 2:Lτ
             τm1      = mod1(τ-1,Lτ)
             n′       = get_index(τm1,i,Lτ)
             n        = get_index(τ,i,Lτ)
-            dΛdx[n] += vₗ[n] * (Δτ*λᵢ/2)*Λ[n] * vᵣ[n′]
+            dΛdx[n] += vₗ[n] * (Δτ*(λᵢ/2+λ₂ᵢ*x[n]))*Λ[n] * vᵣ[n′]
         end
     end
 
