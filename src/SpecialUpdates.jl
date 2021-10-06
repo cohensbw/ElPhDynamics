@@ -55,7 +55,7 @@ end
 Performs Reflection update on Holstein model where (xᵢ)⟶(-xᵢ) on some set of sites i.
 On all other models it is a null operation.
 """
-mutable struct ReflectionUpdate <: SpecialUpdate
+mutable struct ReflectionUpdate{T<:AbstractFloat} <: SpecialUpdate
 
     """
     Whether the updater is turned on.
@@ -76,19 +76,38 @@ mutable struct ReflectionUpdate <: SpecialUpdate
     Which sites the reflection will be applied to.
     """
     sites::Vector{Int}
+
+    """
+    Number of pairs of Phi vectors to use when estimating transition rate.
+    """
+    nₚ::Int
+
+    """
+    Store forward transition probability for each ϕ.
+    """
+    Pf::Vector{T}
+
+    """
+    Store backward transition probability for each ϕ.
+    """
+    Pb::Vector{T}
 end
 
-function ReflectionUpdate(model::HolsteinModel,freq::Int,nsites::Int)
+function ReflectionUpdate(model::HolsteinModel{T},freq::Int,nsites::Int,nₚ::Int=1) where {T<:AbstractFloat}
 
     nsites = min(model.Nph,nsites)
-    sites = zeros(Int,nsites)
-    return ReflectionUpdate(true,freq,nsites,sites)
+    sites  = zeros(Int,nsites)
+    Pf     = zeros(T,nₚ)
+    Pb     = zeros(T,nₚ)
+    return ReflectionUpdate{T}(true,freq,nsites,sites,nₚ,Pf,Pb)
 end
 
-function ReflectionUpdate(model::AbstractModel,freq::Int,nsites::Int)
+function ReflectionUpdate(model::AbstractModel{T},freq::Int,nsites::Int,nₚ::Int=0) where {T<:AbstractFloat}
 
+    Pf     = zeros(T,nₚ)
+    Pb     = zeros(T,nₚ)
     sites = Vector{Int}(undef,0)
-    return ReflectionUpdate(false,freq,0,sites)
+    return ReflectionUpdate{T}(false,freq,0,sites,nₚ,Pf,Pb)
 end
 
 """
