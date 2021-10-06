@@ -110,7 +110,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
         x = reshaped(model.x,Lτ,Nph)
 
         # randomly sample sites
-        sample!(model.rng,1:Nph,sites,replace=false)
+        sample!(model.rng,1:Nph,sites,replace=true)
 
         # update exp{-Δτ⋅V[x]}
         update_model!(model)
@@ -241,7 +241,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
         x = reshaped(model.x,Lτ,Nsites)
 
         # randomly sample sites
-        sample!(model.rng,1:Nbonds,bonds,replace=false)
+        sample!(model.rng,1:Nbonds,bonds,replace=true)
 
         # update exp{-Δτ⋅V[x]}
         update_model!(model)
