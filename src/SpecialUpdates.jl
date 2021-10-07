@@ -149,14 +149,43 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
             # forward transition probability
             Pf = min( 1.0 , exp(-(S₁-S₀)) )
 
+            # CALCULATE BACKWARD TRANSITION PROBABILITY
+
+            # resample ϕ
+            refresh_ϕ!(hmc,model,sample_R=true)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+
+            # get initial action
+            S₁′ = calc_S(hmc,model)
+
+            # reflect phonon fields
+            @. xᵢ = -xᵢ
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            if iszero(flag)
+                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+            end
+
+            # get final action
+            S₀′ = calc_S(hmc,model)
+
+            # inverse of backward transition probability
+            Pb⁻¹ = max( 1.0 , exp(-(S₁′-S₀′)) )
+
             # ACCEPT/REJECT DECISION
+
+            # calculate acceptance rate
+            P = min( 1.0 , Pf*Pb⁻¹ )
 
             # accept/reject decision
             if rand(model.rng) < Pf && iszero(flag)
 
                 accepted += 1.0
-
-            else
 
                 # reflect phonon fields
                 @. xᵢ = -xᵢ
@@ -257,7 +286,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             xᵢ = @view x[:,i]
             xⱼ = @view x[:,j]
 
-            # FORWARD TRANSITION PROBABILITY
+            # CALCULATE FORWARD TRANSITION PROBABILITY
 
             # resample ϕ
             refresh_ϕ!(hmc,model,sample_R=true)
@@ -285,13 +314,43 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             # forward transition proability
             Pf = min( 1.0 , exp(-(S₁-S₀)) )
 
+            # CALCULATE BACKWARD TRANSITION PROBABILITY
+
+            # resample ϕ
+            refresh_ϕ!(hmc,model,sample_R=true)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+
+            # get initial action
+            S₁′ = calc_S(hmc,model)
+
+            # swap mean phonon positions
+            swap!(xᵢ,xⱼ)
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            if iszero(flag)
+                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+            end
+
+            # get final action
+            S₀′ = calc_S(hmc,model)
+
+            # inverse of backward transition proability
+            Pb⁻¹ = max( 1.0 , exp(-(S₁′-S₀′)) )
+
             # ACCEPT/REJECT DECISICION
+
+            # calculate acceptance rate
+            P = min( 1.0 , Pf*Pb⁻¹ )
 
             # accept/reject decision
             if rand(model.rng) < Pf && iszero(flag)
 
                 accepted += 1.0
-            else
 
                 # swap phonon positions
                 swap!(xᵢ,xⱼ)
