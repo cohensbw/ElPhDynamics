@@ -435,7 +435,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             c²b = σ²b/P̄b^2
             cfb = σfb/(P̄f*P̄b)
             # P   = P + (P̄f-P*P̄b)/(nₚ-1)
-            P = P*(1+θ*cfb)*(1-θ*c²b)
+            P   = P*(1+θ*cfb)*(1-θ*c²b)
 
             # accept/reject decision
             if rand(model.rng) < P && iszero(flag)
