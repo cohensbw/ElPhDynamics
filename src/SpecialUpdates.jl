@@ -6,6 +6,7 @@ using Parameters
 using Printf
 using LinearAlgebra
 using SparseArrays
+using Distributions
 using StatsBase
 
 using ..Utilities: get_index, reshaped, swap!
@@ -78,28 +79,17 @@ mutable struct ReflectionUpdate{T<:AbstractFloat} <: SpecialUpdate
     sites::Vector{Int}
 
     """
-    Number of pairs of Phi vectors to use when estimating transition rate.
+    Geometric distribution to determine number of Phi vectors to calucate backward transition probability.
     """
-    nₚ::Int
-
-    """
-    Store forward transition probability for each ϕ.
-    """
-    Pf::Vector{T}
-
-    """
-    Store backward transition probability for each ϕ.
-    """
-    Pb::Vector{T}
+    g::Geometric{T}
 end
 
 function ReflectionUpdate(model::HolsteinModel{T},freq::Int,nsites::Int,nₚ::Int=4) where {T<:AbstractFloat}
 
     nsites = min(model.Nph,nsites)
     sites  = zeros(Int,nsites)
-    Pf     = zeros(T,nₚ)
-    Pb     = zeros(T,nₚ)
-    return ReflectionUpdate{T}(true,freq,nsites,sites,nₚ,Pf,Pb)
+    g      = Geometric(1/nₚ)
+    return ReflectionUpdate{T}(true,freq,nsites,sites,g)
 end
 
 function ReflectionUpdate(model::AbstractModel{T},freq::Int,nsites::Int,nₚ::Int=0) where {T<:AbstractFloat}
@@ -107,7 +97,8 @@ function ReflectionUpdate(model::AbstractModel{T},freq::Int,nsites::Int,nₚ::In
     Pf     = zeros(T,nₚ)
     Pb     = zeros(T,nₚ)
     sites = Vector{Int}(undef,0)
-    return ReflectionUpdate{T}(false,freq,0,sites,nₚ,Pf,Pb)
+    g      = Geometric(0.5)
+    return ReflectionUpdate{T}(false,freq,0,sites,g)
 end
 
 """
@@ -116,7 +107,7 @@ Apply reflection updates to Holstein model.
 function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::ReflectionUpdate,preconditioner)::T where {T<:AbstractFloat}
 
     @unpack Nph, Lτ = model
-    @unpack nsites, sites, Pf, Pb, nₚ = ru
+    @unpack nsites, sites, g = ru
     @unpack ϕ₊, ϕ₋ = hmc
 
     # counts number of accepted reflections
@@ -143,38 +134,50 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
             # get phonon fields associated with site
             xᵢ = @view x[:,i]
 
-            # iterate over number of ϕ pairs to use
-            for p in 1:nₚ
+            # CALCULATE FORWARD TRANSITION PROBABILITY
 
-                # CALCULATE FORWARD TRANSITION PROBABILITY
+            # resample ϕ
+            refresh_ϕ!(hmc,model,sample_R=true)
 
-                # resample ϕ
-                refresh_ϕ!(hmc,model,sample_R=true)
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            # get initial action
+            S₀ = calc_S(hmc,model)
+
+            # reflect phonon fields
+            @. xᵢ = -xᵢ
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            if iszero(flag)
                 iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+            end
 
-                # get initial action
-                S₀ = calc_S(hmc,model)
+            # get final action
+            S₁ = calc_S(hmc,model)
 
-                # reflect phonon fields
-                @. xᵢ = -xᵢ
+            # forward transition probability
+            pf = min( 1.0 , exp(-(S₁-S₀)) )
 
-                # update exp{-Δτ⋅V[x]}
-                update_model!(model)
+            # CALCULATE INVERSE OF BACKWARD TRANSITION PROBABILITY
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                if iszero(flag)
-                    iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-                end
+            # get number of Phi vectors to use to make estimate
+            N = rand(g) + 1
 
-                # get final action
-                S₁ = calc_S(hmc,model)
+            # calcualte probability of sampling N
+            qₙ = pdf(g,N-1)
 
-                # forward transition probability
-                Pf[p] = min( 1.0 , exp(-(S₁-S₀)) )
+            # estimation constant
+            ω = 0.5
 
-                # CALCULATE BACKWARD TRANSITION PROBABILITY
+            # initialize log of backward tranition probability
+            logpb⁻¹ = log(ω/qₙ)
+
+            # iterate over sample
+            for n in 1:N
 
                 # resample ϕ
                 refresh_ϕ!(hmc,model,sample_R=true)
@@ -200,43 +203,37 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
                 S₀′ = calc_S(hmc,model)
 
                 # forward transition probability
-                Pb[p] = min( 1.0 , exp(-(S₀′-S₁′)) )
-            end
+                pb = min( 1.0 , exp(-(S₀′-S₁′)) )
 
-            # ACCEPT/REJECT DECISION
-
-            # acceptance probability
-
-            # P̄f = mean(Pf)
-            # P̄b = mean(Pb)
-            # σf = stdm(Pf,P̄f)
-            # σb = stdm(Pb,P̄b)
-            # ρ  = cor(Pf,Pb)
-            # P  = P̄f/P̄b
-            # P  = P + (1/nₚ)*(P*σb^2-ρ*σf*σb)/P̄b^2
-
-            P̄f  = mean(Pf)
-            P̄b  = mean(Pb)
-            P   = P̄f/P̄b
-            θ   = 1/nₚ
-            σ²f = varm(Pf,P̄f)
-            σ²b = varm(Pb,P̄b)
-            σfb = cov(Pb,Pf)
-            c²b = σ²b/P̄b^2
-            cfb = σfb/(P̄f*P̄b)
-            # P   = P + (P̄f-P*P̄b)/(nₚ-1)
-            P   = P*(1+θ*cfb)*(1-θ*c²b)
-
-            # accept/reject decision
-            if rand(model.rng) < P && iszero(flag)
+                # update estimator
+                logpb⁻¹ += log(1.0 - ω*pb)
 
                 # reflect phonon fields
                 @. xᵢ = -xᵢ
 
                 # update exp{-Δτ⋅V[x]}
                 update_model!(model)
+            end
+
+            # ACCEPT/REJECT DECISICION
+
+            # calculate inverse backward transition probability
+            pb⁻¹ = exp(logpb⁻¹)
+
+            # acceptance probability
+            P = min( 1.0 , pf*pb⁻¹)
+
+            # accept/reject decision
+            if rand(model.rng) < P && iszero(flag)
 
                 accepted += 1.0
+            else
+
+                # reflect phonon fields
+                @. xᵢ = -xᵢ
+
+                # update exp{-Δτ⋅V[x]}
+                update_model!(model)
             end
         end
     end
@@ -276,19 +273,9 @@ mutable struct SwapUpdate{T<:AbstractFloat} <: SpecialUpdate
     bonds::Vector{Int}
 
     """
-    Number of pairs of Phi vectors to use when estimating transition rate.
+    Geometric distribution to determine number of Phi vectors to calucate backward transition probability.
     """
-    nₚ::Int
-
-    """
-    Store forward transition probability for each ϕ.
-    """
-    Pf::Vector{T}
-
-    """
-    Store backward transition probability for each ϕ.
-    """
-    Pb::Vector{T}
+    g::Geometric{T}
 end
 
 function SwapUpdate(model::HolsteinModel{T},freq::Int,nbonds::Int,nₚ::Int=4) where {T<:AbstractFloat}
@@ -302,18 +289,16 @@ function SwapUpdate(model::HolsteinModel{T},freq::Int,nbonds::Int,nₚ::Int=4) w
     end
     nbonds = min(model.Nbonds,nbonds)
     bonds  = zeros(Int,nbonds)
-    Pf     = zeros(T,nₚ)
-    Pb     = zeros(T,nₚ)
-    return SwapUpdate{T}(active,freq,nbonds,bonds,nₚ,Pf,Pb)
+    g      = Geometric(1/nₚ)
+    return SwapUpdate{T}(active,freq,nbonds,bonds,g)
 end
 
 function SwapUpdate(model::AbstractModel{T},freq::Int,nbonds::Int,nₚ::Int=0) where {T<:AbstractFloat}
 
-    nbonds    = 0
-    bonds     = Vector{Int}(undef,nbonds)
-    Pf        = zeros(T,0)
-    Pb        = zeros(T,0)
-    return SwapUpdate{T}(active,freq,nbonds,bonds,nₚ,Pf,Pb)
+    nbonds = 0
+    bonds  = Vector{Int}(undef,nbonds)
+    g      = Geometric(1/nₚ)
+    return SwapUpdate{T}(active,freq,nbonds,bonds,g)
 end
 
 """
@@ -322,7 +307,7 @@ Apply swap updates to Holstein model.
 function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::SwapUpdate,preconditioner)::T where {T<:AbstractFloat}
 
     @unpack Nbonds, Nsites, Lτ, neighbor_table = model
-    @unpack nbonds, bonds, Pf, Pb, nₚ = su
+    @unpack nbonds, bonds, g = su
 
     # counts number of accepted reflections
     accepted = 0.0
@@ -353,49 +338,49 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             xᵢ = @view x[:,i]
             xⱼ = @view x[:,j]
 
-            # iterate over number of ϕ pairs to use
-            for p in 1:nₚ
+            # CALCULATE FORWARD TRANSITION PROBABILITY
 
-                # FORWARD TRANSITION PROBABILITY
+            # resample ϕ and get initial action
+            S₀ = refresh_ϕ!(hmc,model,sample_R=true)
 
-                # resample ϕ
-                refresh_ϕ!(hmc,model,sample_R=true)
+            # swap mean phonon positions
+            swap!(xᵢ,xⱼ)
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            if iszero(flag)
                 iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+            end
 
-                # get initial action
-                S₀ = calc_S(hmc,model)
+            # get final action
+            S₁ = calc_S(hmc,model)
 
-                # swap mean phonon positions
-                swap!(xᵢ,xⱼ)
+            # forward transition proability
+            pf = min( 1.0 , exp(-(S₁-S₀)) )
 
-                # update exp{-Δτ⋅V[x]}
-                update_model!(model)
+             # CALCULATE INVERSE OF BACKWARD TRANSITION PROBABILITY
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                if iszero(flag)
-                    iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-                end
+            # get number of Phi vectors to use to make estimate
+            N = rand(g) + 1
 
-                # get final action
-                S₁ = calc_S(hmc,model)
+            # calcualte probability of sampling N
+            qₙ = pdf(g,N-1)
 
-                # forward transition proability
-                Pf[p] = min( 1.0 , exp(-(S₁-S₀)) )
+            # estimation constant
+            ω = 0.5
 
-                # BACKWARD TRANSITION PROBABILITY
+            # initialize log of backward tranition probability
+            logpb⁻¹ = log(ω/qₙ)
 
-                # resample ϕ
-                refresh_ϕ!(hmc,model,sample_R=true)
+            # iterate over sample
+            for n in 1:N
 
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+                # resample ϕ and get initial action
+                S₁′ = refresh_ϕ!(hmc,model,sample_R=true)
 
-                # get initial action
-                S₁′ = calc_S(hmc,model)
-
-                # swap mean phonon positions
+                # reflect phonon fields
                 swap!(xᵢ,xⱼ)
 
                 # update exp{-Δτ⋅V[x]}
@@ -409,38 +394,32 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                 # get final action
                 S₀′ = calc_S(hmc,model)
 
-                # forward transition proability
-                Pb[p] = min( 1.0 , exp(-(S₀′-S₁′)))
+                # forward transition probability
+                pb = min( 1.0 , exp(-(S₀′-S₁′)) )
+
+                # update estimator
+                logpb⁻¹ += log(1.0 - ω*pb)
+
+                # reflect phonon fields
+                swap!(xᵢ,xⱼ)
+
+                # update exp{-Δτ⋅V[x]}
+                update_model!(model)
             end
 
             # ACCEPT/REJECT DECISICION
 
+            # calculate inverse backward transition probability
+            pb⁻¹ = exp(logpb⁻¹)
+
             # acceptance probability
-
-            # P̄f = mean(Pf)
-            # P̄b = mean(Pb)
-            # σf = stdm(Pf,P̄f)
-            # σb = stdm(Pb,P̄b)
-            # ρ  = cor(Pf,Pb)
-            # P  = P̄f/P̄b
-            # P  = P + (1/nₚ)*(P*σb^2-ρ*σf*σb)/P̄b^2
-
-            P̄f  = mean(Pf)
-            P̄b  = mean(Pb)
-            P   = P̄f/P̄b
-            θ   = 1/nₚ
-            σ²f = varm(Pf,P̄f)
-            σ²b = varm(Pb,P̄b)
-            σfb = cov(Pb,Pf)
-            c²b = σ²b/P̄b^2
-            cfb = σfb/(P̄f*P̄b)
-            # P   = P + (P̄f-P*P̄b)/(nₚ-1)
-            P   = P*(1+θ*cfb)*(1-θ*c²b)
+            P = min( 1.0 , pf*pb⁻¹ )
 
             # accept/reject decision
             if rand(model.rng) < P && iszero(flag)
 
                 accepted += 1.0
+            else
 
                 # swap phonon positions
                 swap!(xᵢ,xⱼ)
