@@ -136,14 +136,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
 
             # CALCULATE FORWARD TRANSITION PROBABILITY
 
-            # resample ϕ
-            refresh_ϕ!(hmc,model,sample_R=true)
-
-            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-            # get initial action
-            S₀ = calc_S(hmc,model)
+            # resample ϕ and get initial energy
+            S₀ = refresh_ϕ!(hmc,model,sample_R=true)
 
             # reflect phonon fields
             @. xᵢ = -xᵢ
@@ -179,14 +173,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
             # iterate over sample
             for n in 1:N
 
-                # resample ϕ
-                refresh_ϕ!(hmc,model,sample_R=true)
-
-                # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-                # get initial action
-                S₁′ = calc_S(hmc,model)
+                # resample ϕ and get initial energy
+                S₁′ = refresh_ϕ!(hmc,model,sample_R=true)
 
                 # reflect phonon fields
                 @. xᵢ = -xᵢ
