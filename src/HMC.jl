@@ -663,7 +663,7 @@ end
 """
 Refresh `ϕ` according to the relationship `ϕ ~ Λ⁻¹⋅Mᵀ⋅R` where `R` is a vector of normal random numbers.
 """
-function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2};sample_R::Bool=true) where {T1,T2}
+function refresh_ϕ!(hmc::HybridMonteCarlo{T},model::AbstractModel{T};sample_R::Bool=true)::T where {T}
 
     @unpack R₊, R₋, ϕ₊, ϕ₋, Λϕ₊, Λϕ₋, Λ = hmc
 
@@ -684,7 +684,11 @@ function refresh_ϕ!(hmc::HybridMonteCarlo{T1},model::AbstractModel{T1,T2};sampl
     mulMᵀ!(Λϕ₋,model,R₋)
     mulΛ⁻¹!(ϕ₋,Λϕ₋,hmc,model)
 
-    return nothing
+    # calculate total action
+    hmc.S  = dot(R₊,R₊)/2 + dot(R₋,R₋)/2
+    hmc.S += calc_Sb(model)
+
+    return hmc.S
 end
 
 

@@ -123,14 +123,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
 
             # CALCULATE FORWARD TRANSITION PROBABILITY
 
-            # resample ϕ
-            refresh_ϕ!(hmc,model,sample_R=true)
-
-            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-            # get initial action
-            S₀ = calc_S(hmc,model)
+            # resample ϕ and calculate initial action
+            S₀ = refresh_ϕ!(hmc,model,sample_R=true)
 
             # reflect phonon fields
             @. xᵢ = -xᵢ
@@ -139,9 +133,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
             update_model!(model)
 
             # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-            if iszero(flag)
-                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-            end
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
             # get final action
             S₁ = calc_S(hmc,model)
@@ -256,14 +248,8 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
 
             # CALCULATE FORWARD TRANSITION PROBABILITY
 
-            # resample ϕ
-            refresh_ϕ!(hmc,model,sample_R=true)
-
-            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-
-            # get initial action
-            S₀ = calc_S(hmc,model)
+            # resample ϕ and calculate initial action
+            S₀ = refresh_ϕ!(hmc,model,sample_R=true)
 
             # swap mean phonon positions
             swap!(xᵢ,xⱼ)
@@ -272,9 +258,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             update_model!(model)
 
             # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
-            if iszero(flag)
-                iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
-            end
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
 
             # get final action
             S₁ = calc_S(hmc,model)
