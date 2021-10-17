@@ -141,13 +141,13 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
             qₙ = pdf(g,N-1)
 
             # estimation constant
-            ω = 0.5
+            w = 0.5
 
             # initialize forward tranition probability
             pf = 0.0
 
             # initialize log of backward tranition probability
-            logpb⁻¹ = log(ω/qₙ)
+            logpb⁻¹ = log(w/qₙ)
 
             # iterate over sample
             for n in 1:N
@@ -197,7 +197,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},ru::Re
                 pb = min( 1.0 , exp(-(S₀′-S₁′)) )
 
                 # update estimator
-                logpb⁻¹ += log(1.0 - ω*pb)
+                logpb⁻¹ += log(1.0 - w*pb)
             end
 
             # ACCEPT/REJECT DECISICION
@@ -329,13 +329,13 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             qₙ = pdf(g,N-1)
 
             # estimation constant
-            ω = 0.5
+            w = 0.5
 
             # initialize forward transition probability
             pf = 0.0
 
             # initialize log of backward tranition probability
-            logpb⁻¹ = log(ω/qₙ)
+            logpb⁻¹ = log(w/qₙ)
 
             # iterate over sample
             for n in 1:N
@@ -385,7 +385,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                 pb = min( 1.0 , exp(-(S₀′-S₁′)) )
 
                 # update estimator
-                logpb⁻¹ += log(1.0 - ω*pb)
+                logpb⁻¹ += log(1.0 - w*pb)
             end
 
             # ACCEPT/REJECT DECISICION
