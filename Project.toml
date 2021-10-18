@@ -1,7 +1,7 @@
 name = "ElPhDynamics"
 uuid = "d56e79bc-9d16-11e9-1337-85b17f59915c"
 authors = ["benwcs <benwcs@gmail.com>"]
-version = "1.0.9"
+version = "1.0.10"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
