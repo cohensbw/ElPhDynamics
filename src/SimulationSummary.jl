@@ -704,9 +704,21 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
     statsfn = joinpath(datafolder, "$(measurement)_$(space)_stats.out")
 
     # declare container for binned data
-    container = zeros(T,Nbins,Lₜ)
+    container  = zeros(T,Nbins,Lₜ,L₁,L₂,L₃,nₚ)
+    container′ = reshaped(container,Nbins,V)
+
+    # iterate over number of files
+    for m in 1:Nmeas
+        # get bin number
+        bin = div(m-1,N) + 1
+        # iterate of rows in current data file
+        for row in CSV.Rows(files[m], header=1, types=[Int,T], delim=" ", reusebuffer=true)
+            # calculate binned averages
+            container′[bin,row[1]] += row[2] / N
+        end
+    end
     
-    # open stats file
+    # write stats file
     open(statsfn,"w") do statsout
         # write header
         write(fout,     header)
@@ -720,21 +732,9 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
             for l₃ in 0:L₃-1
                 for l₂ in 0:L₂-1
                     for l₁ in 0:L₁-1
-                        # reset container
-                        fill!(container,0)
-                        # iterate over all data files
-                        for m in 1:Nmeas
-                            # get bin
-                            bin = div(m-1,N) + 1
-                            # iterate over relevant rows in datafile
-                            for row in CSV.Rows(files[m], header=1, skipto=n*Lₜ+2, limit=Lₜ, types=[Int,Float64], delim=" ", reusebuffer=true)
-                                # record measurement
-                                container[bin,mod1(row[1],Lₜ)] += row[2] / N
-                            end
-                        end
                         # write averaged stats to file
                         for τ in 0:Lₜ-1
-                            data     = @view container[:,τ+1]
+                            data     = @view container[:,τ+1,l₁+1,l₂+1,l₃+1,p]
                             avg, err = mean_and_error(data)
                             @printf fout     "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
                             @printf statsout "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
