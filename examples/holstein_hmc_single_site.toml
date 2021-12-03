@@ -54,7 +54,7 @@ val   = 1.0
 # define chemical potential
 [[holstein.mu]]
 orbit = [1]
-val   = -1.0
+val   = 0.0
 
 # define anharmonic term of form X^4
 [[holstein.omega4]]
@@ -95,10 +95,10 @@ mass      = 1.0
 num_multitimesteps = 10
 
 # thermalization updates
-burnin_updates = 5_000
+burnin_updates = 1_000
 
 # simulation updates
-simulation_updates = 50_000
+simulation_updates = 4_000
 
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 1.0
@@ -123,6 +123,15 @@ log = false
 # if writing a log file, whether to write status at every timestep (true)
 # or just after a HMC update (false)
 verbose = false
+
+# only applied if a holstein model
+[hmc.reflection_update]
+
+# how frequently to apply the update relative to HMC updates
+freq = 1
+
+# number of sites to apply reflection udpate to each time
+nsites = 1
 
 ###########################
 ## SIMULATION PARAMETERS ##
@@ -191,7 +200,7 @@ c2 = 1.0
 [measurements]
 
 # number of random vectors used to make stochastic measurements
-num_random_vectors = 1
+num_random_vectors = 10
 
 # Electron Green's Function Measurement
 [measurements.Greens]

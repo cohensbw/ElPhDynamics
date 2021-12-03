@@ -112,10 +112,10 @@ mass      = 0.1
 num_multitimesteps = 10
 
 # thermalization updates
-burnin_updates = 5_000
+burnin_updates = 1_000
 
 # simulation updates
-simulation_updates = 50_000
+simulation_updates = 4_000
 
 # The duration of trajectories used in Hybrid Monte Carlo.
 trajectory_time = 1.0
@@ -208,7 +208,7 @@ c2 = 1.0
 [measurements]
 
 # number of random vectors used to make stochastic measurements
-num_random_vectors = 1
+num_random_vectors = 10
 
 # Electron Green's Function Measurement
 [measurements.Greens]
