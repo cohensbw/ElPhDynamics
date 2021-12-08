@@ -85,7 +85,7 @@ val    = 0.0
 # density = 1.0
 
 # # what fraction of density history to use when updating chemical potential
-# memory  = 0.75
+# memory  = 0.50
 
 # # minimum compresibillity value
 # kappa_min = 0.1
@@ -97,7 +97,7 @@ val    = 0.0
 [[fourier_acceleration]]
 omega_min = 0.0
 omega_max = 10.0
-mass      = 1.0
+mass      = 0.1
 
 ###################################
 ## HYBRID MONTE CARLO PARAMETERS ##
@@ -118,7 +118,7 @@ simulation_updates = 4_000
 trajectory_time = 1.0
 
 # timestep size
-dt = 0.1
+dt = 0.01
 
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
@@ -166,7 +166,7 @@ nbonds = 4
 filepath = "."
 
 # name of folder for data to get dumped into
-foldername = "holstein_hmc_square"
+foldername = "test"
 
 # number of times measurements will be written to file.
 num_bins = 100

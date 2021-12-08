@@ -128,7 +128,7 @@ simulation_updates = 4_000
 trajectory_time = 1.0
 
 # timestep size
-dt = 0.1
+dt = 0.01
 
 # number of hybrid monte carlo updates between measurements being made
 meas_freq = 1
