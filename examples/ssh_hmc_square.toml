@@ -241,10 +241,16 @@ time_dependent = true
 
 # Bond-Bond correlation function
 [measurements.BondBond]
-measure        = true
-time_dependent = true
+measure        = false
+time_dependent = false
 
 # Current-Current correlation function
 [measurements.CurrentCurrent]
-measure        = true
-time_dependent = true
+measure        = false
+time_dependent = false
+
+# Snapshot measurements
+[measurements.Snapshots]
+density          = false
+double_occupancy = false
+phonon_position  = false
