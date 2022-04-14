@@ -539,12 +539,12 @@ function update_model!(ssh::SSHModel{T1,T2}) where {T1,T2}
         end
     end
 
-    # report unphysically large phonon displacement
-    if flag_large_displacement
-        @info("Unphysically Large Phonon Displacement\n")
-        logger = global_logger()
-        flush(logger.stream)
-    end
+    # # report unphysically large phonon displacement
+    # if flag_large_displacement
+    #     @info("Unphysically Large Phonon Displacement\n")
+    #     logger = global_logger()
+    #     flush(logger.stream)
+    # end
 
     # make sure equivalent fields are equal
     for field in 1:ssh.Ndof

@@ -257,6 +257,7 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict,da
     container["intersite_meas"]["phonon_ke"]   = zeros(Complex{T1},nᵥ)
     container["intersite_meas"]["elph_energy"] = zeros(Complex{T1},nᵥ)
     container["intersite_meas"]["el_ke"]       = zeros(Complex{T1},nᵥ)
+    container["intersite_meas"]["sign_switch"] = zeros(Complex{T1},nᵥ)
 
     ###################################
     ## ON-SITE CORRELATION FUNCTIONS ##
@@ -1084,9 +1085,6 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
     # normalization
     V = div(Nbonds,nbonds)*Lτ
 
-    # keeps track of phonon species
-    phonon_species = 0
-
     # iterate over bonds in lattice
     for bond in 1:ssh.Nbonds
         # get bond definitions
@@ -1109,13 +1107,15 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
         end
         # iterate over time slices
         for τ in 1:Lτ
+            # get modulated hopping amplitude
+            t′ = ssh.t′[τ,bond]
             # get hopping amplitude h = ∑ₛ⟨c⁺ₛᵢcₛⱼ+h.c.⟩
             G1 = estimate(Gr,s₁,s₂,τ,τ,1)
             G2 = estimate(Gr,s₂,s₁,τ,τ,1)
             G3 = estimate(Gr,s₁,s₂,τ,τ,2)
             G4 = estimate(Gr,s₂,s₁,τ,τ,2)
             h   = -G1-G2-G3-G4
-            # get phonon field info
+            # if phonon is on bond
             if phonon!=0
                 # get xᵢ[τ] phonon field
                 xτ   = x[τ,phonon]
@@ -1135,21 +1135,9 @@ function make_intersite_measurements!(container::NamedTuple,ssh::SSHModel{T1,T2,
                 intersite_meas.x2[bond_def]          += (xτ^2)/V
                 # ⟨x⁴⟩
                 intersite_meas.x4[bond_def]          += (xτ^4)/V
-            else
-                intersite_meas.phonon_pe[bond_def]   += 0.0
-                # phonon kinetic energy
-                intersite_meas.phonon_ke[bond_def]   += 0.0
-                # electron-phonon energy
-                intersite_meas.elph_energy[bond_def] += 0.0
-                # ⟨x⟩
-                intersite_meas.x[bond_def]           += 0.0
-                # ⟨x²⟩
-                intersite_meas.x2[bond_def]          += 0.0
-                # ⟨x⁴⟩
-                intersite_meas.x4[bond_def]          += 0.0
+                # if sign of hopping changes
+                intersite_meas.sign_switch[bond_def] += ( sign(real(t)) != sign(real(t′)) )/V
             end
-            # calculate modulated hopping amplitude
-            t′ = ssh.t′[τ,bond]
             # calculate electron kinetic energy
             intersite_meas.el_ke[bond_def]       += -t′*h/V
         end
