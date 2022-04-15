@@ -745,7 +745,7 @@ function initialize_swap_update(input::Dict,model::AbstractModel,burnin_dynaimcs
     if haskey(input,"langevin")
         sim_swap_update = NullUpdate()
     else
-        if haskey(input,"holstein") && haskey(input["hmc"],"swap_update")
+        if haskey(input["hmc"],"swap_update")
             freq   = input["hmc"]["swap_update"]["freq"]
             nbonds = input["hmc"]["swap_update"]["nbonds"]
             sim_swap_update = SwapUpdate(model,freq,nbonds)
@@ -756,7 +756,7 @@ function initialize_swap_update(input::Dict,model::AbstractModel,burnin_dynaimcs
 
     # define special update for burnin updates
     burnin_swap_update = sim_swap_update
-    if haskey(input,"hmc") && haskey(input,"holstein")
+    if haskey(input,"hmc")
         if haskey(input["hmc"],"burnin")
             if haskey(input["hmc"]["burnin"],"swap_update")
                 freq   = input["hmc"]["swap_update"]["freq"]

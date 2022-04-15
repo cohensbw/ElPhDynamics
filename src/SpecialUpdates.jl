@@ -195,7 +195,22 @@ function SwapUpdate(model::HolsteinModel,freq::Int,nbonds::Int)
 
     @unpack Nsites, Nbonds, neighbor_table = model
 
-    if Nbonds==0
+    if Nbonds==0 && nbonds > 0
+        active = false
+    else
+        active = true
+    end
+    nbonds = min(model.Nbonds,nbonds)
+    bonds  = zeros(Int,nbonds)
+    return SwapUpdate(active,freq,nbonds,bonds)
+end
+
+function SwapUpdate(model::SSHModel,freq::Int,nbonds::Int)
+
+    @unpack Nsites, Nph, neighbor_table = model
+
+
+    if Nph==0 && nbonds > 0
         active = false
     else
         active = true
@@ -207,9 +222,9 @@ end
 
 function SwapUpdate(model::AbstractModel,freq::Int,nbonds::Int)
 
-    nbonds    = 0
-    bonds     = Vector{Int}(undef,nbonds)
-    return SwapUpdate(active,freq,nbonds,bonds)
+    nbonds = 0
+    bonds  = Vector{Int}(undef,nbonds)
+    return SwapUpdate(false,freq,nbonds,bonds)
 end
 
 """
@@ -229,7 +244,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
         # get all phonon fields
         x = reshaped(model.x,Lτ,Nsites)
 
-        # randomly sample sites
+        # randomly sample bonds
         sample!(model.rng,1:Nbonds,bonds,replace=true)
 
         # update exp{-Δτ⋅V[x]}
@@ -251,7 +266,7 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             # resample ϕ and calculate initial action
             S₀ = refresh_ϕ!(hmc,model,sample_R=true)
 
-            # swap mean phonon positions
+            # swap phonon positions
             swap!(xᵢ,xⱼ)
 
             # update exp{-Δτ⋅V[x]}
@@ -264,10 +279,10 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
             S₁ = calc_S(hmc,model)
 
             # forward transition proability
-            Pf = min( 1.0 , exp(-(S₁-S₀)) )
+            P = min( 1.0 , exp(-(S₁-S₀)) )
 
             # accept/reject decision
-            if rand(model.rng) < Pf && iszero(flag)
+            if rand(model.rng) < P && iszero(flag)
 
                 accepted += 1.0
             else
@@ -276,6 +291,72 @@ function special_update!(model::HolsteinModel{T},hmc::HybridMonteCarlo{T},su::Sw
                 swap!(xᵢ,xⱼ)
 
                 # update exp{-Δτ⋅V[x]}
+                update_model!(model)
+            end
+        end
+    end
+
+    return accepted/nbonds
+end
+
+function special_update!(model::SSHModel{T},hmc::HybridMonteCarlo{T},su::SwapUpdate,preconditioner)::T where {T<:AbstractFloat}
+
+    @unpack Nph, Lτ, primary_field = model
+    @unpack nbonds = su
+
+    # counts number of accepted reflections
+    accepted = 0.0
+
+    # if updater is active
+    if su.active
+
+        # get all phonon fields
+        x = reshaped(model.x,Lτ,Nph)
+
+        # update exp{-Δτ⋅K[x]}
+        update_model!(model)
+
+        # iterate over the number of swap updates to perform
+        for b in 1:nbonds
+
+            # randomly select two different phonons and get the
+            # corresponding phonon fields
+            xᵢ = @view x[:,rand(model.rng,1:Nph)]
+            xⱼ = @view x[:,rand(model.rng,1:Nph)]
+            while xᵢ ≈ xⱼ
+                xⱼ = @view x[:,rand(model.rng,1:Nph)]
+            end
+
+            # get phonon fields associated with each phonon
+
+            # resample ϕ and calculate initial action
+            S₀ = refresh_ϕ!(hmc,model,sample_R=true)
+
+            # swap phonon positions
+            swap!(xᵢ,xⱼ)
+
+            # update exp{-Δτ⋅V[x]}
+            update_model!(model)
+
+            # calculate O⁻¹⋅Λ⋅ϕ₊ and O⁻¹⋅Λ⋅ϕ₋
+            iters, flag = calc_O⁻¹Λϕ!(hmc,model,preconditioner,2.0)
+
+            # get final action
+            S₁ = calc_S(hmc,model)
+
+            # forward transition proability
+            P = min( 1.0 , exp(-(S₁-S₀)) )
+
+            # accept/reject decision
+            if rand(model.rng) < P && iszero(flag)
+
+                accepted += 1.0
+            else
+
+                # swap phonon positions
+                swap!(xᵢ,xⱼ)
+
+                # update exp{-Δτ⋅K[x]}
                 update_model!(model)
             end
         end
