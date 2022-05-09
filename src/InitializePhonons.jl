@@ -32,11 +32,7 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
         t    = ssh.t[bond]
         α    = ssh.α[phonon]
         ω    = ssh.ω[phonon]
-        if iszero(α) || iszero(t)
-            x0 = sample_qho(ω,β,ssh.rng)
-        else
-            x0 = (2.0*rand(ssh.rng)-1.0)/5.0 * (t/α)
-        end
+        x0   = -2α/ω^2 + sample_qho(ω,β,ssh.rng)
 
         # iterate over imaginary time slices
         for τ in 1:Lτ

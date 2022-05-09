@@ -273,38 +273,48 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
     # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
     e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4, op.model.rng)
+    # @printf "[ %.6f , %.6f ]\n" e_min e_max
 
-    # compute λ_lo and λ_hi
-    λ_lo = max(0.0 , (1-2*op.buf)*e_min)
-    λ_hi = (1+2*op.buf)*e_max
+    # preconditioner can only be setup and active if e_min and e_max are both finite
+    if isfinite(e_min) && isfinite(e_max)
 
-    # if λ_lo or λ_hi has changed by a factor of more than op.buf,
-    # recompute expansion coefficients
-    if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
+        # compute λ_lo and λ_hi
+        λ_lo = max(0.0 , (1-2*op.buf)*e_min)
+        λ_hi = (1+2*op.buf)*e_max
 
-        op.λ_lo  = λ_lo
-        op.λ_hi  = λ_hi
-        op.λ_avg = (op.λ_hi+op.λ_lo)/2
-        op.λ_mag = (op.λ_hi-op.λ_lo)/2
+        # if λ_lo or λ_hi has changed by a factor of more than op.buf,
+        # recompute expansion coefficients
+        if !isapprox(λ_lo, op.λ_lo, rtol=op.buf) || !isapprox(λ_hi, op.λ_hi, rtol=op.buf)
 
-        # update expansions
-        for ω in 1:length(op.ϕs)
-            # calculate order of expansion
-            coeff       = op.coeff[ω]
-            ϕ           = op.ϕs[ω]
-            # order       = round(Int, op.c1/ϕ + op.c2)
-            order       = floor(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
-            order       = max(1,order)
-            op.order[ω] = order
-            # resize vector containing expansion coefficients
-            resize!(coeff,order)
-            # calculate expansion coefficients
-            kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
+            op.λ_lo  = λ_lo
+            op.λ_hi  = λ_hi
+            op.λ_avg = (op.λ_hi+op.λ_lo)/2
+            op.λ_mag = (op.λ_hi-op.λ_lo)/2
+
+            # update expansions
+            for ω in 1:length(op.ϕs)
+                # calculate order of expansion
+                coeff       = op.coeff[ω]
+                ϕ           = op.ϕs[ω]
+                # order       = round(Int, op.c1/ϕ + op.c2)
+                order       = floor(Int, (op.λ_hi-op.λ_lo)*(op.c1/ϕ + op.c2))
+                order       = max(1,order)
+                op.order[ω] = order
+                # resize vector containing expansion coefficients
+                resize!(coeff,order)
+                # calculate expansion coefficients
+                kpm_coefficients!(coeff, order, op.λ_lo, op.λ_hi, ϕ) 
+            end
         end
-    end
 
-    # set preconditioner to being active
-    op.active = true
+        # set preconditioner to being active
+        op.active = true
+    else
+
+        # deactivate preconditioner
+        # println("deactive")
+        op.active = false
+    end
 
     return nothing
 end
@@ -876,8 +886,12 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
 
     # calulcate min and max eigenvalues
     h′       = @view h[1:l,1:l]
-    eigvs    = eigvals!(h′)
-    e_max    = maximum(real, eigvs)
+    if all(i->isfinite(i), h′)
+        eigvs    = eigvals!(h′)
+        e_max    = maximum(real, eigvs)
+    else
+        e_max = Inf
+    end
 
     ################################
     ## Arnoldi for Min Eigenvalue ##
@@ -916,8 +930,12 @@ function arnoldi_eigenvalue_bounds!(A, Q::AbstractMatrix{T1}, h::AbstractMatrix{
 
     # calulcate min and max eigenvalues
     h′     = @view h[1:l,1:l]
-    eigvs  = eigvals!(h′)
-    e_min = 1/maximum(real, eigvs)
+    if all(i->isfinite(i), h′)
+        eigvs = eigvals!(h′)
+        e_min = 1/maximum(real, eigvs)
+    else
+        e_min = -Inf
+    end
 
     return e_min, e_max
 end
