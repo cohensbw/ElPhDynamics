@@ -61,21 +61,21 @@ function initialize_measurements_container(holstein::HolsteinModel{T1,T2,T3},inf
 
         # density snapshots
         if haskey(info["Snapshots"],"density")
-            if info["Snapshots"]["density"]
+            if info["Snapshots"]["density"] == true
                 push!(container["snapshots"],:density)
             end
         end
 
         # double occupancy snapshots
         if haskey(info["Snapshots"],"double_occupancy")
-            if info["Snapshots"]["double_occupancy"]
+            if info["Snapshots"]["double_occupancy"] == true
                 push!(container["snapshots"],:double_occupancy)
             end
         end
 
         # phonon position snapshots
         if haskey(info["Snapshots"],"phonon_position")
-            if info["Snapshots"]["phonon_position"]
+            if info["Snapshots"]["phonon_position"] == true
                 push!(container["snapshots"],:phonon_position)
             end
         end
@@ -210,19 +210,27 @@ function initialize_measurements_container(ssh::SSHModel{T1,T2,T3},info::Dict,da
     # see if any snapshots have been declared
     if haskey(info,"Snapshots")
 
+        container["snapshots"] = Vector{Symbol}()
+
         # density snapshots
         if haskey(info["Snapshots"],"density")
-            push!(container["snapshots"],:density)
+            if info["Snapshots"]["density"] == true
+                push!(container["snapshots"],:density)
+            end
         end
 
         # double occupancy snapshots
         if haskey(info["Snapshots"],"double_occupancy")
-            push!(container["snapshots"],:double_occupancy)
+            if info["Snapshots"]["double_occupancy"] == true
+                push!(container["snapshots"],:double_occupancy)
+            end
         end
 
         # phonon position snapshots
         if haskey(info["Snapshots"],"phonon_position")
-            push!(container["snapshots"],:phonon_position)
+            if info["Snapshots"]["phonon_position"] == true
+                push!(container["snapshots"],:phonon_position)
+            end
         end
     end
 
