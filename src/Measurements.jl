@@ -1264,9 +1264,9 @@ function write_correlation!(correlations::Array{Complex{T}},corr::Symbol,space::
 
     # write data to file
     open(filename,"w") do file
-        @printf file "index %s\n" measurement
+        @printf file "index %s_real %s_imag\n" measurement measurement
         for i in eachindex(correlations)
-            @printf file "%d %.8f\n" i real(correlations[i])
+            @printf file "%d %.8f %.8f\n" i real(correlations[i]) imag(correlations[i])
         end
     end
 

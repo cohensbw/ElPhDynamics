@@ -666,9 +666,9 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
         keyheader = readline(fin)
         atoms     = split(keyheader)
         if space == "position"
-            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 tau $(measurement) error\n"
+            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 tau $(measurement)_real $(measurement)_imag error_real error_imag\n"
         else
-            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 tau $(measurement) error\n"
+            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 tau $(measurement)_real $(measurement)_imag error_real error_imag\n"
         end
         # get unique pairs of orbitals/bonds the correlation function was measured for
         # and determine if measurement was time dependent
@@ -704,7 +704,7 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
     statsfn = joinpath(datafolder, "$(measurement)_$(space)_stats.out")
 
     # declare container for binned data
-    container  = zeros(T,Nbins,Lₜ,L₁,L₂,L₃,nₚ)
+    container  = zeros(Complex{T},Nbins,Lₜ,L₁,L₂,L₃,nₚ)
     container′ = reshaped(container,Nbins,V)
 
     # iterate over number of files
@@ -712,9 +712,11 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
         # get bin number
         bin = div(m-1,N) + 1
         # iterate of rows in current data file
-        for row in CSV.Rows(files[m], header=1, types=[Int,T], delim=" ", reusebuffer=true)
+        for row in CSV.Rows(files[m], header=1, types=[Int,T,T], delim=" ", reusebuffer=true)
             # calculate binned averages
-            container′[bin,row[1]] += row[2] / N
+            index = row[1]
+            val   = row[2] + im*row[3]
+            container′[bin,index] += val / N
         end
     end
     
@@ -736,8 +738,8 @@ function write_correlation!(fout,model::AbstractModel{T},measurement::String,spa
                         for τ in 0:Lₜ-1
                             data     = @view container[:,τ+1,l₁+1,l₂+1,l₃+1,p]
                             avg, err = mean_and_error(data)
-                            @printf fout     "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
-                            @printf statsout "%d %d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ avg err
+                            @printf fout     "%d %d %d %d %d %d %.8f %.8f %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ real(avg) imag(avg) real(err) imag(err)
+                            @printf statsout "%d %d %d %d %d %d %.8f %.8f %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ τ real(avg) imag(avg) real(err) imag(err)
                         end
                         # increment to next chunk of file
                         n += 1
@@ -792,7 +794,7 @@ function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,
     folder = joinpath(datafolder,"$(measurement)_$(space)_f")
     files  = readdir(folder,join=true)
 
-    # read info in from key file]
+    # read info in from key file
     pairs   = Vector{Tuple{Int,Int}}()
     header  = ""
     keyfile = joinpath(folder,"$(measurement)_$(space)_key.out")
@@ -802,9 +804,9 @@ function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,
         keyheader = readline(fin)
         atoms     = split(keyheader)
         if space == "position"
-            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 $(measurement) error\n"
+            header = "$(atoms[2]) $(atoms[3]) r3 r2 r1 $(measurement)_real $(measurement)_imag error_real error_imag\n"
         else
-            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 $(measurement) error\n"
+            header = "$(atoms[2]) $(atoms[3]) k3 k2 k1 $(measurement)_real $(measurement)_imag error_real error_imag\n"
         end
         # get unique pairs of orbitals/bonds the correlation function was measured for
         for line in eachline(fin)
@@ -837,7 +839,7 @@ function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,
     statsfn = joinpath(datafolder, "$(measurement)_$(space)_stats.out")
 
     # container to hold binned data
-    container  = zeros(T,Nbins,L₁,L₂,L₃,nₚ)
+    container  = zeros(Complex{T},Nbins,L₁,L₂,L₃,nₚ)
     container′ = reshaped(container,Nbins,V)
 
     # iterate over files
@@ -845,9 +847,9 @@ function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,
         # calculate bin
         bin = div(m-1,N) + 1
         # iterate over rows of csv file
-        for row in CSV.Rows(files[m], types=[Int,T], reusebuffer=true, delim=' ')
+        for row in CSV.Rows(files[m], types=[Int,T,T], reusebuffer=true, delim=' ')
             index = row[1]
-            val   = row[2]
+            val   = row[2] + im*row[3]
             container′[bin,index] += val / N
         end
     end
@@ -864,8 +866,8 @@ function write_susceptibility!(fout,model::AbstractModel{T},measurement::String,
                     for l₁ in 0:L₁-1
                         vals     = @view container[:,l₁+1,l₂+1,l₃+1,p]
                         avg, err = mean_and_error(vals)
-                        @printf fout     "%d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ avg err
-                        @printf statsout "%d %d %d %d %d %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ avg err
+                        @printf fout     "%d %d %d %d %d %.8f %.8f %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ real(avg) imag(avg) real(err) imag(err)
+                        @printf statsout "%d %d %d %d %d %.8f %.8f %.8f %.8f\n" n₁ n₂ l₃ l₂ l₁ real(avg) imag(avg) real(err) imag(err)
                     end
                 end
             end
@@ -880,12 +882,23 @@ end
 """
 Calculate mean and standard deviation of the mean of a set of data.
 """
-function mean_and_error(v::AbstractArray{T})::Tuple{T,T} where {T<:Number}
+function mean_and_error(v::AbstractArray{T})::Tuple{T,T} where {T<:AbstractFloat}
     
     N   = length(v)
     avg = mean(v)
     err = std(v,corrected=true,mean=avg)/sqrt(N)
+
     return avg, err
+end
+
+function mean_and_error(v::AbstractArray{T})::Tuple{T,T} where {T<:Complex}
+    
+    N        = length(v)
+    avg      = mean(v)
+    err_real = std(real.(v), corrected=true, mean=real(avg)) / sqrt(N)
+    err_imag = std(imag.(v), corrected=true, mean=imag(avg)) / sqrt(N)
+
+    return avg, err_real + im*err_imag
 end
 
 end
