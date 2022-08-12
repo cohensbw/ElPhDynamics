@@ -24,15 +24,30 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # keeps track of the fields
     field = 0
 
+    # get the name of each time of phonon
+    names = [ssh.bond_definitions[i].name for i in ssh.nph]
+
     # iterate over phonons
     for phonon in 1:Nph
 
-        # calculate average phonon position
+        # get name of phonon
+        bond   = ssh.phonon_to_bond[phonon]
+        ph_def = ssh.bond_to_definition[bond]
+        name   = ssh.bond_definitions[ph_def].name
+
+        # get the number of phonons with the same name
+        n_identical_phonons = count(i->i==name, names)
+
+        # calculate initial phonon position
         bond = ssh.phonon_to_bond[phonon]
         t    = ssh.t[bond]
         α    = ssh.α[phonon]
         ω    = ssh.ω[phonon]
-        x0   = -2α/ω^2 + sample_qho(ω,β,ssh.rng)
+        x0   = sample_qho(ω,β,ssh.rng)
+        if n_identical_phonons == 1
+            x0 = x0 - 2*α/ω^2
+            # println("adding SSH phonon position offset")
+        end
 
         # iterate over imaginary time slices
         for τ in 1:Lτ
