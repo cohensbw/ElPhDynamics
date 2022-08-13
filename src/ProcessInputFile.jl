@@ -595,7 +595,7 @@ function initialize_rng(input::Dict)
         input["simulation"]["random_seed"] = abs(rand(Int))
     end
     seed = input["simulation"]["random_seed"]
-    rng  = MersenneTwister(seed)
+    rng  = Xoshiro(seed)
 
     # write random seed to log file
     @info("Random Seed: $seed")

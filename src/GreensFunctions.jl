@@ -209,7 +209,7 @@ function update!(estimator::EstimateGreensFunction, model::T, preconditioner=I) 
     for i in 1:estimator.nᵥ
 
         # initialize random vector with new random number
-        randn!(r₁)
+        randn!(model.rng, r₁)
         fill!(M⁻¹r₁,0.0)
 
         # solve linear system

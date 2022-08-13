@@ -5,7 +5,7 @@ using Random
 using ..Models: HolsteinModel, SSHModel, update_model!
 using ..Utilities: get_index, reshaped
 
-export init_phonons_single_site!, init_phonons_half_filled!, sample_qho
+export init_phonons_half_filled!, sample_qho
 
 
 function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
@@ -24,7 +24,7 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     # keeps track of the fields
     field = 0
 
-    # get the name of each time of phonon
+    # get the name of each type of phonon
     names = [ssh.bond_definitions[i].name for i in ssh.nph]
 
     # iterate over phonons

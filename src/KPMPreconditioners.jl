@@ -273,10 +273,11 @@ function setup!(op::KPMExpansion{T1,T2,T3}) where {T1,T2,T3}
 
     # approximate min/max eigenvalue of A = exp{-Δτ⋅V̄}⋅exp{-Δτ⋅K̄}
     e_min, e_max = arnoldi_eigenvalue_bounds!(op, op.Q, op.h, op.v3, op.v4, op.model.rng)
-    # @printf "[ %.6f , %.6f ]\n" e_min e_max
+    @printf "[ %.6f , %.6f ]\n" e_min e_max
 
-    # preconditioner can only be setup and active if e_min and e_max are both finite
-    if isfinite(e_min) && isfinite(e_max)
+    # preconditioner can only be setup and active if e_min and e_max are reasonable
+    # if isfinite(e_min) && isfinite(e_max)
+    if (0.0 < e_min < 1.0) && (1.0 < e_max) && (e_max-e_min)<2.0
 
         # compute λ_lo and λ_hi
         λ_lo = max(0.0 , (1-2*op.buf)*e_min)
