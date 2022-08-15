@@ -25,7 +25,7 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
     field = 0
 
     # get the name of each type of phonon
-    names = [ssh.bond_definitions[i].name for i in ssh.nph]
+    names = [ssh.bond_definitions[i].name for i in 1:ssh.nph]
 
     # iterate over phonons
     for phonon in 1:Nph
@@ -40,7 +40,6 @@ function init_phonons_half_filled!(ssh::SSHModel{T1,T2}) where {T1,T2}
 
         # calculate initial phonon position
         bond = ssh.phonon_to_bond[phonon]
-        t    = ssh.t[bond]
         α    = ssh.α[phonon]
         ω    = ssh.ω[phonon]
         x0   = sample_qho(ω,β,ssh.rng)
